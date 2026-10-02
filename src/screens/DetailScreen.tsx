@@ -55,7 +55,8 @@ export function DetailScreen() {
   const id = route.params.id;
   const queue = route.params.queue;
   const queueIndex = route.params.queueIndex ?? queue?.indexOf(id) ?? -1;
-  const practiceMode = route.params.mode === 'practice' || (queue?.length ?? 0) > 1;
+  const practiceMode =
+    route.params.mode === 'practice' || route.params.mode === 'review' || (queue?.length ?? 0) > 1;
   const recordView = useUserStore((state) => state.recordView);
   const answerExpandedByDefault = useUserStore((state) => state.answerExpandedByDefault);
   const loadFavorites = useFavoritesStore((state) => state.load);
@@ -123,7 +124,7 @@ export function DetailScreen() {
     const nextIndex = queueIndex + offset;
     const nextId = queue[nextIndex];
     if (!nextId) return;
-    nav.replace('Detail', { id: nextId, queue, queueIndex: nextIndex, mode: 'practice' });
+    nav.replace('Detail', { id: nextId, queue, queueIndex: nextIndex, mode: route.params.mode ?? 'practice' });
   }
 
   const rawQuestionBody = stripLeadingHeading(question, meta?.title);

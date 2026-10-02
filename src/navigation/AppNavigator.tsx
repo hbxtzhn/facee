@@ -13,15 +13,24 @@ import { ProfileScreen } from '../screens/ProfileScreen';
 import { colors, navigationTheme, typography } from '../theme';
 import type { Question } from '../question-bank';
 
+/** 详情页参数：browse 浏览 / practice 练习队列 / review 间隔复习队列（复用练习链路） */
+export type DetailParams = {
+  id: string;
+  meta?: Question;
+  queue?: string[];
+  queueIndex?: number;
+  mode?: 'browse' | 'practice' | 'review';
+};
+
 export type RootStackParamList = {
   Tabs: undefined;
-  Detail: { id: string; meta?: Question; queue?: string[]; queueIndex?: number; mode?: 'browse' | 'practice' };
+  Detail: DetailParams;
 };
 
 export type HomeStackParamList = {
   Home: undefined;
   List: ListParams;
-  Detail: { id: string; meta?: Question; queue?: string[]; queueIndex?: number; mode?: 'browse' | 'practice' };
+  Detail: DetailParams;
 };
 
 /** 列表页入口：来自分类（§5.1）或来自标签领域（向后兼容）。 */

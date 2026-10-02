@@ -25,6 +25,7 @@ import {
   MessagesSquare,
   Network,
   Play,
+  RotateCcw,
   Server,
   Sparkles,
   Zap,
@@ -40,6 +41,8 @@ import {
   type QuestionTag,
 } from '../question-bank';
 import { useUserStore } from '../store/userStore';
+import { useMasteryStore } from '../store/masteryStore';
+import { computeDueQuestionIds, mergeBankReviewRecords } from '../lib/spaced-review';
 import { EmptyState, TabHeader } from '../components/ui';
 import { SkeletonBlock } from '../components/skeleton';
 import { cardChrome, colors, pressedScale, radii, spacing, tints, typography } from '../theme';
@@ -111,6 +114,8 @@ export function HomeScreen() {
   const nav = useNavigation<Nav>();
   const lastViewedId = useUserStore((state) => state.lastViewedQuestionId);
   const totalCount = useUserStore((state) => state.totalCount);
+  const masteryMarks = useMasteryStore((state) => state.marks);
+  const masteryMarkedAt = useMasteryStore((state) => state.markedAt);
   const [roots, setRoots] = useState<TagItem[]>([]);
   const [categories, setCategories] = useState<CategoryItem[]>([]);
   const [catalog, setCatalog] = useState<QuestionBankCatalog | null>(null);
@@ -123,6 +128,7 @@ export function HomeScreen() {
     else setLoading(true);
     setError(null);
     try {
+      await useMasteryStore.getState().load();
       const loadedCatalog = await questionBankRepository.getCatalog();
       if (!loadedCatalog) throw new Error('本机还没有安装题库');
       setCatalog(loadedCatalog);
@@ -174,6 +180,28 @@ export function HomeScreen() {
   const lastViewedExists =
     lastViewedId !== null &&
     (catalog === null || catalog.questions.some((question) => question.id === lastViewedId));
+
+  // 今日复习：当前题库里按间隔口径到期的题（1/3/7 天，见 lib/spaced-review.ts）。
+  // 只保留仍存在于题库的题，防孤儿数据；复用练习队列链路，不开新页面。
+  const dueQuestionIds = React.useMemo(() => {
+    if (!catalog) return [];
+    const records = mergeBankReviewRecords(catalog.id, masteryMarks, masteryMarkedAt);
+    const existing = new Set(catalog.questions.map((question) => question.id));
+    return computeDueQuestionIds(records, Date.now()).filter((questionId) => existing.has(questionId));
+  }, [catalog, masteryMarks, masteryMarkedAt]);
+
+  function startReview() {
+    if (!catalog || dueQuestionIds.length === 0) return;
+    const firstId = dueQuestionIds[0];
+    const meta = catalog.questions.find((question) => question.id === firstId);
+    nav.push('Detail', {
+      id: firstId,
+      meta,
+      queue: dueQuestionIds,
+      queueIndex: 0,
+      mode: 'review',
+    });
+  }
 
   // 有分类就用分类（§5.1）；旧格式题库没有分类，回退到标签领域，行为不回归。
   const hasCategories = categories.length > 0;
@@ -255,6 +283,31 @@ export function HomeScreen() {
                 </View>
                 <View style={styles.resumeAction}>
                   <Text style={styles.resumeActionText}>进入</Text>
+                  <ChevronRight size={16} color={colors.textSecondary} strokeWidth={2} />
+                </View>
+              </Pressable>
+            ) : null}
+
+            {/* 今日复习：有到期题才出现，到齐即消失 */}
+            {dueQuestionIds.length > 0 ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`今日复习，${dueQuestionIds.length} 道题到期`}
+                accessibilityHint="按掌握度间隔安排的到期题队列，复习时重新打标顺延"
+                onPress={startReview}
+                style={({ pressed }) => [styles.resumeCard, pressed && styles.pressed]}
+              >
+                <View style={styles.reviewIconWrap}>
+                  <RotateCcw size={16} color={colors.warning} strokeWidth={2} />
+                </View>
+                <View style={styles.resumeCopy}>
+                  <Text style={styles.resumeLabel}>今日复习</Text>
+                  <Text style={styles.resumeTitle} numberOfLines={1}>
+                    {dueQuestionIds.length} 道题到期，趁热再过一遍
+                  </Text>
+                </View>
+                <View style={styles.resumeAction}>
+                  <Text style={styles.resumeActionText}>复习</Text>
                   <ChevronRight size={16} color={colors.textSecondary} strokeWidth={2} />
                 </View>
               </Pressable>
@@ -358,6 +411,15 @@ const styles = StyleSheet.create({
     height: 38,
     borderRadius: radii.pill,
     backgroundColor: colors.surfaceWarm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  reviewIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: radii.pill,
+    backgroundColor: colors.warningSoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md,
