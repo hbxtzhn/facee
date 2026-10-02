@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
   Pressable,
@@ -10,8 +10,8 @@ import {
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { CheckCircle2, ChevronRight, FileText, Search, Shuffle, X } from 'lucide-react-native';
-import type { Question } from '../question-bank';
-import { questionBankRepository } from '../question-bank';
+import type { Question, QuestionBankCatalog } from '../question-bank';
+import { collectTagSubtreeIds, filterCatalogQuestions, questionBankRepository } from '../question-bank';
 import type { HomeStackParamList } from '../navigation/AppNavigator';
 import { DifficultyBadge, EmptyState } from '../components/ui';
 import { SkeletonBlock } from '../components/skeleton';
@@ -30,7 +30,9 @@ export function ListScreen() {
   const categoryId = route.params.categoryId;
   const tagName = route.params.categoryName ?? route.params.tagName ?? '题目';
   const [keyword, setKeyword] = useState('');
-  const [difficulty, setDifficulty] = useState<1 | 2 | 3 | undefined>();
+  // §6.3 难度多选（并集）；§6.4 标签 chips 多选（父含子孙）
+  const [difficulties, setDifficulties] = useState<ReadonlySet<1 | 2 | 3>>(new Set());
+  const [tagFilter, setTagFilter] = useState<ReadonlySet<string>>(new Set());
   // 「随机刷」：练习队列按当前筛选结果洗牌（点题时构建，保持筛选语义不变）
   const [shuffle, setShuffle] = useState(false);
   const [items, setItems] = useState<Question[]>([]);
@@ -49,7 +51,8 @@ export function ListScreen() {
       const titleMatches = await questionBankRepository.listQuestions({
         tagId,
         categoryId,
-        difficulty,
+        difficulties: [...difficulties],
+        tagIds: [...tagFilter],
         query: keyword,
       });
       setItems(titleMatches);
@@ -80,14 +83,79 @@ export function ListScreen() {
     } finally {
       setLoading(false);
     }
-  }, [categoryId, difficulty, keyword, tagId]);
+  }, [categoryId, difficulties, keyword, tagFilter, tagId]);
 
   useEffect(() => {
     const timer = setTimeout(() => void load(), 160);
     return () => clearTimeout(timer);
   }, [load]);
 
-  const hasFilters = Boolean(keyword || difficulty !== undefined);
+  // §6.4 父标签 chips：当前范围（分类/标签域）内实际出现的根标签；标签树抽屉明确不做
+  const [catalog, setCatalog] = useState<QuestionBankCatalog | null>(null);
+  useEffect(() => {
+    let active = true;
+    questionBankRepository
+      .getCatalog()
+      .then((loaded) => {
+        if (active) setCatalog(loaded);
+      })
+      .catch(() => {
+        if (active) setCatalog(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const tagChips = useMemo(() => {
+    if (!catalog) return [];
+    const inScopeIds = new Set(
+      filterCatalogQuestions(catalog, { tagId, categoryId }).map((question) => question.id),
+    );
+    const presentIds = new Set<string>();
+    for (const question of catalog.questions) {
+      if (!inScopeIds.has(question.id)) continue;
+      for (const tag of question.tags) presentIds.add(tag.id);
+    }
+    return catalog.tags
+      .filter((tag) => tag.parentId === null)
+      .map((tag) => {
+        const subtree = collectTagSubtreeIds(catalog.tags, tag.id);
+        let count = 0;
+        for (const question of catalog.questions) {
+          if (!inScopeIds.has(question.id)) continue;
+          if (question.tags.some((item) => subtree.has(item.id))) count += 1;
+        }
+        return { id: tag.id, name: tag.name, count };
+      })
+      .filter((chip) => chip.count > 0);
+  }, [catalog, categoryId, tagId]);
+
+  function toggleDifficulty(level: 1 | 2 | 3) {
+    setDifficulties((current) => {
+      const next = new Set(current);
+      if (next.has(level)) next.delete(level);
+      else next.add(level);
+      return next;
+    });
+  }
+
+  function toggleTag(id: string) {
+    setTagFilter((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function clearFilters() {
+    setKeyword('');
+    setDifficulties(new Set());
+    setTagFilter(new Set());
+  }
+
+  const hasFilters = Boolean(keyword || difficulties.size > 0 || tagFilter.size > 0);
 
   // 左缘右滑返回首页（与详情页同一套手势 hook）
   const { panHandlers: swipeHandlers, onTouchStart: recordSwipeStart } = useEdgeSwipeBack({
@@ -124,17 +192,17 @@ export function ListScreen() {
           <Text style={styles.resultCount}>{loading ? '正在查找' : `${items.length} 道题`}</Text>
         </View>
         <View style={styles.filtersRow}>
-          <View style={styles.diffRow} accessibilityRole="radiogroup">
+          <View style={styles.diffRow} accessibilityLabel="难度筛选">
             {[1, 2, 3].map((level) => {
-              const selected = difficulty === level;
+              const selected = difficulties.has(level as 1 | 2 | 3);
               const config = DIFFICULTY[level as keyof typeof DIFFICULTY];
               return (
                 <Pressable
                   key={level}
-                  accessibilityRole="radio"
+                  accessibilityRole="checkbox"
                   accessibilityLabel={`${config.label}难度`}
                   accessibilityState={{ selected }}
-                  onPress={() => setDifficulty(selected ? undefined : (level as 1 | 2 | 3))}
+                  onPress={() => toggleDifficulty(level as 1 | 2 | 3)}
                   style={({ pressed }) => [styles.chip, selected && styles.chipSelected, pressed && styles.pressed]}
                 >
                   <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{config.label}</Text>
@@ -142,6 +210,7 @@ export function ListScreen() {
               );
             })}
           </View>
+
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="随机刷"
@@ -153,6 +222,28 @@ export function ListScreen() {
             <Text style={[styles.chipText, shuffle && styles.chipTextSelected]}>随机刷</Text>
           </Pressable>
         </View>
+
+        {tagChips.length > 0 ? (
+          <View style={styles.tagChipsRow}>
+            {tagChips.map((chip) => {
+              const selected = tagFilter.has(chip.id);
+              return (
+                <Pressable
+                  key={chip.id}
+                  accessibilityRole="checkbox"
+                  accessibilityLabel={`按标签 ${chip.name} 筛选`}
+                  accessibilityState={{ selected }}
+                  onPress={() => toggleTag(chip.id)}
+                  style={({ pressed }) => [styles.chip, selected && styles.chipSelected, pressed && styles.pressed]}
+                >
+                  <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
+                    {chip.name} · {chip.count}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
       </View>
 
       {loading && items.length === 0 ? (
@@ -242,7 +333,7 @@ export function ListScreen() {
               title={error ? '题目加载失败' : '没有找到匹配题目'}
               description={error ?? (hasFilters ? '换一个关键词，或清除难度筛选后再试。' : '这个分类暂时还没有题目。')}
               actionLabel={error ? '重新加载' : hasFilters ? '清除筛选' : undefined}
-              onAction={error ? () => void load() : hasFilters ? () => { setKeyword(''); setDifficulty(undefined); } : undefined}
+              onAction={error ? () => void load() : hasFilters ? clearFilters : undefined}
             />
           }
         />
@@ -275,6 +366,7 @@ const styles = StyleSheet.create({
   resultCount: { ...typography.caption, color: colors.textSubtle },
   filtersRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: spacing.xs },
   diffRow: { flexDirection: 'row', gap: spacing.sm },
+  tagChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
   chip: {
     minHeight: 32,
     paddingHorizontal: spacing.md,

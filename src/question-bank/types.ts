@@ -86,7 +86,10 @@ export interface LocalBankSource {
 
 export interface QuestionFilter {
   tagId?: TagId;
-  difficulty?: Difficulty;
+  /** 标签多选（§6.4 并集，父标签自动含子孙、父子同选去重）；与 tagId 同时给出时在其范围内进一步收窄 */
+  tagIds?: TagId[];
+  /** 难度多选（§6.3 并集）；空数组/缺省 = 不限 */
+  difficulties?: Difficulty[];
   query?: string;
   /** 分类筛选（§5.1）；题库未提供分类时该字段无意义。 */
   categoryId?: string;

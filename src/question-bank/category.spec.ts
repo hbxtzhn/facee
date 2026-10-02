@@ -55,7 +55,7 @@ describe('分类（§5.1 / §7.1）', () => {
   });
 
   it('分类与难度、关键词可以叠加，且排序稳定', () => {
-    const hard = filterCatalogQuestions(catalog, { categoryId: 'jvm', difficulty: 3 });
+    const hard = filterCatalogQuestions(catalog, { categoryId: 'jvm', difficulties: [3] });
     expect(hard.map((question) => question.id)).toEqual(['jvm-gc-02']);
 
     // 目前只搜标题（正文全文搜索是 §6.2 的后续项），所以「垃圾」只命中 jvm-gc-02 的标题

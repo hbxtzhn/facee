@@ -42,6 +42,7 @@ jest.mock('@react-navigation/native', () => ({
 import { ListScreen } from './ListScreen';
 
 type RepoMock = {
+  getCatalog: jest.Mock;
   getQuestion: jest.Mock;
   listQuestions: jest.Mock;
   searchBody: jest.Mock;
@@ -70,6 +71,8 @@ const bodyOnlyMatch = question({ id: 'net-http-02', title: '浏览器输入 URL 
 describe('ListScreen 正文搜索区块（§6.2）', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // 标签 chips 依赖 catalog；不提供时组件按「无 chips」降级
+    mockRepository.getCatalog.mockResolvedValue(null);
     mockRepository.listQuestions.mockResolvedValue([titleMatch]);
     mockRepository.searchBody.mockResolvedValue([
       { id: 'net-http-01', hits: 3, snippet: '…头部压缩 hpack…' }, // 标题已命中，应被排除
@@ -137,5 +140,65 @@ describe('ListScreen 正文搜索区块（§6.2）', () => {
     await fireEvent.press(screen.getByText(bodyOnlyMatch.title));
 
     expect(screen.getByText(bodyOnlyMatch.title)).toBeTruthy();
+  });
+});
+
+describe('ListScreen 标签筛选 chips（§6.4）', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockRepository.getCatalog.mockResolvedValue({
+      schemaVersion: 1,
+      id: 'bank-x',
+      title: '测试题库',
+      tags: [
+        { id: 'network', name: '计算机网络', parentId: null, sort: 10 },
+        { id: 'http', name: 'HTTP', parentId: 'network', sort: 10 },
+        { id: 'os', name: '操作系统', parentId: null, sort: 20 },
+      ],
+      questions: [{ ...titleMatch, tags: [{ id: 'http', name: 'HTTP' }] }],
+    });
+    mockRepository.listQuestions.mockResolvedValue([titleMatch]);
+  });
+
+  it('只展示范围内出现的根标签（子树计数），点选按并集收窄、再点取消', async () => {
+    await render(<ListScreen />);
+
+    // network 子树（含 http）覆盖范围内唯一的题；os 无题 → 不出现
+    expect(await screen.findByText(/计算机网络 · 1/)).toBeTruthy();
+    expect(screen.queryByText(/操作系统/)).toBeNull();
+
+    await fireEvent.press(screen.getByLabelText('按标签 计算机网络 筛选'));
+    await waitFor(() =>
+      expect(mockRepository.listQuestions).toHaveBeenLastCalledWith(
+        expect.objectContaining({ tagIds: ['network'] }),
+      ),
+    );
+
+    await fireEvent.press(screen.getByLabelText('按标签 计算机网络 筛选'));
+    await waitFor(() =>
+      expect(mockRepository.listQuestions).toHaveBeenLastCalledWith(
+        expect.objectContaining({ tagIds: [] }),
+      ),
+    );
+  });
+
+  it('难度多选：点两个难度按并集查询，再点全部取消', async () => {
+    await render(<ListScreen />);
+
+    await fireEvent.press(screen.getByLabelText('简单难度'));
+    await fireEvent.press(screen.getByLabelText('困难难度'));
+    await waitFor(() =>
+      expect(mockRepository.listQuestions).toHaveBeenLastCalledWith(
+        expect.objectContaining({ difficulties: [1, 3] }),
+      ),
+    );
+
+    await fireEvent.press(screen.getByLabelText('简单难度'));
+    await fireEvent.press(screen.getByLabelText('困难难度'));
+    await waitFor(() =>
+      expect(mockRepository.listQuestions).toHaveBeenLastCalledWith(
+        expect.objectContaining({ difficulties: [] }),
+      ),
+    );
   });
 });

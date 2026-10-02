@@ -1,10 +1,10 @@
-import { useCallback, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, type CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Bookmark, ChevronRight, Play, RotateCcw } from 'lucide-react-native';
+import { Bookmark, ChevronRight, Play, RotateCcw, Search, X } from 'lucide-react-native';
 import { questionBankRepository, type Question } from '../question-bank';
 import { useFavoritesStore } from '../store/favoritesStore';
 import { useMasteryStore } from '../store/masteryStore';
@@ -69,6 +69,14 @@ export function FavoritesScreen() {
   );
 
   const items = segment === 'favorites' ? favoriteItems : wrongItems;
+
+  // 列表内关键词过滤（纯内存，§6.5 回显由输入框本身 + 一键清除承担）
+  const [query, setQuery] = useState('');
+  const visibleItems = useMemo(() => {
+    const needle = query.trim().toLocaleLowerCase();
+    if (!needle) return items;
+    return items.filter((item) => item.title.toLocaleLowerCase().includes(needle));
+  }, [items, query]);
 
   function startWrongReview() {
     if (wrongItems.length === 0) return;
@@ -168,38 +176,74 @@ export function FavoritesScreen() {
           ))}
         </View>
       ) : (
-        <FlatList
-          data={items}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => renderRow(item)}
-          ListHeaderComponent={
-            segment === 'wrong' && orphanMarks > 0 ? (
-              <Text style={styles.orphanHint}>
-                另有 {orphanMarks} 条标记来自已卸载的旧题库，未计入上方列表。
-              </Text>
-            ) : null
-          }
-          ListEmptyComponent={
-            segment === 'favorites' ? (
-              <EmptyState
-                title="还没有收藏题目"
-                description="刷题过程中遇到好题或难题，点击右上角“收藏”即可随时在此复习。"
-                actionLabel="去题库逛逛"
-                onAction={() => nav.navigate('HomeTab')}
-                icon={Bookmark}
+        <>
+          {items.length > 0 ? (
+            <View style={styles.searchBox}>
+              <Search size={16} color={colors.textMuted} strokeWidth={1.8} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder={segment === 'favorites' ? '在收藏中搜索' : '在错题本中搜索'}
+                placeholderTextColor={colors.textSubtle}
+                value={query}
+                onChangeText={setQuery}
+                returnKeyType="search"
+                autoCapitalize="none"
+                accessibilityLabel="搜索当前列表"
               />
-            ) : (
-              <EmptyState
-                title="错题本是空的"
-                description="练习中把题标成「不会 / 模糊」，它们会自动出现在这里等你攻克。"
-                actionLabel="去刷几道题"
-                onAction={() => nav.navigate('HomeTab')}
-                icon={RotateCcw}
-              />
-            )
-          }
-        />
+              {query ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="清除搜索关键词"
+                  hitSlop={8}
+                  onPress={() => setQuery('')}
+                  style={styles.searchClear}
+                >
+                  <X size={16} color={colors.textMuted} strokeWidth={2} />
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
+          <FlatList
+            data={visibleItems}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.listContent}
+            renderItem={({ item }) => renderRow(item)}
+            ListHeaderComponent={
+              segment === 'wrong' && orphanMarks > 0 && !query ? (
+                <Text style={styles.orphanHint}>
+                  另有 {orphanMarks} 条标记来自已卸载的旧题库，未计入上方列表。
+                </Text>
+              ) : null
+            }
+            ListEmptyComponent={
+              items.length > 0 && visibleItems.length === 0 ? (
+                <EmptyState
+                  title={`没有匹配「${query.trim()}」的题目`}
+                  description="换个关键词，或清除搜索后再试。"
+                  actionLabel="清除搜索"
+                  onAction={() => setQuery('')}
+                  icon={Search}
+                />
+              ) : segment === 'favorites' ? (
+                <EmptyState
+                  title="还没有收藏题目"
+                  description="刷题过程中遇到好题或难题，点击右上角“收藏”即可随时在此复习。"
+                  actionLabel="去题库逛逛"
+                  onAction={() => nav.navigate('HomeTab')}
+                  icon={Bookmark}
+                />
+              ) : (
+                <EmptyState
+                  title="错题本是空的"
+                  description="练习中把题标成「不会 / 模糊」，它们会自动出现在这里等你攻克。"
+                  actionLabel="去刷几道题"
+                  onAction={() => nav.navigate('HomeTab')}
+                  icon={RotateCcw}
+                />
+              )
+            }
+          />
+        </>
       )}
     </SafeAreaView>
   );
@@ -291,6 +335,18 @@ const styles = StyleSheet.create({
     color: colors.textSubtle,
     marginBottom: spacing.sm,
   },
+  searchBox: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: radii.pill,
+  },
+  searchInput: { ...typography.body, color: colors.text, flex: 1, paddingVertical: spacing.xs, fontSize: 14 },
+  searchClear: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
   skeletonList: { paddingHorizontal: spacing.lg, flexGrow: 1 },
   listContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl, flexGrow: 1, paddingTop: spacing.sm },
   rowCard: {

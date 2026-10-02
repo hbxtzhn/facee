@@ -12,13 +12,20 @@ export function filterCatalogQuestions(
 ): Question[] {
   const query = (filter.query ?? '').trim().toLocaleLowerCase();
   const allowedTagIds = filter.tagId ? collectTagSubtreeIds(catalog.tags, filter.tagId) : null;
+  // 标签 chips 多选：并集，父标签自动含子孙（§6.4）；父子同选由 Set 天然去重
+  const chipTagIds = new Set<string>();
+  for (const tagId of filter.tagIds ?? []) {
+    for (const id of collectTagSubtreeIds(catalog.tags, tagId)) chipTagIds.add(id);
+  }
+  const difficulties = filter.difficulties && filter.difficulties.length > 0 ? filter.difficulties : null;
 
   return catalog.questions
     .filter((question) => {
-      if (filter.difficulty !== undefined && question.difficulty !== filter.difficulty) return false;
+      if (difficulties && !difficulties.includes(question.difficulty)) return false;
       if (filter.categoryId && (question.categoryId ?? null) !== filter.categoryId) return false;
       if (query && !question.title.toLocaleLowerCase().includes(query)) return false;
       if (allowedTagIds && !question.tags.some((tag) => allowedTagIds.has(tag.id))) return false;
+      if (chipTagIds.size > 0 && !question.tags.some((tag) => chipTagIds.has(tag.id))) return false;
       return true;
     })
     .sort((left, right) => left.sort - right.sort || left.id.localeCompare(right.id));
