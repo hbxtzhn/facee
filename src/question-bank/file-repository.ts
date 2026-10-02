@@ -424,6 +424,8 @@ export class FileSystemQuestionBankRepository
           questionCount: catalog.questions.length,
           source: catalogId.startsWith(LOCAL_BANK_ID_PREFIX) ? 'local' : 'online',
           active,
+          ...(catalog.version ? { version: catalog.version } : {}),
+          ...(catalog.updatedAt ? { updatedAt: catalog.updatedAt } : {}),
         });
       } catch {
         banks.push({
@@ -439,6 +441,23 @@ export class FileSystemQuestionBankRepository
     return banks.sort(
       (left, right) => Number(right.active) - Number(left.active) || left.title.localeCompare(right.title),
     );
+  }
+
+  /** 读取指定题库的题目 id 集合（在线更新前后对比用）；找不到或读取失败返回 null */
+  async getQuestionIds(catalogId: string): Promise<Set<string> | null> {
+    const registry = await this.readRegistry();
+    let namespace = registry[catalogId];
+    if (!namespace) {
+      const match = (await this.listBanks()).find((bank) => bank.catalogId === catalogId);
+      if (!match) return null;
+      namespace = match.namespace;
+    }
+    try {
+      const catalog = await this.readCatalogAt(this.bankPath(namespace));
+      return new Set(catalog.questions.map((question) => question.id));
+    } catch {
+      return null;
+    }
   }
 
   /** 把当前使用的题库切换为指定 catalog.id 的题库（原子指针切换）。 */

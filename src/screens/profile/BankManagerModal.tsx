@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Database, FolderPlus, Download, Pencil, Trash2, Copy } from 'lucide-react-native';
+import { Database, FolderPlus, Download, Pencil, Trash2, Copy, RefreshCw } from 'lucide-react-native';
 import { useQuestionBankStore } from '../../question-bank/store';
 import { colors, radii, spacing, typography } from '../../theme';
 import { ModalSheet, SheetActions, SheetError } from './ModalSheet';
@@ -30,13 +30,16 @@ export function BankManagerModal({
   const switchBank = useQuestionBankStore((state) => state.switchBank);
   const copyBank = useQuestionBankStore((state) => state.copyBank);
   const deleteLocalBank = useQuestionBankStore((state) => state.deleteLocalBank);
+  const updateBank = useQuestionBankStore((state) => state.updateBank);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (!visible) return;
     setError(null);
+    setNotice(null);
     setConfirmingDeleteId(null);
     void refreshBanks();
   }, [visible, refreshBanks]);
@@ -63,6 +66,25 @@ export function BankManagerModal({
       onBankCopied(bankId);
     } catch (copyError) {
       setError(copyError instanceof Error ? copyError.message : String(copyError));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleUpdate(catalogId: string, title: string) {
+    if (busyId) return;
+    setBusyId(catalogId);
+    setError(null);
+    setNotice(null);
+    try {
+      const { added, removed } = await updateBank(catalogId);
+      setNotice(
+        removed > 0
+          ? `「${title}」更新完成：新增 ${added} 题，移除 ${removed} 题。`
+          : `「${title}」更新完成：新增 ${added} 题。`,
+      );
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : String(updateError));
     } finally {
       setBusyId(null);
     }
@@ -115,6 +137,11 @@ export function BankManagerModal({
       }
     >
       <SheetError message={error} />
+      {notice ? (
+        <Text style={styles.noticeText} accessibilityLiveRegion="polite">
+          {notice}
+        </Text>
+      ) : null}
       {/* 仅首次加载（列表为空）显示；切换题库时不显示，避免该行反复插入/移除导致弹窗抖动 */}
       {banksLoading && banks.length === 0 ? (
         <Text style={styles.loadingText}>正在读取题库列表…</Text>
@@ -147,6 +174,10 @@ export function BankManagerModal({
                 </View>
                 <View style={styles.bankMetaRow}>
                   <Text style={styles.bankMeta}>{bank.questionCount} 题</Text>
+                  {bank.version ? <Text style={styles.bankMeta}>v{bank.version}</Text> : null}
+                  {bank.updatedAt ? (
+                    <Text style={styles.bankMeta}>更新于 {bank.updatedAt.slice(0, 10)}</Text>
+                  ) : null}
                   <View style={[styles.sourceBadge, bank.source === 'local' && styles.sourceBadgeLocal]}>
                     <Text style={[styles.sourceBadgeText, bank.source === 'local' && styles.sourceBadgeTextLocal]}>
                       {bank.source === 'local' ? '本地' : '线上'}
@@ -156,6 +187,21 @@ export function BankManagerModal({
               </View>
             </Pressable>
             <View style={styles.bankActions}>
+              {bank.sourceUrl ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={busyId === bank.catalogId ? `正在更新题库 ${bank.title}` : `在线更新题库 ${bank.title}`}
+                  onPress={() => void handleUpdate(bank.catalogId, bank.title)}
+                  style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+                  disabled={busyId !== null}
+                >
+                  <RefreshCw
+                    size={15}
+                    color={busyId === bank.catalogId ? colors.primary : colors.textSecondary}
+                    strokeWidth={2}
+                  />
+                </Pressable>
+              ) : null}
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`复制题库 ${bank.title} 为本地可编辑副本`}
@@ -312,6 +358,13 @@ const styles = StyleSheet.create({
   confirmYesText: { ...typography.caption, color: colors.danger, fontSize: 11, fontWeight: '700' },
   confirmNo: { paddingHorizontal: 6, minHeight: 26, alignItems: 'center', justifyContent: 'center' },
   confirmNoText: { ...typography.caption, color: colors.textMuted, fontSize: 11 },
+  noticeText: {
+    ...typography.caption,
+    color: colors.success,
+    fontSize: 11,
+    marginBottom: spacing.sm,
+    lineHeight: 16,
+  },
   tipText: { ...typography.caption, color: colors.textSubtle, fontSize: 11, marginTop: spacing.xs },
   pressed: { opacity: 0.75 },
 });

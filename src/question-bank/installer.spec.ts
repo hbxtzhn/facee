@@ -30,6 +30,7 @@ const repository: QuestionBankRepository = {
   install: async () => ({ questionCount: 0, tagCount: 0 }),
   clear: async () => undefined,
   listBanks: async () => [],
+  getQuestionIds: async () => null,
   switchBank: async () => undefined,
   deleteBank: async () => undefined,
   exportPackage: async () => null,

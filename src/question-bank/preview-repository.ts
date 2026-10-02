@@ -92,6 +92,11 @@ export class PreviewQuestionBankRepository implements QuestionBankRepository {
     return [];
   }
 
+  async getQuestionIds(_catalogId: string): Promise<Set<string> | null> {
+    // Web 预览没有多题库与在线更新；占位满足接口
+    return null;
+  }
+
   async switchBank(_catalogId: string): Promise<void> {
     throw new Error('Web 预览不支持切换题库，请在移动端使用');
   }

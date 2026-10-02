@@ -199,6 +199,7 @@ export function ProfileScreen() {
                   <Text style={styles.libraryTitle}>{catalog.title}</Text>
                   <Text style={styles.libraryMeta}>
                     {catalog.questions.length} 道精选真题 · {catalog.tags.length} 个分类标签
+                    {catalog.version ? ` · v${catalog.version}` : ''}
                   </Text>
                 </View>
                 {isNative ? (

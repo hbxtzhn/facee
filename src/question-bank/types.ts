@@ -121,6 +121,12 @@ export interface InstalledBankSummary {
   source: 'local' | 'online';
   /** 是否为当前激活（active 指针指向）的题库 */
   active: boolean;
+  /** 题库规范 bank.version；旧格式库可能没有 */
+  version?: string;
+  /** 题库规范 bank.updatedAt（ISO 字符串）；旧格式库可能没有 */
+  updatedAt?: string;
+  /** 线上下载来源地址；存在即可在管理弹窗里在线更新（来自本地源文件） */
+  sourceUrl?: string;
 }
 
 export interface QuestionBankRepository {
@@ -146,6 +152,8 @@ export interface QuestionBankRepository {
   clear(): Promise<void>;
   /** 列出本机全部已安装题库（多题库共存；本地 + 线上）。 */
   listBanks(): Promise<InstalledBankSummary[]>;
+  /** 读取指定题库的题目 id 集合（在线更新前后对比用）；题库不存在返回 null */
+  getQuestionIds(catalogId: string): Promise<Set<string> | null>;
   /** 把当前使用的题库切换为指定 catalog.id 的题库。 */
   switchBank(catalogId: string): Promise<void>;
   /** 删除一个已安装题库；若删除的是当前题库，自动切到剩余题库或清空。 */

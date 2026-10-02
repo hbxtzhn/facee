@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { Platform } from 'react-native';
-import { questionBankRepository } from './client';
+import { asRemoteQuestionBankRepository, questionBankRepository } from './client';
 import {
   getConfiguredQuestionBankUrl,
   getSavedQuestionBankUrl,
@@ -52,6 +52,8 @@ interface QuestionBankState {
   saveLocalBank(source: LocalBankSource): Promise<void>;
   deleteLocalBank(bankId: string): Promise<void>;
   switchBank(catalogId: string): Promise<void>;
+  /** 从题库记录的下载地址整包重下并原位替换（reuse 同 catalogId），返回题量差异 */
+  updateBank(catalogId: string): Promise<{ added: number; removed: number }>;
   /** 把全部本地题库（含图片资产）打包为备份 ZIP，返回分享用路径 */
   exportBackup(): Promise<{ zipPath: string; bankCount: number }>;
   /** 从备份 ZIP 增量导入题库（id 冲突时自动换新 id 加「导入」后缀） */
@@ -123,7 +125,24 @@ export const useQuestionBankStore = create<QuestionBankState>((set, get) => ({
     set({ banksLoading: true });
     try {
       const banks = await questionBankRepository.listBanks();
-      set({ banks, banksLoading: false });
+      // 线上更新入口：本地源文件里记录了下载地址的库才可在线更新（尽力而为）
+      const sourceUrls = new Map<string, string>();
+      if (Platform.OS !== 'web') {
+        try {
+          for (const summary of await listLocalBankSources()) {
+            const full = await loadLocalBankSource(summary.bankId);
+            if (full?.sourceUrl) sourceUrls.set(full.bankId, full.sourceUrl);
+          }
+        } catch {
+          // 读不到源文件时只是没有更新按钮，不影响列表
+        }
+      }
+      set({
+        banks: banks.map((bank) =>
+          sourceUrls.has(bank.catalogId) ? { ...bank, sourceUrl: sourceUrls.get(bank.catalogId) } : bank,
+        ),
+        banksLoading: false,
+      });
     } catch {
       set({ banks: [], banksLoading: false });
     }
@@ -177,6 +196,46 @@ export const useQuestionBankStore = create<QuestionBankState>((set, get) => ({
     await questionBankRepository.switchBank(catalogId);
     await reloadCatalog(set);
     await get().refreshBanks();
+  },
+
+  updateBank: async (catalogId) => {
+    assertNativeBankOperations();
+    const source = await loadLocalBankSource(catalogId);
+    if (!source?.sourceUrl) throw new Error('该题库没有记录下载地址，无法在线更新');
+    const before = await questionBankRepository.getQuestionIds(catalogId);
+    // install 会把更新的库置为激活；更新非当前库后要切回去
+    const activeIdBefore = get().catalog?.id ?? null;
+    const remote = asRemoteQuestionBankRepository(questionBankRepository);
+    if (!remote) throw new Error('当前平台暂不支持在线更新题库');
+    set({
+      installing: true,
+      installError: null,
+      installProgress: { completed: 0, total: 1, label: '正在下载题库更新' },
+    });
+    try {
+      const result = await remote.installFromUrl(
+        source.sourceUrl,
+        (progress) => set({ installProgress: progress }),
+        { reuseCatalogId: catalogId },
+      );
+      if (result.localSource) await saveLocalBankSource(result.localSource);
+      if (activeIdBefore && activeIdBefore !== catalogId) {
+        await questionBankRepository.switchBank(activeIdBefore);
+      }
+      await reloadCatalog(set);
+      set({ installing: false, installProgress: null });
+      await get().refreshBanks();
+      const after = await questionBankRepository.getQuestionIds(catalogId);
+      const added = after && before ? [...after].filter((id) => !before.has(id)).length : after?.size ?? 0;
+      const removed = before && after ? [...before].filter((id) => !after.has(id)).length : 0;
+      return { added, removed };
+    } catch (error) {
+      set({
+        installError: error instanceof Error ? error.message : String(error),
+        installing: false,
+      });
+      throw error;
+    }
   },
 
   exportBackup: async () => {
