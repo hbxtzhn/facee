@@ -1,5 +1,6 @@
 import { describe, it, expect } from '@jest/globals';
 import {
+  DEFAULT_EXTRACTION_REQUIREMENTS,
   buildExtractionUserPrompt,
   buildRewriteUserPrompt,
   extractQuestionsFromChunks,
@@ -212,6 +213,38 @@ describe('validateConfig / presets', () => {
     expect(prompt).toContain('"title"');
     expect(prompt).toContain('【资料开始】');
     expect(prompt).toContain('一段资料');
+  });
+
+  it('默认提示词包含默认抽取要求与固定格式段', () => {
+    const prompt = buildExtractionUserPrompt('一段资料');
+    expect(prompt).toContain(DEFAULT_EXTRACTION_REQUIREMENTS);
+    expect(prompt).toContain('【输出格式（固定要求，必须遵守，不得修改）】');
+    expect(prompt).toContain('【资料开始】');
+  });
+
+  it('自定义抽取要求替换默认要求，格式段原样保留', () => {
+    const prompt = buildExtractionUserPrompt('一段资料', '只要 HTTP 与网络相关的题，答案分点作答');
+    expect(prompt).toContain('只要 HTTP 与网络相关的题，答案分点作答');
+    expect(prompt).not.toContain(DEFAULT_EXTRACTION_REQUIREMENTS);
+    // 格式契约段不受用户要求影响
+    expect(prompt).toContain('"difficulty"');
+    expect(prompt).toContain('只输出 JSON 本身');
+  });
+
+  it('抽取要求为空白时回退默认', () => {
+    expect(buildExtractionUserPrompt('资料', '   ')).toContain(DEFAULT_EXTRACTION_REQUIREMENTS);
+  });
+
+  it('extractQuestionsFromChunks 把自定义抽取要求带进请求体', async () => {
+    let capturedBody = '';
+    const fetchImpl = async (_url: string, init?: { body?: string }) => {
+      capturedBody = init?.body ?? '';
+      return jsonResponse('[]');
+    };
+    await extractQuestionsFromChunks(CONFIG, ['资料'], { fetchImpl, requirements: '多抽基础题' });
+    const content = (JSON.parse(capturedBody) as { messages: { content: string }[] }).messages[1].content;
+    expect(content).toContain('多抽基础题');
+    expect(content).toContain('"title"');
   });
 });
 

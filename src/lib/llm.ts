@@ -46,18 +46,34 @@ type FetchLike = (url: string, init?: { method?: string; headers?: Record<string
 export interface ExtractOptions {
   onProgress?: (completedChunks: number, totalChunks: number) => void;
   fetchImpl?: FetchLike;
+  /** 用户自定义的抽取要求（导入弹窗里可编辑）；空/空白时用默认值 */
+  requirements?: string;
 }
 
 const SYSTEM_PROMPT = '你是面试题库编辑。只输出 JSON，不要输出任何解释文字或 Markdown 代码栏。';
 
-/** 从一段资料中抽取面试题的用户提示词 */
-export function buildExtractionUserPrompt(chunk: string): string {
+/** 默认抽取要求：导入弹窗里可整段修改；输出格式段不在其中，由 App 固定追加 */
+export const DEFAULT_EXTRACTION_REQUIREMENTS =
+  '只提取资料真实覆盖的题目，不要编造资料里没有的内容；答案要忠实于资料。';
+
+/** 输出格式段（写死）：JSON 字段结构是 App 解析的契约，不随用户的抽取要求变化 */
+const EXTRACTION_FORMAT_LINES = [
+  '【输出格式（固定要求，必须遵守，不得修改）】',
+  '1. 每道题输出一个 JSON 对象，字段固定为：',
+  '   {"title": "题目标题（一句话，不超过 60 字）", "question": "题干（Markdown，可包含要求与背景）", "answer": "参考答案（Markdown；资料中没有就填 null）", "difficulty": "easy|medium|hard 之一", "tags": ["1-4 个短标签"]}',
+  '2. 输出一个 JSON 数组，只输出 JSON 本身，不要任何解释或 Markdown 代码栏。',
+];
+
+/** 从一段资料中抽取面试题的用户提示词；requirements 为用户在导入弹窗里编辑的抽取要求 */
+export function buildExtractionUserPrompt(chunk: string, requirements?: string): string {
+  const effectiveRequirements = requirements?.trim() ? requirements.trim() : DEFAULT_EXTRACTION_REQUIREMENTS;
   return [
-    '从下面的面试资料中提取面试题目。要求：',
-    '1. 每道题输出一个 JSON 对象，字段固定为：',
-    '   {"title": "题目标题（一句话，不超过 60 字）", "question": "题干（Markdown，可包含要求与背景）", "answer": "参考答案（Markdown；资料中没有就填 null）", "difficulty": "easy|medium|hard 之一", "tags": ["1-4 个短标签"]}',
-    '2. 只提取资料真实覆盖的题目，不要编造资料里没有的内容；答案要忠实于资料。',
-    '3. 输出一个 JSON 数组，只输出 JSON 本身。',
+    '从下面的面试资料中提取面试题目。',
+    '',
+    '【抽取要求】',
+    effectiveRequirements,
+    '',
+    ...EXTRACTION_FORMAT_LINES,
     '',
     '【资料开始】',
     chunk,
@@ -83,7 +99,7 @@ export async function extractQuestionsFromChunks(
     let raw: string | null = null;
     for (let attempt = 0; attempt < 2 && raw === null; attempt += 1) {
       try {
-        raw = await callChatCompletion(doFetch, config, buildExtractionUserPrompt(chunks[index]));
+        raw = await callChatCompletion(doFetch, config, buildExtractionUserPrompt(chunks[index], options.requirements));
       } catch (error) {
         lastError = error;
       }

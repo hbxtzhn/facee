@@ -12,19 +12,23 @@ interface LlmConfigData {
   baseUrl: string;
   apiKey: string;
   model: string;
+  /** 用户自定义的「抽取要求」提示词；'' = 用 App 内置默认（题目 JSON 格式段始终由 App 固定） */
+  extractionPrompt: string;
 }
 
 interface LlmConfigState extends LlmConfigData {
   loaded: boolean;
   load: () => Promise<void>;
   save: (config: LlmConfig & { presetId: string }) => Promise<void>;
+  /** 只更新抽取要求，不影响连接配置；AI 设置的 save 也不会覆盖它 */
+  saveExtractionPrompt: (prompt: string) => Promise<void>;
 }
 
 const STORAGE_KEY = 'facee-llm-config-v1';
 
-const INITIAL: LlmConfigData = { presetId: 'custom', baseUrl: '', apiKey: '', model: '' };
+const INITIAL: LlmConfigData = { presetId: 'custom', baseUrl: '', apiKey: '', model: '', extractionPrompt: '' };
 
-export const useLlmConfigStore = create<LlmConfigState>((set) => ({
+export const useLlmConfigStore = create<LlmConfigState>((set, get) => ({
   ...INITIAL,
   loaded: false,
 
@@ -48,8 +52,26 @@ export const useLlmConfigStore = create<LlmConfigState>((set) => ({
       baseUrl: config.baseUrl.trim(),
       apiKey: config.apiKey.trim(),
       model: config.model.trim(),
+      extractionPrompt: get().extractionPrompt,
     };
     set(persisted);
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
+    } catch {
+      // 存储失败只影响下次启动时的回填，本会话内存态仍可用
+    }
+  },
+
+  saveExtractionPrompt: async (prompt) => {
+    const trimmed = prompt.trim();
+    const persisted: LlmConfigData = {
+      presetId: get().presetId,
+      baseUrl: get().baseUrl,
+      apiKey: get().apiKey,
+      model: get().model,
+      extractionPrompt: trimmed,
+    };
+    set({ extractionPrompt: trimmed });
     try {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
     } catch {
@@ -73,6 +95,7 @@ function parsePersisted(raw: string): LlmConfigData {
     baseUrl: asString(record.baseUrl),
     apiKey: asString(record.apiKey),
     model: asString(record.model),
+    extractionPrompt: asString(record.extractionPrompt),
   };
 }
 

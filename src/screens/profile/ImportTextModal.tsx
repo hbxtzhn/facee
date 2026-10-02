@@ -4,6 +4,7 @@ import { CheckSquare, FileText, Square } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { useLlmConfigStore, hasUsableLlmConfig } from '../../store/llm-config-store';
 import {
+  DEFAULT_EXTRACTION_REQUIREMENTS,
   extractQuestionsFromChunks,
   type GeneratedQuestionDraft,
 } from '../../lib/llm';
@@ -26,6 +27,8 @@ const DIFFICULTY_LABEL: Record<number, string> = { 1: '简单', 2: '中等', 3: 
 /**
  * 从文本导入题目：选择 .md/.txt 文件或直接粘贴文本 → 按块交给 LLM 抽取
  * → 预览勾选 → 交给编辑器并入本地题库。依赖「AI 设置」中的 OpenAI 兼容配置。
+ * 「抽取要求」可由用户整段修改（对生成结果不满意时自行调整），
+ * 题目 JSON 格式段由 App 写死追加，保证解析不被改坏。
  */
 export function ImportTextModal({
   visible,
@@ -41,6 +44,7 @@ export function ImportTextModal({
 }) {
   const [phase, setPhase] = useState<ImportPhase>('input');
   const [pastedText, setPastedText] = useState('');
+  const [requirements, setRequirements] = useState(DEFAULT_EXTRACTION_REQUIREMENTS);
   const [progress, setProgress] = useState<{ completed: number; total: number } | null>(null);
   const [drafts, setDrafts] = useState<DraftWithKey[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
@@ -50,7 +54,11 @@ export function ImportTextModal({
   useEffect(() => {
     if (!visible) return;
     const llmConfig = useLlmConfigStore.getState();
-    if (!llmConfig.loaded) void llmConfig.load();
+    void (async () => {
+      if (!llmConfig.loaded) await llmConfig.load();
+      const stored = useLlmConfigStore.getState().extractionPrompt;
+      setRequirements(stored.trim() ? stored : DEFAULT_EXTRACTION_REQUIREMENTS);
+    })();
   }, [visible]);
 
   function reset() {
@@ -107,11 +115,16 @@ export function ImportTextModal({
     setError(null);
     setProgress({ completed: 0, total: chunks.length });
     setPhase('extracting');
+    // 持久化抽取要求：等于默认值（或清空）时存空串，以后改默认文案不牵连老用户
+    const trimmedRequirements = requirements.trim();
+    void config.saveExtractionPrompt(
+      !trimmedRequirements || trimmedRequirements === DEFAULT_EXTRACTION_REQUIREMENTS ? '' : trimmedRequirements,
+    );
     try {
       const extracted = await extractQuestionsFromChunks(
         { baseUrl: config.baseUrl, apiKey: config.apiKey, model: config.model },
         chunks,
-        { onProgress: (completed, total) => setProgress({ completed, total }) },
+        { onProgress: (completed, total) => setProgress({ completed, total }), requirements },
       );
       if (extracted.length === 0) {
         setError('没有从文本中提取到题目，试试换一段更完整的资料。');
@@ -195,6 +208,29 @@ export function ImportTextModal({
             style={[styles.input, styles.multiline]}
             accessibilityLabel="粘贴文本内容"
           />
+          <FieldLabel text="抽取要求（可修改）" />
+          <TextInput
+            value={requirements}
+            onChangeText={setRequirements}
+            placeholder="告诉 AI 怎么抽题，例如：只抽 HTTP 与网络相关的题"
+            placeholderTextColor={colors.textSubtle}
+            multiline
+            style={[styles.input, styles.requirementsInput]}
+            accessibilityLabel="抽取要求提示词"
+          />
+          <View style={styles.requirementsMeta}>
+            <Text style={styles.requirementsHint}>题目 JSON 格式由 App 固定，这里只调整 AI 怎么抽题。</Text>
+            {requirements.trim() !== DEFAULT_EXTRACTION_REQUIREMENTS ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="恢复默认抽取要求"
+                onPress={() => setRequirements(DEFAULT_EXTRACTION_REQUIREMENTS)}
+                hitSlop={8}
+              >
+                <Text style={styles.restoreDefault}>恢复默认</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </>
       ) : null}
 
@@ -278,6 +314,16 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     lineHeight: 20,
   },
+  requirementsInput: { minHeight: 76, lineHeight: 18 },
+  requirementsMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  requirementsHint: { ...typography.caption, color: colors.textMuted, fontSize: 11, flex: 1, lineHeight: 15 },
+  restoreDefault: { ...typography.caption, color: colors.primary, fontWeight: '700', fontSize: 11 },
   truncatedText: { ...typography.caption, color: colors.warning, fontSize: 11, marginBottom: spacing.sm },
   extractingBox: {
     padding: spacing.lg,
