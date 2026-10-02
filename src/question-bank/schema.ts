@@ -145,10 +145,6 @@ function toDifficultyValue(value: unknown): unknown {
   return value;
 }
 
-export function validateQuestionContent(value: unknown): boolean {
-  return inspectQuestionContent(value).valid;
-}
-
 export function assertQuestionContent(value: unknown): asserts value is QuestionContent {
   const result = inspectQuestionContent(value);
   if (!result.valid) throw new QuestionBankValidationError(result.issues);
