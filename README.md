@@ -50,7 +50,7 @@ questions/<id>/assets/          # 图片（可选）
 需要 Node 22、pnpm 与 Android SDK（目前仅支持 Android）：
 
 ```
-pnpm install && pnpm test       # 19 suites / 135 tests
+pnpm install && pnpm test       # 33 suites / 263 tests
 npx expo run:android
 ```
 
