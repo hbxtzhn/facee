@@ -111,6 +111,22 @@ describe('useMasteryStore - 打标与清除', () => {
     expect(at.q1 - before).toBeLessThan(24 * 60 * 60 * 1000);
   });
 
+  it('v2 载荷损坏时回退 v1 存量迁移，不静默清空（v1 可能是最后副本）', async () => {
+    await AsyncStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify({ marks: { 'bank-a': { q1: 'fuzzy' } } }));
+    await AsyncStorage.setItem(STORAGE_KEY, '{corrupted-payload');
+
+    await useMasteryStore.getState().load();
+    const state = useMasteryStore.getState();
+    expect(state.getMark('bank-a', 'q1')).toBe('fuzzy');
+    expect(state.markedAt['bank-a']?.q1).toBeDefined();
+
+    // 重新迁移的健康载荷应已覆盖损坏的 v2
+    await flushPersist();
+    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    expect(raw).toBeTruthy();
+    expect(() => JSON.parse(raw!)).not.toThrow();
+  });
+
   it('markedAt 孤儿条目（无对应 marks 记录）被修剪，非法时间戳丢弃', async () => {
     await AsyncStorage.setItem(
       STORAGE_KEY,

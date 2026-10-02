@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  AppState,
   FlatList,
   Pressable,
   RefreshControl,
@@ -183,12 +184,29 @@ export function HomeScreen() {
 
   // 今日复习：当前题库里按间隔口径到期的题（1/3/7 天，见 lib/spaced-review.ts）。
   // 只保留仍存在于题库的题，防孤儿数据；复用练习队列链路，不开新页面。
-  const dueQuestionIds = React.useMemo(() => {
+  // 到期判定只由墙上时钟驱动，而下方三个数据依赖都不随时间变化——
+  // 停在首页跨过到期边界时必须靠 here 的粗粒度心跳与回前台刷新推进（评审 2026-10-02）。
+  const [dueTick, setDueTick] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setDueTick(Date.now()), 60_000);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        setDueTick(Date.now());
+        void load(true);
+      }
+    });
+    return () => {
+      clearInterval(timer);
+      subscription.remove();
+    };
+  }, [load]);
+
+  const dueQuestionIds = useMemo(() => {
     if (!catalog) return [];
     const records = mergeBankReviewRecords(catalog.id, masteryMarks, masteryMarkedAt);
     const existing = new Set(catalog.questions.map((question) => question.id));
-    return computeDueQuestionIds(records, Date.now()).filter((questionId) => existing.has(questionId));
-  }, [catalog, masteryMarks, masteryMarkedAt]);
+    return computeDueQuestionIds(records, dueTick).filter((questionId) => existing.has(questionId));
+  }, [catalog, masteryMarks, masteryMarkedAt, dueTick]);
 
   function startReview() {
     if (!catalog || dueQuestionIds.length === 0) return;

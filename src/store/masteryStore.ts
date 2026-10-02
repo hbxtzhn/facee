@@ -87,9 +87,12 @@ export const useMasteryStore = create<MasteryState>((set, get) => ({
       const raw = await AsyncStorage.getItem(STORAGE_KEY);
       if (raw) {
         const persisted = parsePersistedData(raw);
-        if (!persisted) return;
-        set(persisted);
-        return;
+        if (persisted) {
+          set(persisted);
+          return;
+        }
+        // v2 键存在但载荷损坏：不能在此返回——v1 存量可能是最后一份副本
+        // （掌握度不进备份），继续走下方迁移可恢复数据并用健康载荷覆盖损坏的 v2。
       }
 
       // v1 → v2 迁移：老数据没有打标时间，统一按迁移时刻计（1/3/7 天后才陆续到期）
