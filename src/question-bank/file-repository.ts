@@ -16,7 +16,6 @@ import type {
   QuestionContent,
   QuestionFilter,
   QuestionId,
-  QuestionBankRepository,
   RemoteQuestionBankRepository,
 } from './types';
 import { buildSnippet, encodeCorpusLine, searchCorpus } from './search';
@@ -73,9 +72,8 @@ export const QUESTION_BANK_CORPUS_PATH = 'index/body.txt';
 const QUESTION_MARKDOWN_FILES = new Set(['question.md', 'answer.md', 'followups.md']);
 
 /** 题库仓库自带的非题库文件：不参与校验，也不影响安装 */
-/** 题库内容只可能出现在这两个位置（规范 v1 §2）：其余一切视为仓库自带内容 */
+/** 题库内容只可能出现在 catalog.json 与 questions/（规范 v1 §2）：其余一律视为仓库自带内容 */
 const BANK_CATALOG_FILE = 'catalog.json';
-const BANK_CONTENT_DIR = 'questions/';
 
 /**
  * 判断路径是否属于「题库内容」。
@@ -227,7 +225,7 @@ export class FileSystemQuestionBankRepository
     questionBank: QuestionBankPackage,
     onProgress?: InstallationProgressListener,
   ): Promise<InstallResult> {
-    const contentById = validateDecodedPackage(questionBank);
+    validateDecodedPackage(questionBank);
     await this.ensureRoot();
 
     const namespace = this.createNamespace();

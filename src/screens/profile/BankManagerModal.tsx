@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Database, FolderPlus, Download, Pencil, Trash2, Copy } from 'lucide-react-native';
 import { useQuestionBankStore } from '../../question-bank/store';

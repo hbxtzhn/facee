@@ -2,7 +2,6 @@
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import React from 'react';
 import { BookOpen, Bookmark, UserRound } from 'lucide-react-native';
 
 import { HomeScreen } from '../screens/HomeScreen';

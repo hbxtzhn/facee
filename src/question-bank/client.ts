@@ -1,7 +1,6 @@
 import { Platform } from 'react-native';
 import { FileSystemQuestionBankRepository } from './file-repository';
 import type {
-  QuestionBankPackage,
   QuestionBankRepository,
   RemoteQuestionBankRepository,
 } from './types';

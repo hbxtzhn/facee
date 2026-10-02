@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ListRestart } from 'lucide-react-native';
 import { useLlmConfigStore } from '../../store/llm-config-store';

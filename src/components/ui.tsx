@@ -1,4 +1,4 @@
-import React, { type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -81,24 +81,6 @@ export function AppButton({
         {label}
       </Text>
     </Pressable>
-  );
-}
-
-interface SectionHeadingProps {
-  title: string;
-  subtitle?: string;
-  action?: ReactNode;
-}
-
-export function SectionHeading({ title, subtitle, action }: SectionHeadingProps) {
-  return (
-    <View style={styles.sectionHeading}>
-      <View style={styles.sectionCopy}>
-        <Text style={styles.sectionTitle}>{title}</Text>
-        {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
-      </View>
-      {action}
-    </View>
   );
 }
 
@@ -235,19 +217,6 @@ const styles = StyleSheet.create({
   buttonLabel: { ...typography.label, letterSpacing: 0.1 },
   primaryLabel: { color: colors.white },
   secondaryLabel: { color: colors.text },
-  sectionHeading: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-  },
-  sectionCopy: { flex: 1 },
-  sectionTitle: { ...typography.heading, color: colors.text },
-  sectionSubtitle: {
-    ...typography.caption,
-    color: colors.textMuted,
-    marginTop: spacing.xs,
-  },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',

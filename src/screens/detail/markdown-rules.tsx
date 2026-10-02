@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Image, Linking, Pressable, Text } from 'react-native';
 import { useImageViewer } from '../../components/image-viewer';
-import markdownit, { isExternalHref, parseQuestionHref } from '../../lib/markdown';
+import { isExternalHref, parseQuestionHref } from '../../lib/markdown';
 import { colors, spacing } from '../../theme';
 import { markdownStyles } from './markdown-styles';
 

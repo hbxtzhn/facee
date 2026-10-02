@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CheckCircle2, Sparkles } from 'lucide-react-native';
 import { useLlmConfigStore, hasUsableLlmConfig } from '../../store/llm-config-store';

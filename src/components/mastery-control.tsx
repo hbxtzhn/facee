@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { CircleAlert, CircleCheck, CircleX, HelpCircle } from 'lucide-react-native';
 import { useMasteryStore, type Mastery } from '../store/masteryStore';

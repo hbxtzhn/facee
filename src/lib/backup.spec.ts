@@ -198,7 +198,7 @@ describe('backup 打包与恢复 round-trip', () => {
 
   it('manifest 声明的库缺失源文件时跳过；备份里没有题库时报错', async () => {
     const fileSystem = new MemoryFileSystem();
-    const zip = createFakeZip(fileSystem);
+    createFakeZip(fileSystem);
     await fileSystem.writeAsStringAsync(
       'file:///cache/loose/manifest.json',
       JSON.stringify(buildBackupManifest([makeSource('local-a')])),

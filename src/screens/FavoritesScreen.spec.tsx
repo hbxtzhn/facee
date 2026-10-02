@@ -1,4 +1,3 @@
-import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 /**
@@ -26,8 +25,6 @@ jest.mock('../question-bank', () => ({
 
 // eslint-disable-next-line import/first
 import { FavoritesScreen } from './FavoritesScreen';
-// eslint-disable-next-line import/first
-import { useFavoritesStore } from '../store/favoritesStore';
 // eslint-disable-next-line import/first
 import { useMasteryStore } from '../store/masteryStore';
 // eslint-disable-next-line import/first

@@ -2,7 +2,6 @@ import { describe, it, expect } from '@jest/globals';
 import {
   DEFAULT_EXTRACTION_REQUIREMENTS,
   buildExtractionUserPrompt,
-  buildRewriteUserPrompt,
   extractQuestionsFromChunks,
   fetchModelIds,
   LLM_PRESETS,

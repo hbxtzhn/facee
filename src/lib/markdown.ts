@@ -34,11 +34,3 @@ export function parseQuestionHref(href: string): string | null {
 export function isExternalHref(href: string): boolean {
   return /^(https?|mailto):/i.test(href.trim());
 }
-
-/**
- * 本地资源引用（图片/附件）是否可交给系统打开。
- * `file:` 只用于站内渲染，不应触发外部应用。
- */
-export function isLocalAssetHref(href: string): boolean {
-  return /^file:/i.test(href.trim());
-}

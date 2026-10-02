@@ -1,8 +1,6 @@
 import type {
-  Question,
   QuestionBankCatalog,
   QuestionContent,
-  QuestionTag,
 } from './types';
 
 export interface SchemaValidation {
@@ -151,23 +149,9 @@ export function validateQuestionContent(value: unknown): boolean {
   return inspectQuestionContent(value).valid;
 }
 
-export function validateQuestionContentSchema(value: unknown): SchemaValidation {
-  return inspectQuestionContent(value);
-}
-
 export function assertQuestionContent(value: unknown): asserts value is QuestionContent {
   const result = inspectQuestionContent(value);
   if (!result.valid) throw new QuestionBankValidationError(result.issues);
-}
-
-export function isQuestionContent(value: unknown): value is QuestionContent {
-  return validateQuestionContent(value);
-}
-
-export function parseQuestionContent(value: unknown): QuestionContent {
-  const parsed = typeof value === 'string' ? parseJson(value) : value;
-  assertQuestionContent(parsed);
-  return parsed;
 }
 
 function inspectCatalog(value: unknown): SchemaValidation {

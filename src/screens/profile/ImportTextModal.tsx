@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CheckSquare, FileText, Square } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
@@ -14,6 +14,7 @@ import {
   splitTextIntoChunks,
 } from '../../lib/import-text';
 import { colors, radii, spacing, typography } from '../../theme';
+import { AppButton } from '../../components/ui';
 import { FieldLabel, ModalSheet, SheetActions, SheetError } from './ModalSheet';
 
 type ImportPhase = 'input' | 'extracting' | 'review';
@@ -50,6 +51,8 @@ export function ImportTextModal({
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [truncatedNotice, setTruncatedNotice] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 缺 AI 配置时报错附带「去 AI 设置」直达入口
+  const [needsAiSetup, setNeedsAiSetup] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
@@ -69,6 +72,7 @@ export function ImportTextModal({
     setSelectedKeys(new Set());
     setTruncatedNotice(false);
     setError(null);
+    setNeedsAiSetup(false);
   }
 
   function handleClose() {
@@ -103,6 +107,7 @@ export function ImportTextModal({
     if (!llmConfig.loaded) await llmConfig.load();
     const config = useLlmConfigStore.getState();
     if (!hasUsableLlmConfig(config)) {
+      setNeedsAiSetup(true);
       setError('还没有配置 AI 服务：请先在「AI 设置」中填写服务地址、Key 与模型名。');
       return;
     }
@@ -180,6 +185,9 @@ export function ImportTextModal({
       }
     >
       <SheetError message={error} />
+      {needsAiSetup && phase === 'input' ? (
+        <AppButton label="去 AI 设置" variant="ghost" onPress={onOpenAiSettings} style={styles.aiSetupButton} />
+      ) : null}
       {truncatedNotice ? (
         <Text style={styles.truncatedText}>文本过长，仅处理前 30 段；建议拆分后分次导入。</Text>
       ) : null}
@@ -324,6 +332,7 @@ const styles = StyleSheet.create({
   },
   requirementsHint: { ...typography.caption, color: colors.textMuted, fontSize: 11, flex: 1, lineHeight: 15 },
   restoreDefault: { ...typography.caption, color: colors.primary, fontWeight: '700', fontSize: 11 },
+  aiSetupButton: { marginTop: spacing.sm, alignSelf: 'flex-start' },
   truncatedText: { ...typography.caption, color: colors.warning, fontSize: 11, marginBottom: spacing.sm },
   extractingBox: {
     padding: spacing.lg,
