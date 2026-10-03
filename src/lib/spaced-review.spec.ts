@@ -52,6 +52,16 @@ describe('间隔复习口径（spaced-review）', () => {
     expect(computeDueQuestionIds({ q1: record('known', 1) }, NOW)).toEqual([]);
   });
 
+  it('同刻打标时按题目 id 决胜（v1 迁移整库同刻的场景）', () => {
+    const sameAt = NOW - 8 * DAY;
+    const records = {
+      'q-10': { mastery: 'fuzzy' as const, markedAt: sameAt },
+      'q-2': { mastery: 'fuzzy' as const, markedAt: sameAt },
+      'q-1': { mastery: 'unknown' as const, markedAt: sameAt },
+    };
+    expect(computeDueQuestionIds(records, NOW)).toEqual(['q-1', 'q-10', 'q-2']);
+  });
+
   it('mergeBankReviewRecords 合成单库档案，跳过缺时间戳的条目', () => {
     const merged = mergeBankReviewRecords(
       'bank-a',

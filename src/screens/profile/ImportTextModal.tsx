@@ -223,11 +223,14 @@ export function ImportTextModal({
             placeholder="告诉 AI 怎么抽题，例如：只抽 HTTP 与网络相关的题"
             placeholderTextColor={colors.textSubtle}
             multiline
+            maxLength={2000}
             style={[styles.input, styles.requirementsInput]}
             accessibilityLabel="抽取要求提示词"
           />
           <View style={styles.requirementsMeta}>
-            <Text style={styles.requirementsHint}>题目 JSON 格式由 App 固定，这里只调整 AI 怎么抽题。</Text>
+            <Text style={styles.requirementsHint}>
+              题目 JSON 格式由 App 固定，这里只调整 AI 怎么抽题（≤2000 字）。
+            </Text>
             {requirements.trim() !== DEFAULT_EXTRACTION_REQUIREMENTS ? (
               <Pressable
                 accessibilityRole="button"

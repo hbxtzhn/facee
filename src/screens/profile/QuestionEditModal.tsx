@@ -206,6 +206,7 @@ export function QuestionEditModal({
               placeholder="例如：更贴近真实面试、答案分点、增加追问"
               placeholderTextColor={colors.textSubtle}
               multiline
+              maxLength={2000}
               style={[styles.input, styles.aiInstructionInput]}
               accessibilityLabel="AI 改写要求"
             />

@@ -53,10 +53,10 @@ export function mergeBankReviewRecords(
   return records;
 }
 
-/** 单库到期题 id 列表：到期过滤 + 最久未复习优先 */
+/** 单库到期题 id 列表：到期过滤 + 最久未复习优先，同刻按题目 id 决胜（口径第 5 条） */
 export function computeDueQuestionIds(records: BankReviewRecords, now: number): string[] {
   return Object.entries(records)
     .filter(([, record]) => isReviewDue(record, now))
-    .sort(([, left], [, right]) => left.markedAt - right.markedAt)
+    .sort(([leftId, left], [rightId, right]) => left.markedAt - right.markedAt || leftId.localeCompare(rightId))
     .map(([questionId]) => questionId);
 }
