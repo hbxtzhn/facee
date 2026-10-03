@@ -1,6 +1,6 @@
 {
   "name": "facee",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "main": "index.ts",
   "dependencies": {
     "@expo/metro-runtime": "~57.0.14",
@@ -14,6 +14,7 @@
     "expo-font": "~57.0.4",
     "expo-intent-launcher": "^57.0.1",
     "expo-sharing": "~57.0.22",
+    "expo-splash-screen": "~57.0.9",
     "lucide-react-native": "^1.33.0",
     "markdown-it": "^14.3.2",
     "punycode": "^2.3.1",
