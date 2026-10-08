@@ -141,7 +141,9 @@ function main() {
 
   if (!skipBuild) {
     console.log('· 构建 release APK（arm64）');
-    run('./gradlew', ['assembleRelease'], { cwd: join(ROOT, 'android') });
+    // Windows 的 cmd 不认 ./gradlew 这种 Git Bash 写法，直接用 gradlew.bat
+    const gradlew = process.platform === 'win32' ? 'gradlew.bat' : './gradlew';
+    run(gradlew, ['assembleRelease'], { cwd: join(ROOT, 'android') });
   }
 
   const builtApk = join(ROOT, APK_OUTPUT);
