@@ -134,7 +134,7 @@ function main() {
   const tag = `v${info.version}`;
   console.log(`\n● 发版 ${tag}（versionCode ${info.versionCode}）\n`);
 
-  const status = execFileSync('git', ['status', 'porcelain'], { cwd: ROOT, encoding: 'utf8' });
+  const status = execFileSync('git', ['status', '--porcelain'], { cwd: ROOT, encoding: 'utf8' });
   if (status.trim()) {
     fail(`工作区有未提交改动，先提交再发版：\n${status}`);
   }
