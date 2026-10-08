@@ -50,6 +50,9 @@ Expo 模板默认 release 用公开的调试证书（口令全网公开），意
 `com.facee.app` 覆盖安装。`plugins/withAndroidReleaseSigning.js` 负责把 release 切到
 你自己的 keystore：**不配置时行为与模板完全一致**，配置了才切换。
 
+> 现状：维护者本机已切换为自持 keystore（凭据在 `~/.gradle/gradle.properties`，
+> keystore 文件在仓库外）。**丢失该 keystore 将永远无法给已装用户发更新**，务必备份。
+
 ```bash
 # 1. 生成 keystore（*.jks 与口令都别入库，.gitignore 已覆盖 *.jks）
 keytool -genkeypair -v -keystore facee-release.jks \

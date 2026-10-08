@@ -78,8 +78,9 @@ function readAppInfo() {
 function extractChangelog(version) {
   const changelog = readFileSync(join(ROOT, 'CHANGELOG.md'), 'utf8');
   // 注意（?![\s\S]) 表示「后面一个字符都没有」，不能用 $：m 标志下 $ 在每行末都成立，
-  // 懒惰匹配会立刻停在标题行尾、抽出空内容。
-  const pattern = new RegExp(`^## \\[${version.replace(/\./g, '\\.')}\\][^\\n]*\\n([\\s\\S]*?)(?=^## \\[|(?![\\s\\S]))`, 'm');
+  // 懒惰匹配会立刻停在标题行尾、抽出空内容。遇到任何「## 」二级标题即截断：
+  // CHANGELOG 里 1.x 历史线是 ## 开头的大节，不能混进新版发布说明。
+  const pattern = new RegExp(`^## \\[${version.replace(/\./g, '\\.')}\\][^\\n]*\\n([\\s\\S]*?)(?=^## |(?![\\s\\S]))`, 'm');
   const body = pattern.exec(changelog)?.[1]?.trim();
   if (!body) fail(`CHANGELOG.md 里找不到 ${version} 的小节，请补充或用 --notes-file 指定`);
   return body;
