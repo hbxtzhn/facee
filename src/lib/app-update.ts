@@ -10,6 +10,9 @@
  *   1. versionCode 必须每次发版递增，否则 Android 会拒绝覆盖安装（versionName 不参与判定）
  *   2. APK 签名必须一致：换 keystore 后旧用户无法覆盖更新，只能卸载重装（会丢本地收藏与进度）
  *
+ * 完整链路防护（下载地址白名单 → SHA256SUMS 校验 → 系统签名校验），
+ * 前两层在本文件与 apk-verify.ts，签名校验由 Android 安装器兜底。
+ *
  * 本文件只放纯逻辑，便于单测；网络与原生调用在 UI 层。
  */
 
@@ -27,6 +30,8 @@ export interface AppRelease {
   publishedAt: string | null;
   /** 匹配到的 APK 资产 */
   apk: ReleaseAsset | null;
+  /** 匹配到的 SHA256SUMS 资产（缺失时拒绝下载，见 parseRelease） */
+  checksums: ReleaseAsset | null;
 }
 
 /** GitHub Releases API 返回结构的子集 */
@@ -83,6 +88,58 @@ export function pickApkAsset(assets: unknown): ReleaseAsset | null {
   return preferred ?? candidates[0];
 }
 
+/** 只允许从 GitHub 官方域名经 https 下载发布资产（防下载链路劫持/替换） */
+const TRUSTED_DOWNLOAD_HOSTS = new Set(['github.com', 'objects.githubusercontent.com']);
+
+export function isTrustedDownloadUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' && TRUSTED_DOWNLOAD_HOSTS.has(parsed.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+/** 挑出发布资产里的 SHA256SUMS 文件 */
+export function pickChecksumAsset(assets: unknown): ReleaseAsset | null {
+  if (!Array.isArray(assets)) return null;
+  const candidates = assets
+    .filter((asset): asset is Record<string, unknown> => Boolean(asset) && typeof asset === 'object')
+    .filter((asset) => typeof asset.name === 'string' && /sha256sums?/i.test(asset.name as string))
+    .map((asset) => ({
+      name: asset.name as string,
+      downloadUrl: String(asset.browser_download_url ?? asset.download_url ?? ''),
+      sizeBytes: typeof asset.size === 'number' ? asset.size : 0,
+    }))
+    .filter((asset) => asset.downloadUrl.length > 0);
+  return candidates[0] ?? null;
+}
+
+/**
+ * 解析 `sha256sum` 风格文本：`<hex>  <文件名>` 或 `<hex> *<文件名>`。
+ * 返回 文件名 → 小写十六进制 的映射；容错 CRLF、空行与 # 注释。
+ */
+export function parseSha256Sums(text: string): Map<string, string> {
+  const sums = new Map<string, string>();
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const match = /^([0-9a-fA-F]{64})\s+\*?(.+)$/.exec(line);
+    if (!match) continue;
+    const name = match[2].trim();
+    // 兼容带路径的写法，统一按文件名匹配
+    const base = name.split(/[\\/]/).pop() ?? name;
+    sums.set(base, match[1].toLowerCase());
+  }
+  return sums;
+}
+
+/** 从校验表里取某个 APK 的期望值；没有记录返回 null */
+export function findExpectedChecksum(sums: Map<string, string>, apkName: string): string | null {
+  const direct = sums.get(apkName) ?? sums.get(apkName.split(/[\\/]/).pop() ?? apkName);
+  return direct ?? null;
+}
+
 /** 解析 GitHub Releases API 的响应（/releases/latest） */
 export function parseRelease(payload: unknown): AppRelease | null {
   if (!payload || typeof payload !== 'object') return null;
@@ -97,6 +154,7 @@ export function parseRelease(payload: unknown): AppRelease | null {
     notes: typeof release.body === 'string' ? release.body : '',
     publishedAt: typeof release.published_at === 'string' ? release.published_at : null,
     apk: pickApkAsset(release.assets),
+    checksums: pickChecksumAsset(release.assets),
   };
 }
 

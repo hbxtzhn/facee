@@ -26,6 +26,7 @@
     },
     "plugins": [
       "./plugins/withAndroidArm64Release",
+      "./plugins/withAndroidReleaseSigning",
       "expo-sharing",
       [
         "expo-splash-screen",
@@ -35,7 +36,8 @@
           "imageWidth": 200,
           "resizeMode": "contain"
         }
-      ]
+      ],
+      "expo-secure-store"
     ]
   }
 }

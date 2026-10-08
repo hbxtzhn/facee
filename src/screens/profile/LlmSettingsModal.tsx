@@ -85,7 +85,7 @@ export function LlmSettingsModal({ visible, onClose }: { visible: boolean; onClo
     <ModalSheet
       visible={visible}
       title="AI 设置"
-      hint="用于「从文本导入题目」时调用你自己的模型服务（OpenAI 兼容协议）。Key 只保存在本机。"
+      hint="用于「从文本导入题目」时调用你自己的模型服务（OpenAI 兼容协议）。Key 保存在本机系统加密存储（Android Keystore）中，不会进入系统备份与题库备份。"
       onClose={onClose}
       footer={
         <SheetActions
@@ -134,6 +134,11 @@ export function LlmSettingsModal({ visible, onClose }: { visible: boolean; onClo
         style={styles.input}
         accessibilityLabel="AI 服务地址"
       />
+      {/^http:\/\//i.test(baseUrl.trim()) ? (
+        <Text style={styles.insecureWarning}>
+          当前是 http:// 明文地址：API Key 和待抽取文本会以未加密方式发送，能被同网络设备看到。请尽量使用 https://。
+        </Text>
+      ) : null}
       <FieldLabel text="API Key" />
       <TextInput
         value={apiKey}
@@ -251,6 +256,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceSubtle,
   },
   modelOptionsHint: { ...typography.caption, color: colors.textMuted, fontSize: 11, marginBottom: spacing.xs },
+  insecureWarning: {
+    ...typography.caption,
+    color: colors.danger,
+    marginTop: spacing.xs,
+  },
   input: {
     ...typography.body,
     color: colors.text,

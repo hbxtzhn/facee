@@ -23,13 +23,24 @@ jest.mock('expo-intent-launcher', () => ({ startActivityAsync: jest.fn() }));
 // eslint-disable-next-line import/first
 import { AppUpdateCard } from './app-update-card';
 
-const release = (version: string, withApk = true) => ({
+const release = (version: string, withApk = true, host = 'github.com') => ({
   tag_name: `v${version}`,
   body: '更新说明',
   published_at: '2026-09-17T00:00:00Z',
   assets: withApk
-    ? [{ name: `FaceE-arm64-${version}-release.apk`, size: 1024 * 1024, browser_download_url: 'https://example.test/a.apk' }]
-    : [{ name: 'notes.txt', size: 10, browser_download_url: 'https://example.test/n.txt' }],
+    ? [
+        {
+          name: `FaceE-arm64-${version}-release.apk`,
+          size: 1024 * 1024,
+          browser_download_url: `https://${host}/HBxtzhn/facee/releases/download/v${version}/FaceE-arm64-${version}-release.apk`,
+        },
+        {
+          name: 'SHA256SUMS',
+          size: 99,
+          browser_download_url: `https://${host}/HBxtzhn/facee/releases/download/v${version}/SHA256SUMS`,
+        },
+      ]
+    : [{ name: 'notes.txt', size: 10, browser_download_url: `https://${host}/n.txt` }],
 });
 
 describe('应用内更新卡片', () => {
@@ -84,5 +95,36 @@ describe('应用内更新卡片', () => {
     await fireEvent.press(screen.getByText('检查更新'));
 
     await waitFor(() => expect(screen.getByText(/没有提供安装包/)).toBeTruthy());
+  });
+
+  it('下载地址不在 GitHub 白名单时拒绝更新', async () => {
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => release('99.0.0', true, 'evil-mirror.example'),
+    });
+
+    await render(<AppUpdateCard />);
+    await fireEvent.press(screen.getByText('检查更新'));
+
+    await waitFor(() => expect(screen.getByText(/不是 GitHub 官方域名/)).toBeTruthy());
+    expect(screen.queryByText('下载并安装')).toBeNull();
+  });
+
+  it('没有附带 SHA256SUMS 时中止下载', async () => {
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ...release('99.0.0'),
+        assets: release('99.0.0').assets.slice(0, 1), // 去掉校验文件
+      }),
+    });
+
+    await render(<AppUpdateCard />);
+    await fireEvent.press(screen.getByText('检查更新'));
+
+    await waitFor(() => expect(screen.getByText(/SHA256SUMS/)).toBeTruthy());
+    expect(screen.queryByText('下载并安装')).toBeNull();
   });
 });

@@ -1,0 +1,62 @@
+name: 问题反馈
+description: 报告一个可复现的问题
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交前请搜索既有 issue，避免重复。
+        提「题库内容有误 / 缺题」请去 [facee-bank](https://github.com/HBxtzhn/facee-bank/issues) 提，本仓库只收 App 本身的问题。
+  - type: input
+    id: version
+    attributes:
+      label: App 版本
+      description: 「我的」页应用更新卡片里显示的版本号
+      placeholder: 如 1.4.0
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: 机型与系统
+      placeholder: 如 Pixel 7 / Android 15
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤
+      description: 从打开 App 开始，越具体越好
+      placeholder: |
+        1. 打开 App，进入…
+        2. 点击…
+        3. 出现…
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+      description: 有报错文案请原样贴出；截图可直接粘贴
+    validations:
+      required: true
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: 出现频率
+      options: [必现, 经常, 偶尔, 仅一次]
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: 补充信息
+      description: 使用的题库（内置示例 / 线上 / 本地）、是否断网、是否动过 AI 设置等
+    validations:
+      required: false
