@@ -49,11 +49,13 @@ function fail(message) {
   process.exit(1);
 }
 
+// 默认不走 shell：Windows 下 shell:true 会把参数按空格拼串再交给 cmd，
+// 任何带空格的参数（tag 消息、release 标题）都会被拆碎。
+// 只有 .bat（gradlew.bat）这类必须经 cmd 执行的目标才显式传 shell: true。
 function run(command, commandArgs, options = {}) {
   const result = spawnSync(command, commandArgs, {
     cwd: ROOT,
     stdio: 'inherit',
-    shell: process.platform === 'win32',
     ...options,
   });
   if (result.error) fail(`命令无法执行：${command}（${result.error.message}）`);
@@ -141,9 +143,10 @@ function main() {
 
   if (!skipBuild) {
     console.log('· 构建 release APK（arm64）');
-    // Windows 的 cmd 不认 ./gradlew 这种 Git Bash 写法，直接用 gradlew.bat
-    const gradlew = process.platform === 'win32' ? 'gradlew.bat' : './gradlew';
-    run(gradlew, ['assembleRelease'], { cwd: join(ROOT, 'android') });
+    // Windows 的 cmd 不认 ./gradlew 这种 Git Bash 写法，用 gradlew.bat 并经 cmd 执行
+    const isWin = process.platform === 'win32';
+    const gradlew = isWin ? 'gradlew.bat' : './gradlew';
+    run(gradlew, ['assembleRelease'], { cwd: join(ROOT, 'android'), shell: isWin });
   }
 
   const builtApk = join(ROOT, APK_OUTPUT);
