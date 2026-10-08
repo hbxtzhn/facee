@@ -136,7 +136,7 @@ function main() {
 
   const status = execFileSync('git', ['status', 'porcelain'], { cwd: ROOT, encoding: 'utf8' });
   if (status.trim()) {
-    fail('工作区有未提交改动，先提交再发版（git status）');
+    fail(`工作区有未提交改动，先提交再发版：\n${status}`);
   }
 
   if (!skipBuild) {
