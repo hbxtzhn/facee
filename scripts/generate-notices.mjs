@@ -55,7 +55,11 @@ for (const pkg of packages) {
     }
   }
   if (!texts.size) missing.push(pkg.name);
-  sections.push(`${pkg.name} @ ${[...pkg.versions].sort().join(', ')}\nLicense: ${pkg.license}\nAuthor: ${typeof pkg.author === 'string' ? pkg.author : JSON.stringify(pkg.author ?? '')}\nHomepage: ${pkg.homepage ?? ''}\n\n${[...texts].sort().join('\n\n') || 'No standalone license file supplied by upstream; see package metadata and homepage.'}`);
+  // Windows/Linux 仅选择不同 lightningcss 原生构建工具包，MPL 文本完全一致。
+  // 保留实际许可内容，只规范平台相关展示名，避免把同一锁定图误判为过期。
+  const displayName = /^lightningcss-(?:android|darwin|freebsd|linux|win32)-/.test(pkg.name)
+    ? 'lightningcss platform bindings (platform-dependent build tool)' : pkg.name;
+  sections.push(`${displayName} @ ${[...pkg.versions].sort().join(', ')}\nLicense: ${pkg.license}\nAuthor: ${typeof pkg.author === 'string' ? pkg.author : JSON.stringify(pkg.author ?? '')}\nHomepage: ${pkg.homepage ?? ''}\n\n${[...texts].sort().join('\n\n') || 'No standalone license file supplied by upstream; see package metadata and homepage.'}`);
 }
 sections.push(`JetBrains Mono\n${readFileSync(join(root, 'assets/fonts/OFL.txt'), 'utf8').replace(/\r\n/g, '\n').trim()}`);
 const result = sections.join('\n\n' + '='.repeat(72) + '\n\n').replace(/[ \t]+$/gm, '') + '\n';
