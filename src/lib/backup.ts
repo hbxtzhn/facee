@@ -2,8 +2,10 @@ import * as FileSystem from 'expo-file-system/legacy';
 import {
   newLocalBankId,
   parseLocalBankSource,
+  isLocalBankId,
 } from '../question-bank/local-banks';
-import { QUESTION_BANK_ROOT_NAME } from '../question-bank/file-repository';
+import { QUESTION_BANK_ROOT_NAME, validateDecodedPackage, type ZipEntryLike } from '../question-bank/file-repository';
+import { assertBackupArchiveSize, BACKUP_LIMITS, inspectBackupEntries } from './backup-validation';
 import type { LocalBankSource } from '../question-bank/types';
 
 /**
@@ -23,7 +25,8 @@ export interface BackupManifest {
 
 interface BackupZipModule {
   zip(source: string, target: string): Promise<string>;
-  unzip(source: string, target: string, charset?: string): Promise<string>;
+  listContents(source: string, charset?: string): Promise<ZipEntryLike[]>;
+  unzip(source: string, target: string, charset?: string, entries?: string[]): Promise<string>;
 }
 
 function getZipArchive(): BackupZipModule {
@@ -59,13 +62,28 @@ export function parseBackupManifest(raw: string): BackupManifest {
   }
   const record = value as Record<string, unknown>;
   const schemaVersion = record.schemaVersion;
-  if (typeof schemaVersion !== 'number' || schemaVersion > BACKUP_SCHEMA_VERSION) {
+  if (schemaVersion !== BACKUP_SCHEMA_VERSION) {
     throw new Error('备份来自更新版本的应用，请先升级 app 再导入');
   }
-  if (!Array.isArray(record.banks)) {
-    throw new Error('备份文件缺少题库清单');
+  if (!Array.isArray(record.banks) || record.banks.length > BACKUP_LIMITS.banks) {
+    throw new Error('备份文件缺少题库清单或题库数量超限');
   }
-  return record as unknown as BackupManifest;
+  if (typeof record.exportedAt !== 'string' || !Number.isFinite(Date.parse(record.exportedAt))) {
+    throw new Error('备份导出时间无效');
+  }
+  const ids = new Set<string>();
+  const banks = record.banks.map((bank: unknown) => {
+    if (!bank || typeof bank !== 'object' || Array.isArray(bank)) throw new Error('备份题库清单无效');
+    const item = bank as Record<string, unknown>;
+    if (typeof item.bankId !== 'string' || !isLocalBankId(item.bankId) || ids.has(item.bankId) ||
+        typeof item.title !== 'string' || !item.title.trim() ||
+        typeof item.questionCount !== 'number' || !Number.isSafeInteger(item.questionCount) || item.questionCount < 0) {
+      throw new Error('备份题库清单无效或 id 重复');
+    }
+    ids.add(item.bankId);
+    return { bankId: item.bankId, title: item.title, questionCount: item.questionCount };
+  });
+  return { schemaVersion: BACKUP_SCHEMA_VERSION, exportedAt: record.exportedAt, banks };
 }
 
 /** 备份导入规划（纯函数）：id 已存在则换新 id、标题加（导入） */
@@ -86,7 +104,12 @@ export function planBankImports(
       taken.add(source.bankId);
       return { originalBankId: source.bankId, reusedExisting: false, source };
     }
-    const bankId = newBankId();
+    let bankId = '';
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const candidate = newBankId();
+      if (isLocalBankId(candidate) && !taken.has(candidate)) { bankId = candidate; break; }
+    }
+    if (!bankId) throw new Error('无法分配新的题库 id，请重试');
     taken.add(bankId);
     const title = `${source.package.catalog.title}（导入）`;
     return {
@@ -148,7 +171,7 @@ export async function restoreBackupZip(options: {
   zipPath: string;
   existingCatalogIds: ReadonlySet<string>;
   installBank: (source: LocalBankSource) => Promise<void>;
-  restoreBankAssets: (assetsRoot: string, catalogId: string) => Promise<void>;
+  restoreBankAssets: (assetsRoot: string, sourceCatalogId: string, targetCatalogId: string) => Promise<void>;
   zipArchive?: BackupZipModule;
   cacheDirectory?: string;
   fileSystem?: typeof FileSystem;
@@ -159,31 +182,40 @@ export async function restoreBackupZip(options: {
   const archive = options.zipArchive ?? getZipArchive();
   const extractRoot = `${cacheDirectory}${QUESTION_BANK_ROOT_NAME}import/${Date.now().toString(36)}/`;
   try {
-    await archive.unzip(options.zipPath, extractRoot, 'UTF-8');
-    const backupRoot = await locateBackupRoot(extractRoot, fs);
+    const info = await fs.getInfoAsync(options.zipPath);
+    if (!info.exists || info.isDirectory) throw new Error('备份 ZIP 不存在');
+    assertBackupArchiveSize(info.size);
+    const { root, files } = inspectBackupEntries(await archive.listContents(options.zipPath, 'UTF-8'));
+    await fs.makeDirectoryAsync(extractRoot, { intermediates: true });
+    await archive.unzip(options.zipPath, extractRoot, 'UTF-8', files);
+    const backupRoot = `${extractRoot}${root}`;
     const manifest = parseBackupManifest(
       await fs.readAsStringAsync(`${backupRoot}manifest.json`, { encoding: 'utf8' }),
     );
     const sources: LocalBankSource[] = [];
     for (const bank of manifest.banks) {
-      try {
-        const raw = await fs.readAsStringAsync(
-          `${backupRoot}sources/${bank.bankId}.json`,
-          { encoding: 'utf8' },
-        );
-        const source = parseLocalBankSource(raw);
-        if (source) sources.push(source);
-      } catch {
-        // 清单与源文件不一致：跳过缺失的库
-      }
+      const raw = await fs.readAsStringAsync(`${backupRoot}sources/${bank.bankId}.json`, { encoding: 'utf8' });
+      const source = parseLocalBankSource(raw);
+      if (!source || source.bankId !== bank.bankId) throw new Error(`备份题库源无效：${bank.bankId}`);
+      validateDecodedPackage(source.package);
+      if (source.package.catalog.questions.length !== bank.questionCount) throw new Error('备份题目数量与清单不一致');
+      sources.push(source);
     }
     if (sources.length === 0) throw new Error('备份里没有可导入的题库');
 
+    // 所有题库与资产关联先验证，避免导入到一半才发现下一库损坏。
+    const questionsByBank = new Map(sources.map((source) => [source.bankId, new Set(source.package.catalog.questions.map((q) => q.id))]));
+    for (const file of files) {
+      const relative = file.slice(root.length);
+      const parts = relative.split('/');
+      if (parts[0] === 'sources' && !questionsByBank.has(parts[1].slice(0, -5))) throw new Error('备份包含清单外题库');
+      if (parts[0] === 'assets' && !questionsByBank.get(parts[1])?.has(parts[2])) throw new Error('备份图片引用未知题目');
+    }
     const plans = planBankImports(sources, options.existingCatalogIds);
     const imported: BackupImportSummary[] = [];
     for (const plan of plans) {
       await options.installBank(plan.source);
-      await options.restoreBankAssets(`${backupRoot}assets/`, plan.originalBankId);
+      await options.restoreBankAssets(`${backupRoot}assets/`, plan.originalBankId, plan.source.bankId);
       imported.push({
         bankId: plan.source.bankId,
         title: plan.source.package.catalog.title,
@@ -195,19 +227,4 @@ export async function restoreBackupZip(options: {
   } finally {
     await fs.deleteAsync(extractRoot, { idempotent: true });
   }
-}
-
-/** ZIP 可能带一层目录（打包方式差异），定位 manifest 所在层 */
-async function locateBackupRoot(
-  extractRoot: string,
-  fs: typeof FileSystem,
-): Promise<string> {
-  const direct = await fs.getInfoAsync(`${extractRoot}manifest.json`);
-  if (direct.exists) return extractRoot;
-  const children = await fs.readDirectoryAsync(extractRoot);
-  for (const child of children) {
-    const nested = await fs.getInfoAsync(`${extractRoot}${child}/manifest.json`);
-    if (nested.exists) return `${extractRoot}${child}/`;
-  }
-  throw new Error('备份文件缺少 manifest.json，可能不是 FaceE 备份');
 }

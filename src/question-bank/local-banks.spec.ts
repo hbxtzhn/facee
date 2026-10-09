@@ -188,9 +188,36 @@ describe('local-banks 题目模型（纯函数）', () => {
       answerMd: null,
     });
     expect(edited.catalog.questions[0].categoryId).toBe('java');
+    expect(edited.catalog.categories).toEqual(bank.catalog.categories);
+    expect(() => validateDecodedPackage(edited)).not.toThrow();
 
     const added = upsertQuestion(bank, { ...DRAFT, title: '新加的题' });
     expect(added.catalog.questions[1].categoryId).toBe('local');
+    expect(() => validateDecodedPackage(added)).not.toThrow();
+    expect(added.catalog.categories).toEqual([
+      ...bank.catalog.categories!,
+      { id: 'local', name: '我的题目', sort: 10 },
+    ]);
+    expect(bank.catalog.categories).toHaveLength(2);
+  });
+
+  it.each([undefined, []])('新增题目补齐缺省分类（原 categories=%s）', (categories) => {
+    const bank = createLocalBankPackage('无分类题库');
+    bank.catalog.categories = categories;
+    const added = upsertQuestion(bank, DRAFT);
+    expect(() => validateDecodedPackage(added)).not.toThrow();
+    expect(added.catalog.categories).toEqual([{ id: 'local', name: '我的题目', sort: 10 }]);
+    expect(bank.catalog.categories).toBe(categories);
+  });
+
+  it('已有 local 分类复用且批量新增不重复、不覆盖原定义', () => {
+    const bank = createLocalBankPackage('已有分类');
+    bank.catalog.categories = [{ id: 'local', name: '原有分类名', sort: 99 }];
+    const added = upsertQuestion(upsertQuestion(bank, DRAFT), { ...DRAFT, title: 'AI 第二题' });
+    expect(added.catalog.categories).toEqual(bank.catalog.categories);
+    expect(added.catalog.categories).toHaveLength(1);
+    expect(() => validateDecodedPackage(added)).not.toThrow();
+    expect(bank.catalog.questions).toHaveLength(0);
   });
 
   it('删除题目同时移除元数据与内容', () => {
@@ -248,6 +275,24 @@ describe('local-banks 复制为本地题库', () => {
       },
     ],
   };
+
+  it('复制/备份恢复题库批量新增后保存、重新加载仍通过安装校验', async () => {
+    const original = JSON.stringify(SOURCE);
+    const copy = copyBankAsLocal(SOURCE);
+    copy.package = upsertQuestion(copy.package, DRAFT);
+    copy.package = upsertQuestion(copy.package, { ...DRAFT, title: 'AI 导入题' });
+    expect(() => validateDecodedPackage(copy.package)).not.toThrow();
+    const fs = new MemoryFileSystem();
+    await saveLocalBankSource(copy, fs as never);
+    const restored = await loadLocalBankSource(copy.bankId, fs as never);
+    expect(restored).not.toBeNull();
+    expect(() => validateDecodedPackage(restored!.package)).not.toThrow();
+    expect(restored!.package.catalog.questions).toHaveLength(3);
+    expect(restored!.package.catalog.categories?.filter((category) => category.id === 'local')).toHaveLength(1);
+    expect(restored!.package.catalog.questions[0].categoryId).toBe('java');
+    expect(restored!.package.contents[0].followupsMd).toContain('扩容');
+    expect(JSON.stringify(SOURCE)).toBe(original);
+  });
 
   it('copiedBankTitle：X → X（副本）→ X（副本2）递增', () => {
     expect(copiedBankTitle('面试题库')).toBe('面试题库（副本）');

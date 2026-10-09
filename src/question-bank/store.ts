@@ -255,7 +255,10 @@ export const useQuestionBankStore = create<QuestionBankState>((set, get) => ({
 
   importBackup: async (fileUri) => {
     assertNativeBankOperations();
-    const existing = new Set((await questionBankRepository.listBanks()).map((bank) => bank.catalogId));
+    const existing = new Set([
+      ...(await questionBankRepository.listBanks()).map((bank) => bank.catalogId),
+      ...(await listLocalBankSources()).map((bank) => bank.bankId),
+    ]);
     const result = await restoreBackupZip({
       zipPath: fileUri,
       existingCatalogIds: existing,
@@ -263,8 +266,8 @@ export const useQuestionBankStore = create<QuestionBankState>((set, get) => ({
         await saveLocalBankSource(source);
         await runInstall(set, () => questionBankRepository.install(source.package));
       },
-      restoreBankAssets: (assetsRoot, catalogId) =>
-        questionBankRepository.restoreBankAssets(assetsRoot, catalogId),
+      restoreBankAssets: (assetsRoot, sourceCatalogId, targetCatalogId) =>
+        questionBankRepository.restoreBankAssets(assetsRoot, sourceCatalogId, targetCatalogId),
     });
     await reloadCatalog(set);
     await get().refreshBanks();

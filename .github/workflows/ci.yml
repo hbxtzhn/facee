@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   app:
     name: Android client
@@ -15,8 +18,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 11
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -24,8 +25,44 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test --runInBand
+      - run: node --test scripts/*.test.mjs
+      - name: Expo SDK compatibility
+        run: npx expo install --check
+      # 三个已知上游无可安装补丁的工具链公告有记录；新增公告仍阻止合并。
+      - run: node scripts/audit-dependencies.mjs
+      - run: node scripts/generate-notices.mjs --check
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: license-check-diagnostic
+          path: ${{ runner.temp }}/facee-third-party-licenses.actual.txt
+          if-no-files-found: ignore
       - name: Web 预览冒烟（UI 调试通道）
         run: npx expo export --platform web --output-dir web-build
+
+  android-build:
+    name: Android clean build (no release credentials)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006"
+      - run: pnpm install --frozen-lockfile
+      - run: npx expo prebuild --clean --platform android --no-install
+      - run: chmod +x android/gradlew && cd android && NODE_ENV=development ./gradlew assembleDebug --no-daemon
 
   bank-spec:
     name: 题库规范工具链

@@ -24,6 +24,10 @@ expo-env.d.ts
 # 分发产物
 *.apk
 *.aab
+/release/
+
+# 本机构建脚本（含机器专属 SDK 路径）
+run_build*.sh
 
 # 系统与编辑器
 .DS_Store
@@ -36,5 +40,3 @@ yarn-error.*
 # ZCode 会话产物
 .zcode/
 
-# 本机构建脚本（含机器专属 SDK 路径）
-run_build*.sh

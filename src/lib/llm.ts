@@ -2,9 +2,11 @@
  * LLM 题目抽取：OpenAI 兼容 /chat/completions 端点（非流式）。
  *
  * 用户在「AI 设置」里自填 服务地址 + Key + 模型名（DeepSeek / 智谱 / Kimi
- * 等全部兼容该协议），Key 只存本机 AsyncStorage。本文件是纯逻辑：
+ * 等全部兼容该协议），原生 Key 存系统安全存储。本文件是纯逻辑：
  * 网络调用可注入（fetchImpl），解析与规范化可单测。
  */
+
+import { withNetworkTimeout } from './network';
 
 export interface LlmConfig {
   /** 例如 https://api.deepseek.com/v1（不含 /chat/completions） */
@@ -37,7 +39,7 @@ export const LLM_PRESETS: LlmPreset[] = [
   { id: 'custom', label: '自定义', baseUrl: '', model: '' },
 ];
 
-type FetchLike = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }) => Promise<{
+type FetchLike = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{
   ok: boolean;
   status: number;
   text: () => Promise<string>;
@@ -48,6 +50,7 @@ export interface ExtractOptions {
   fetchImpl?: FetchLike;
   /** 用户自定义的抽取要求（导入弹窗里可编辑）；空/空白时用默认值 */
   requirements?: string;
+  signal?: AbortSignal;
 }
 
 const SYSTEM_PROMPT = '你是面试题库编辑。只输出 JSON，不要输出任何解释文字或 Markdown 代码栏。';
@@ -99,8 +102,9 @@ export async function extractQuestionsFromChunks(
     let raw: string | null = null;
     for (let attempt = 0; attempt < 2 && raw === null; attempt += 1) {
       try {
-        raw = await callChatCompletion(doFetch, config, buildExtractionUserPrompt(chunks[index], options.requirements));
+        raw = await callChatCompletion(doFetch, config, buildExtractionUserPrompt(chunks[index], options.requirements), options.signal);
       } catch (error) {
+        if (options.signal?.aborted) throw error;
         lastError = error;
       }
     }
@@ -132,11 +136,14 @@ export async function fetchModelIds(config: LlmConfig, fetchImpl?: FetchLike): P
   if (!/^https?:\/\//.test(baseUrl)) throw new Error('AI 服务地址必须以 http(s):// 开头');
   if (!config.apiKey.trim()) throw new Error('请先填写 API Key 再获取模型列表');
 
-  const response = await doFetch(`${baseUrl}/models`, {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${config.apiKey.trim()}` },
+  const { response, body } = await withNetworkTimeout(async (signal) => {
+    const response = await doFetch(`${baseUrl}/models`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${config.apiKey.trim()}` },
+      signal,
+    });
+    return { response, body: await response.text() };
   });
-  const body = await response.text();
   if (!response.ok) {
     throw new Error(`获取模型列表失败（HTTP ${response.status}）${body.slice(0, 120)}`);
   }
@@ -163,25 +170,29 @@ async function callChatCompletion(
   doFetch: FetchLike,
   config: LlmConfig,
   userPrompt: string,
+  signal?: AbortSignal,
 ): Promise<string> {
   const url = `${config.baseUrl.trim().replace(/\/+$/, '')}/chat/completions`;
-  const response = await doFetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.apiKey.trim()}`,
-    },
-    body: JSON.stringify({
-      model: config.model.trim(),
-      stream: false,
-      temperature: 0.2,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: userPrompt },
-      ],
-    }),
-  });
-  const body = await response.text();
+  const { response, body } = await withNetworkTimeout(async (requestSignal) => {
+    const response = await doFetch(url, {
+      signal: requestSignal,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.apiKey.trim()}`,
+      },
+      body: JSON.stringify({
+        model: config.model.trim(),
+        stream: false,
+        temperature: 0.2,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: userPrompt },
+        ],
+      }),
+    });
+    return { response, body: await response.text() };
+  }, { timeoutMs: 60_000, signal });
   if (!response.ok) {
     throw new Error(`HTTP ${response.status} ${body.slice(0, 160)}`);
   }
@@ -321,10 +332,11 @@ export function parseRewrittenQuestion(raw: string): GeneratedQuestionDraft | nu
 export async function rewriteQuestion(
   config: LlmConfig,
   question: RewriteQuestionInput,
-  options: { instruction?: string; fetchImpl?: FetchLike } = {},
+  options: { instruction?: string; fetchImpl?: FetchLike; signal?: AbortSignal } = {},
 ): Promise<GeneratedQuestionDraft> {
   const doFetch = options.fetchImpl ?? fetch;
-  const raw = await callChatCompletion(doFetch, config, buildRewriteUserPrompt(question, options.instruction ?? ''));
+  validateConfig(config);
+  const raw = await callChatCompletion(doFetch, config, buildRewriteUserPrompt(question, options.instruction ?? ''), options.signal);
   const draft = parseRewrittenQuestion(raw);
   if (!draft) throw new Error('模型返回的内容无法解析成题目，请重试或换个说法');
   return draft;

@@ -18,7 +18,7 @@ export type { LocalBankSource };
  * 原子、缓存安全，复用全部既有校验。编辑永远只改源文件。
  *
  * 约定：本地题库 catalog.id 以 `local-` 前缀开头（file-repository 据此
- * 在 listBanks 里标注来源）；本地题库只有一个分类 `local`（我的题目），
+ * 在 listBanks 里标注来源）；新建本地题库使用分类 `local`（我的题目），复制库保留原分类，
  * 标签按需增删。id 一律由名称哈希生成（规范要求 [a-z0-9][a-z0-9._-]*）。
  */
 
@@ -121,7 +121,7 @@ export function createLocalBankPackage(title: string): QuestionBankPackage {
 
 /**
  * 新增或更新一道题（纯函数，返回新包）。
- * 新题 id 由标题哈希生成；标签 upsert 进 catalog.tags。
+ * 新题 id 由标题哈希生成；标签 upsert 进 catalog.tags，新题补齐默认分类。
  * 编辑既有题时保留 categoryId 与内容扩展字段（followupsMd/assetBaseUri）——
  * 表单不覆盖它们，覆盖等于静默丢数据（追问、图片资源）。
  */
@@ -152,6 +152,11 @@ export function upsertQuestion(
   const existingQuestion = draft.id ? bank.catalog.questions.find((question) => question.id === id) : undefined;
   const existingContent = draft.id ? bank.contents.find((content) => content.id === id) : undefined;
   const maxSort = bank.catalog.questions.reduce((max, question) => Math.max(max, question.sort), 0);
+  // 复制/备份恢复库可能只有原分类；新题引用 local 前必须注册，不能修改源包。
+  // 编辑既有题不补分类，保留原分类定义及无分类状态。
+  const categories = !existingQuestion && !bank.catalog.categories?.some((category) => category.id === DEFAULT_CATEGORY_ID)
+    ? [...(bank.catalog.categories ?? []), { id: DEFAULT_CATEGORY_ID, name: DEFAULT_CATEGORY_NAME, sort: 10 }]
+    : bank.catalog.categories;
 
   const question: Question = {
     id,
@@ -175,7 +180,7 @@ export function upsertQuestion(
     : [...bank.contents, content];
 
   return {
-    catalog: { ...bank.catalog, tags, questions },
+    catalog: { ...bank.catalog, categories, tags, questions },
     contents,
   };
 }

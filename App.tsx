@@ -1,5 +1,5 @@
 // 应用根：只在本地题库安装后加载导航
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useFonts } from 'expo-font';
 import { BookOpenCheck } from 'lucide-react-native';

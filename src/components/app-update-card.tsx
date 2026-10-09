@@ -8,10 +8,15 @@ import {
   type AppRelease,
   UPDATE_RELEASES_API,
   UPDATE_RELEASES_PAGE,
+  findExpectedChecksum,
   formatBytes,
+  isTrustedDownloadUrl,
   isUpdateAvailable,
   parseRelease,
+  parseSha256Sums,
 } from '../lib/app-update';
+import { withNetworkTimeout } from '../lib/network';
+import { computeFileSha256Hex } from '../lib/apk-verify';
 import { AppButton, Surface } from './ui';
 import { colors, spacing, typography } from '../theme';
 
@@ -21,10 +26,26 @@ import { colors, spacing, typography } from '../theme';
  * Android 限制（务必知悉）：
  *   - 不能静默安装，最后一步必须由用户点系统确认框
  *   - 覆盖安装要求 versionCode 递增且签名一致
+ *
+ * 完整性链条：下载地址必须是 GitHub 官方域名（https）→ 发布必须附带
+ * SHA256SUMS 且本地哈希比对通过 → 最后交给 Android 安装器做签名校验。
  */
 type Phase = 'idle' | 'checking' | 'upToDate' | 'available' | 'downloading' | 'ready' | 'error';
 
 const CURRENT_VERSION = Constants.expoConfig?.version ?? '0.0.0';
+
+/** 下载完成后比对 SHA256SUMS；不匹配直接抛错，绝不给系统安装器 */
+async function verifyDownloadedApk(fileUri: string, apkName: string, sumsUrl: string): Promise<void> {
+  const sums = await withNetworkTimeout(async (signal) => {
+    const response = await fetch(sumsUrl, { headers: { Accept: 'application/octet-stream' }, signal });
+    if (!response.ok) throw new Error(`校验文件下载失败（HTTP ${response.status}）`);
+    return response.text();
+  });
+  const expected = findExpectedChecksum(parseSha256Sums(sums), apkName);
+  if (!expected) throw new Error(`SHA256SUMS 中没有 ${apkName} 的校验值，已中止安装`);
+  const actual = await computeFileSha256Hex(fileUri);
+  if (actual !== expected) throw new Error('安装包 SHA256 校验不匹配，可能与发布页上的不一致，已中止安装');
+}
 
 export function AppUpdateCard() {
   const [phase, setPhase] = useState<Phase>('idle');
@@ -37,16 +58,25 @@ export function AppUpdateCard() {
     setMessage(null);
     setRelease(null);
     try {
-      const response = await fetch(UPDATE_RELEASES_API, {
-        headers: { Accept: 'application/vnd.github+json' },
+      const payload = await withNetworkTimeout(async (signal) => {
+        const response = await fetch(UPDATE_RELEASES_API, {
+          headers: { Accept: 'application/vnd.github+json' }, signal,
+        });
+        if (response.status === 403 || response.status === 429) {
+          throw new Error('检查过于频繁（GitHub 限流），请稍后再试');
+        }
+        if (!response.ok) throw new Error(`检查更新失败（HTTP ${response.status}）`);
+        return response.json();
       });
-      if (response.status === 403 || response.status === 429) {
-        throw new Error('检查过于频繁（GitHub 限流），请稍后再试');
-      }
-      if (!response.ok) throw new Error(`检查更新失败（HTTP ${response.status}）`);
-      const latest = parseRelease(await response.json());
+      const latest = parseRelease(payload);
       if (!latest) throw new Error('未找到可用的版本信息');
       if (!latest.apk) throw new Error('最新版本没有提供安装包');
+      if (!isTrustedDownloadUrl(latest.apk.downloadUrl)) {
+        throw new Error('安装包下载地址不是 GitHub 官方域名，已中止（防止下载链路被篡改）');
+      }
+      if (!latest.checksums || !isTrustedDownloadUrl(latest.checksums.downloadUrl)) {
+        throw new Error('该版本未附带可用的 SHA256SUMS 校验文件，已中止下载（防止安装包被篡改）');
+      }
 
       setRelease(latest);
       if (isUpdateAvailable(CURRENT_VERSION, latest.version)) {
@@ -73,6 +103,8 @@ export function AppUpdateCard() {
         const result = await FileSystem.downloadAsync(release.apk.downloadUrl, target);
         if (result.status !== 200) throw new Error(`下载失败（HTTP ${result.status}）`);
       }
+      if (!release.checksums) throw new Error('该版本没有校验文件，已中止安装');
+      await verifyDownloadedApk(target, release.apk.name, release.checksums.downloadUrl);
 
       setPhase('ready');
       setInstalling(true);
@@ -120,7 +152,7 @@ export function AppUpdateCard() {
           </Text>
           {release?.notes ? <Text style={styles.notes} numberOfLines={6}>{release.notes}</Text> : null}
           <Text style={styles.notice}>
-            安装时系统会弹出确认框（Android 不允许应用静默安装）。首次使用需在系统设置里允许 FaceE 安装应用。
+            安装前会从发布页下载 SHA256SUMS 校验安装包；安装时系统会弹出确认框（Android 不允许应用静默安装）。首次使用需在系统设置里允许 FaceE 安装应用。
           </Text>
         </View>
       ) : null}

@@ -170,8 +170,8 @@ export interface QuestionBankRepository {
    * 布局为 <targetAssetsRoot>/<catalogId>/<questionId>/assets/…。尽力而为，返回涉题库数。
    */
   stageLocalBankAssets(targetAssetsRoot: string): Promise<number>;
-  /** 从备份暂存目录（同上布局）把指定题库的图片资产回填到其已装命名空间。尽力而为。 */
-  restoreBankAssets(assetsRoot: string, catalogId: string): Promise<void>;
+  /** 从备份源 id 读取图片并回填到目标题库；冲突导入时两者不同。 */
+  restoreBankAssets(assetsRoot: string, sourceCatalogId: string, targetCatalogId: string): Promise<void>;
 }
 
 export interface RemoteQuestionBankRepository extends QuestionBankRepository {
