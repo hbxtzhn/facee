@@ -1,11 +1,11 @@
 version: 2
 updates:
-  # Expo / React Native 生态升级快，依赖按月跟
+  # 停止自动版本升级 PR；安全告警仍保留，安全更新 PR 在仓库设置中关闭。
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: monthly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     labels: [dependencies]
     groups:
       expo:
@@ -26,4 +26,5 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    open-pull-requests-limit: 0
     labels: [dependencies, ci]
