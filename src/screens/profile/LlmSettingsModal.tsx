@@ -87,7 +87,7 @@ export function LlmSettingsModal({ visible, onClose }: { visible: boolean; onClo
     <ModalSheet
       visible={visible}
       title="AI 设置"
-      hint="用于「从文本导入题目」时调用你自己的模型服务（OpenAI 兼容协议）。Key 保存在本机系统加密存储（Android Keystore）中，不会进入系统备份与题库备份。"
+      hint="用于 AI 导入与改写，调用你自己的模型服务（OpenAI 兼容协议）。图片导入需选择支持视觉输入的模型；默认文本模型不一定支持。Key 保存在本机系统加密存储（Android Keystore）中，不会进入系统备份与题库备份。"
       onClose={onClose}
       footer={
         <SheetActions

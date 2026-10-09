@@ -2,7 +2,7 @@
   "expo": {
     "name": "FaceE",
     "slug": "facee",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "ios": {
@@ -16,7 +16,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.facee.app",
-      "versionCode": 8,
+      "versionCode": 9,
       "permissions": [
         "REQUEST_INSTALL_PACKAGES"
       ]
@@ -28,6 +28,14 @@
       "./plugins/withAndroidArm64Release",
       "./plugins/withAndroidReleaseSigning",
       "expo-sharing",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": false,
+          "microphonePermission": false,
+          "photosPermission": "允许 FaceE 选择图片，用于发送给你配置的 AI 服务提取题目"
+        }
+      ],
       [
         "expo-splash-screen",
         {

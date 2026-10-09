@@ -7,6 +7,7 @@
  */
 
 import { withNetworkTimeout } from './network';
+import { inspectImageBase64, type LlmImageInput } from './import-image';
 
 export interface LlmConfig {
   /** 例如 https://api.deepseek.com/v1（不含 /chat/completions） */
@@ -119,6 +120,27 @@ export async function extractQuestionsFromChunks(
   return drafts;
 }
 
+/** 单张图片视觉抽取。图片上传只请求一次，避免自动重试导致重复计费。 */
+export async function extractQuestionsFromImage(
+  config: LlmConfig,
+  image: LlmImageInput,
+  options: ExtractOptions = {},
+): Promise<GeneratedQuestionDraft[]> {
+  validateConfig(config);
+  if (inspectImageBase64(image.base64) !== image.mimeType) throw new Error('图片内容与类型不一致，请重新选择');
+  const prompt = buildExtractionUserPrompt(
+    '资料是本消息附带的图片。请阅读图片中的题目和答案；保留公式、选项与上下文。看不清的内容不要猜测，图片没有答案时填 null。',
+    options.requirements,
+  );
+  const raw = await callChatCompletion(options.fetchImpl ?? fetch, config, [
+    { type: 'text', text: prompt },
+    { type: 'image_url', image_url: { url: `data:${image.mimeType};base64,${image.base64}`, detail: 'auto' } },
+  ], options.signal);
+  const drafts = parseGeneratedQuestions(raw);
+  options.onProgress?.(1, 1);
+  return drafts;
+}
+
 export function validateConfig(config: LlmConfig): void {
   const baseUrl = config.baseUrl.trim().replace(/\/+$/, '');
   if (!/^https?:\/\//.test(baseUrl)) throw new Error('AI 服务地址必须以 http(s):// 开头');
@@ -166,10 +188,14 @@ export async function fetchModelIds(config: LlmConfig, fetchImpl?: FetchLike): P
   return ids;
 }
 
+type ChatUserContent = string | (
+  { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string; detail: 'auto' } }
+)[];
+
 async function callChatCompletion(
   doFetch: FetchLike,
   config: LlmConfig,
-  userPrompt: string,
+  userPrompt: ChatUserContent,
   signal?: AbortSignal,
 ): Promise<string> {
   const url = `${config.baseUrl.trim().replace(/\/+$/, '')}/chat/completions`;
@@ -194,6 +220,8 @@ async function callChatCompletion(
     return { response, body: await response.text() };
   }, { timeoutMs: 60_000, signal });
   if (!response.ok) {
+    // 图片错误响应可能回显原图数据，不将其展示或记录。
+    if (Array.isArray(userPrompt)) throw new Error(`HTTP ${response.status}：图片请求失败，请确认服务与模型支持图片输入`);
     throw new Error(`HTTP ${response.status} ${body.slice(0, 160)}`);
   }
   const parsed = JSON.parse(body) as { choices?: { message?: { content?: unknown } }[] };
