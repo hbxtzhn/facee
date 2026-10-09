@@ -28,7 +28,7 @@ jobs:
       - run: node --test scripts/*.test.mjs
       - name: Expo SDK compatibility
         run: npx expo install --check
-      # 三个已知上游无可安装补丁的工具链公告有记录；新增公告仍阻止合并。
+      # node-forge 保留已记录例外；braces/sprintf-js 必须核验本地补丁与回归。新增公告仍阻止合并。
       - run: node scripts/audit-dependencies.mjs
       - run: node scripts/generate-notices.mjs --check
       - uses: actions/upload-artifact@v4

@@ -10,6 +10,10 @@ overrides:
   source-map-js@<1.2.2: ^1.2.2
   shell-quote@<1.11.0: ^1.11.0
 
+patchedDependencies:
+  braces@3.0.3: e425e54b5c3cfbe2a23d6f45834143df16e7370c77b0e11e58c415bd6128a1bd
+  sprintf-js@1.0.3: 27fcda4072d52df94c87775216289d44323003f1f2ac5c6d27b65e525d3a1140
+
 importers:
 
   .:
@@ -5436,7 +5440,7 @@ snapshots:
 
   argparse@1.0.10:
     dependencies:
-      sprintf-js: 1.0.3
+      sprintf-js: 1.0.3(patch_hash=27fcda4072d52df94c87775216289d44323003f1f2ac5c6d27b65e525d3a1140)
 
   argparse@2.0.1: {}
 
@@ -5642,7 +5646,7 @@ snapshots:
     dependencies:
       balanced-match: 4.0.4
 
-  braces@3.0.3:
+  braces@3.0.3(patch_hash=e425e54b5c3cfbe2a23d6f45834143df16e7370c77b0e11e58c415bd6128a1bd):
     dependencies:
       fill-range: 7.1.1
 
@@ -7503,7 +7507,7 @@ snapshots:
 
   micromatch@4.0.8:
     dependencies:
-      braces: 3.0.3
+      braces: 3.0.3(patch_hash=e425e54b5c3cfbe2a23d6f45834143df16e7370c77b0e11e58c415bd6128a1bd)
       picomatch: 2.3.2
 
   mime-db@1.52.0: {}
@@ -8064,7 +8068,7 @@ snapshots:
 
   source-map@0.6.1: {}
 
-  sprintf-js@1.0.3: {}
+  sprintf-js@1.0.3(patch_hash=27fcda4072d52df94c87775216289d44323003f1f2ac5c6d27b65e525d3a1140): {}
 
   stack-generator@2.0.10:
     dependencies:

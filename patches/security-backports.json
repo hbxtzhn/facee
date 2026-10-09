@@ -1,0 +1,25 @@
+{
+  "GHSA-vfj7-8cjw-p6xm": {
+    "name": "braces",
+    "version": "3.0.3",
+    "patch": "patches/braces@3.0.3.patch",
+    "sha256": "e425e54b5c3cfbe2a23d6f45834143df16e7370c77b0e11e58c415bd6128a1bd",
+    "files": {
+      "lib/constants.js": "51e0ae673604072a1be23c73b285b2774d12fc1aa4ee83f4a47f05088faba378",
+      "lib/parse.js": "587a8d959c255f48deaf5befb3eab3bced654289232c954416200f302e2dfa39",
+      "lib/compile.js": "1918f0be016054a535a9b30aab980c2adb0a2c824323b23767bcbc89bff069eb",
+      "lib/expand.js": "5a6ab9589eecaf6277042d62d088b5ce02d2182eeb6ae0eee0b26ac5ff6a4890",
+      "lib/stringify.js": "84a37a612356af329df7da34f0ea8a8ff572d12c343c693496bca5e87c4f4144"
+    }
+  },
+  "GHSA-hp3w-g68c-fv3c": {
+    "name": "sprintf-js",
+    "version": "1.0.3",
+    "patch": "patches/sprintf-js@1.0.3.patch",
+    "sha256": "27fcda4072d52df94c87775216289d44323003f1f2ac5c6d27b65e525d3a1140",
+    "files": {
+      "src/sprintf.js": "a63570cd2adfa595bd80ae3d8dcc355706fa3f6a2cd7bd1792555180c6bc260d",
+      "dist/sprintf.min.js": "e1c5ce50420a55a8807f3f78e52b937fe8c63dca914abe3110dc33e7e7201c26"
+    }
+  }
+}
