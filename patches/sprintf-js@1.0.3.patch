@@ -1,0 +1,45 @@
+diff --git a/.npmignore b/.npmignore
+deleted file mode 100644
+index 096746c1480d8f93be244a3d71f0594b072092d1..0000000000000000000000000000000000000000
+diff --git a/dist/sprintf.min.js b/dist/sprintf.min.js
+index dc61e51add29bb9904898831d4bcc44acc6267a9..46c46c5ea2e1656e94087b61ee5d9059af2d3536 100644
+--- a/dist/sprintf.min.js
++++ b/dist/sprintf.min.js
+@@ -1,4 +1,2 @@
+ /*! sprintf-js | Alexandru Marasteanu <hello@alexei.ro> (http://alexei.ro/) | BSD-3-Clause */
+-
+-!function(a){function b(){var a=arguments[0],c=b.cache;return c[a]&&c.hasOwnProperty(a)||(c[a]=b.parse(a)),b.format.call(null,c[a],arguments)}function c(a){return Object.prototype.toString.call(a).slice(8,-1).toLowerCase()}function d(a,b){return Array(b+1).join(a)}var e={not_string:/[^s]/,number:/[diefg]/,json:/[j]/,not_json:/[^j]/,text:/^[^\x25]+/,modulo:/^\x25{2}/,placeholder:/^\x25(?:([1-9]\d*)\$|\(([^\)]+)\))?(\+)?(0|'[^$])?(-)?(\d+)?(?:\.(\d+))?([b-gijosuxX])/,key:/^([a-z_][a-z_\d]*)/i,key_access:/^\.([a-z_][a-z_\d]*)/i,index_access:/^\[(\d+)\]/,sign:/^[\+\-]/};b.format=function(a,f){var g,h,i,j,k,l,m,n=1,o=a.length,p="",q=[],r=!0,s="";for(h=0;o>h;h++)if(p=c(a[h]),"string"===p)q[q.length]=a[h];else if("array"===p){if(j=a[h],j[2])for(g=f[n],i=0;i<j[2].length;i++){if(!g.hasOwnProperty(j[2][i]))throw new Error(b("[sprintf] property '%s' does not exist",j[2][i]));g=g[j[2][i]]}else g=j[1]?f[j[1]]:f[n++];if("function"==c(g)&&(g=g()),e.not_string.test(j[8])&&e.not_json.test(j[8])&&"number"!=c(g)&&isNaN(g))throw new TypeError(b("[sprintf] expecting number but found %s",c(g)));switch(e.number.test(j[8])&&(r=g>=0),j[8]){case"b":g=g.toString(2);break;case"c":g=String.fromCharCode(g);break;case"d":case"i":g=parseInt(g,10);break;case"j":g=JSON.stringify(g,null,j[6]?parseInt(j[6]):0);break;case"e":g=j[7]?g.toExponential(j[7]):g.toExponential();break;case"f":g=j[7]?parseFloat(g).toFixed(j[7]):parseFloat(g);break;case"g":g=j[7]?parseFloat(g).toPrecision(j[7]):parseFloat(g);break;case"o":g=g.toString(8);break;case"s":g=(g=String(g))&&j[7]?g.substring(0,j[7]):g;break;case"u":g>>>=0;break;case"x":g=g.toString(16);break;case"X":g=g.toString(16).toUpperCase()}e.json.test(j[8])?q[q.length]=g:(!e.number.test(j[8])||r&&!j[3]?s="":(s=r?"+":"-",g=g.toString().replace(e.sign,"")),l=j[4]?"0"===j[4]?"0":j[4].charAt(1):" ",m=j[6]-(s+g).length,k=j[6]&&m>0?d(l,m):"",q[q.length]=j[5]?s+g+k:"0"===l?s+k+g:k+s+g)}return q.join("")},b.cache={},b.parse=function(a){for(var b=a,c=[],d=[],f=0;b;){if(null!==(c=e.text.exec(b)))d[d.length]=c[0];else if(null!==(c=e.modulo.exec(b)))d[d.length]="%";else{if(null===(c=e.placeholder.exec(b)))throw new SyntaxError("[sprintf] unexpected placeholder");if(c[2]){f|=1;var g=[],h=c[2],i=[];if(null===(i=e.key.exec(h)))throw new SyntaxError("[sprintf] failed to parse named argument key");for(g[g.length]=i[1];""!==(h=h.substring(i[0].length));)if(null!==(i=e.key_access.exec(h)))g[g.length]=i[1];else{if(null===(i=e.index_access.exec(h)))throw new SyntaxError("[sprintf] failed to parse named argument key");g[g.length]=i[1]}c[2]=g}else f|=2;if(3===f)throw new Error("[sprintf] mixing positional and named placeholders is not (yet) supported");d[d.length]=c}b=b.substring(c[0].length)}return d};var f=function(a,c,d){return d=(c||[]).slice(0),d.splice(0,0,a),b.apply(null,d)};"undefined"!=typeof exports?(exports.sprintf=b,exports.vsprintf=f):(a.sprintf=b,a.vsprintf=f,"function"==typeof define&&define.amd&&define(function(){return{sprintf:b,vsprintf:f}}))}("undefined"==typeof window?this:window);
+-//# sourceMappingURL=sprintf.min.map
+\ No newline at end of file
++!function(e){var n={not_string:/[^s]/,number:/[diefg]/,json:/[j]/,not_json:/[^j]/,text:/^[^\x25]+/,modulo:/^\x25{2}/,placeholder:/^\x25(?:([1-9]\d*)\$|\(([^\)]+)\))?(\+)?(0|'[^$])?(-)?(\d+)?(?:\.(\d+))?([b-gijosuxX])/,key:/^([a-z_][a-z_\d]*)/i,key_access:/^\.([a-z_][a-z_\d]*)/i,index_access:/^\[(\d+)\]/,sign:/^[\+\-]/};function t(){var e=arguments[0],n=t.cache;return n[e]&&n.hasOwnProperty(e)||(n[e]=t.parse(e)),t.format.call(null,n[e],arguments)}t.format=function(e,r){var i,a,l,c,f,p,u,d=1,g=e.length,h="",x=[],b=!0,y="";for(a=0;a<g;a++)if("string"===(h=o(e[a])))x[x.length]=e[a];else if("array"===h){var w=void 0===(c=e[a])[7]?void 0:Math.min(100,parseInt(c[7],10));if(c[2])for(i=r[d],l=0;l<c[2].length;l++){if(!i.hasOwnProperty(c[2][l]))throw new Error(t("[sprintf] property '%s' does not exist",c[2][l]));i=i[c[2][l]]}else i=c[1]?r[c[1]]:r[d++];if("function"==o(i)&&(i=i()),n.not_string.test(c[8])&&n.not_json.test(c[8])&&"number"!=o(i)&&isNaN(i))throw new TypeError(t("[sprintf] expecting number but found %s",o(i)));switch(n.number.test(c[8])&&(b=i>=0),c[8]){case"b":i=i.toString(2);break;case"c":i=String.fromCharCode(i);break;case"d":case"i":i=parseInt(i,10);break;case"j":i=JSON.stringify(i,null,c[6]?parseInt(c[6]):0);break;case"e":i=void 0!==w?i.toExponential(w):i.toExponential();break;case"f":i=void 0!==w?parseFloat(i).toFixed(w):parseFloat(i);break;case"g":i=void 0!==w?parseFloat(i).toPrecision(Math.max(1,w)):parseFloat(i);break;case"o":i=i.toString(8);break;case"s":i=(i=String(i))&&c[7]?i.substring(0,c[7]):i;break;case"u":i>>>=0;break;case"x":i=i.toString(16);break;case"X":i=i.toString(16).toUpperCase()}n.json.test(c[8])?x[x.length]=i:(!n.number.test(c[8])||b&&!c[3]?y="":(y=b?"+":"-",i=i.toString().replace(n.sign,"")),p=c[4]?"0"===c[4]?"0":c[4].charAt(1):" ",u=c[6]-(y+i).length,f=c[6]&&u>0?s(p,u):"",x[x.length]=c[5]?y+i+f:"0"===p?y+f+i:f+y+i)}return x.join("")},t.cache={},t.parse=function(e){for(var t=e,r=[],o=[],s=0;t;){if(null!==(r=n.text.exec(t)))o[o.length]=r[0];else if(null!==(r=n.modulo.exec(t)))o[o.length]="%";else{if(null===(r=n.placeholder.exec(t)))throw new SyntaxError("[sprintf] unexpected placeholder");if(r[2]){s|=1;var i=[],a=r[2],l=[];if(null===(l=n.key.exec(a)))throw new SyntaxError("[sprintf] failed to parse named argument key");for(i[i.length]=l[1];""!==(a=a.substring(l[0].length));)if(null!==(l=n.key_access.exec(a)))i[i.length]=l[1];else{if(null===(l=n.index_access.exec(a)))throw new SyntaxError("[sprintf] failed to parse named argument key");i[i.length]=l[1]}r[2]=i}else s|=2;if(3===s)throw new Error("[sprintf] mixing positional and named placeholders is not (yet) supported");o[o.length]=r}t=t.substring(r[0].length)}return o};var r=function(e,n,r){return(r=(n||[]).slice(0)).splice(0,0,e),t.apply(null,r)};function o(e){return Object.prototype.toString.call(e).slice(8,-1).toLowerCase()}function s(e,n){return Array(n+1).join(e)}"undefined"!=typeof exports?(exports.sprintf=t,exports.vsprintf=r):(e.sprintf=t,e.vsprintf=r,"function"==typeof define&&define.amd&&define(function(){return{sprintf:t,vsprintf:r}}))}("undefined"==typeof window?this:window);
+diff --git a/src/sprintf.js b/src/sprintf.js
+index c0fc7c08b2e6fe38de2883034b8d28c8f34e9866..11b569812e670aa3cc4970320139ba38e9c2e616 100644
+--- a/src/sprintf.js
++++ b/src/sprintf.js
+@@ -30,6 +30,9 @@
+             }
+             else if (node_type === "array") {
+                 match = parse_tree[i] // convenience purposes only
++                // Local security backport: bound numeric precision before engine conversion.
++                // Clamp oversized values instead of replacing RangeError with another uncaught error.
++                var precision = match[7] === undefined ? undefined : Math.min(100, parseInt(match[7], 10))
+                 if (match[2]) { // keyword argument
+                     arg = argv[cursor]
+                     for (k = 0; k < match[2].length; k++) {
+@@ -73,13 +76,13 @@
+                         arg = JSON.stringify(arg, null, match[6] ? parseInt(match[6]) : 0)
+                     break
+                     case "e":
+-                        arg = match[7] ? arg.toExponential(match[7]) : arg.toExponential()
++                        arg = precision !== undefined ? arg.toExponential(precision) : arg.toExponential()
+                     break
+                     case "f":
+-                        arg = match[7] ? parseFloat(arg).toFixed(match[7]) : parseFloat(arg)
++                        arg = precision !== undefined ? parseFloat(arg).toFixed(precision) : parseFloat(arg)
+                     break
+                     case "g":
+-                        arg = match[7] ? parseFloat(arg).toPrecision(match[7]) : parseFloat(arg)
++                        arg = precision !== undefined ? parseFloat(arg).toPrecision(Math.max(1, precision)) : parseFloat(arg)
+                     break
+                     case "o":
+                         arg = arg.toString(8)

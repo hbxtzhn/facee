@@ -1,0 +1,3 @@
+# pnpm patch hashes must be reproducible on Windows and Linux.
+# Unified-diff context lines intentionally contain whitespace.
+patches/*.patch text eol=lf -whitespace
