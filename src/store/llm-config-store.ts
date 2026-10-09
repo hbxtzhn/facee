@@ -67,7 +67,7 @@ async function writeApiKey(apiKey: string): Promise<void> {
     if (apiKey) await SecureStore.setItemAsync(SECURE_API_KEY, apiKey);
     else await SecureStore.deleteItemAsync(SECURE_API_KEY);
   } catch {
-    // 存储失败只影响下次启动时的回填，本会话内存态仍可用
+    throw new Error('API Key 安全存储失败，配置未保存，请检查设备后重试');
   }
 }
 
@@ -82,8 +82,14 @@ export const useLlmConfigStore = create<LlmConfigState>((set, get) => ({
       const { config, legacyApiKey } = parsePersisted(raw);
       if (legacyApiKey) {
         // 一次性迁移：v1 明文 Key 搬进安全存储，旧包改写为不含 Key 的版本
-        if (!(await readApiKey())) await writeApiKey(legacyApiKey);
-        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+        try {
+          if (!(await readApiKey())) await writeApiKey(legacyApiKey);
+          await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+        } catch {
+          // 安全写入失败时保留旧数据，下次启动重试，不能先删除唯一凭据副本。
+          set({ ...config, apiKey: legacyApiKey, loaded: true });
+          return;
+        }
       }
       const apiKey = (await readApiKey()) || legacyApiKey || '';
       set({ ...config, apiKey, loaded: true });
@@ -100,13 +106,9 @@ export const useLlmConfigStore = create<LlmConfigState>((set, get) => ({
       extractionPrompt: get().extractionPrompt,
     };
     const apiKey = config.apiKey.trim();
-    set({ ...persisted, apiKey });
-    try {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
-    } catch {
-      // 存储失败只影响下次启动时的回填，本会话内存态仍可用
-    }
     await writeApiKey(apiKey);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
+    set({ ...persisted, apiKey });
   },
 
   saveExtractionPrompt: async (prompt) => {

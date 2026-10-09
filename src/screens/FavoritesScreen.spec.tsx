@@ -80,7 +80,7 @@ describe('FavoritesScreen 收藏 | 错题 双段', () => {
     await render(<FavoritesScreen />);
 
     await waitFor(() => expect(screen.getByLabelText('错题（2 题）')).toBeTruthy());
-    fireEvent.press(screen.getByLabelText('错题（2 题）'));
+    await fireEvent.press(screen.getByLabelText('错题（2 题）'));
 
     await waitFor(() => expect(screen.getByText('错题一：JVM 内存区域')).toBeTruthy());
     expect(screen.getByText('错题二：G1 收集器')).toBeTruthy();
@@ -91,15 +91,15 @@ describe('FavoritesScreen 收藏 | 错题 双段', () => {
   it('孤儿标记（题库中不存在的题）被过滤并提示条数', async () => {
     await render(<FavoritesScreen />);
 
-    fireEvent.press(await screen.findByLabelText('错题（2 题）'));
+    await fireEvent.press(await screen.findByLabelText('错题（2 题）'));
     await waitFor(() => expect(screen.getByText(/另有 1 条标记来自已卸载的旧题库/)).toBeTruthy());
   });
 
   it('开始复习带完整错题队列以练习模式进入详情页', async () => {
     await render(<FavoritesScreen />);
 
-    fireEvent.press(await screen.findByLabelText('错题（2 题）'));
-    fireEvent.press(await screen.findByLabelText('开始复习 2 道错题'));
+    await fireEvent.press(await screen.findByLabelText('错题（2 题）'));
+    await fireEvent.press(await screen.findByLabelText('开始复习 2 道错题'));
 
     expect(mockNavigate).toHaveBeenCalledWith('Detail', expect.objectContaining({
       id: 'wrong-1',

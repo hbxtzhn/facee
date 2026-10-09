@@ -26,8 +26,9 @@
 
 ## 执行
 
-举报请走 GitHub 私信（[@HBxtzhn](https://github.com/HBxtzhn)）或在 Security →
-Report a vulnerability 提交非公开报告。所有举报都会被及时、公正地审查与调查。
+GitHub 不提供通用私信功能。请使用仓库 Security → Report a vulnerability 的私密通道
+联系维护者（也接收行为准则举报）；若该入口不可用，可在 Issue 请求维护者提供私密联系方式，
+不要在公开 Issue 中披露举报细节或个人信息。所有举报都会被及时、公正地审查与调查。
 维护者有义务对举报人身份保密，并将逐步采取其认为适当的措施。
 
 本准则改编自 [Contributor Covenant](https://www.contributor-covenant.org) v2.1，

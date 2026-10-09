@@ -121,6 +121,24 @@ describe('useLlmConfigStore - Key 存安全存储', () => {
     expect(parsed.presetId).toBe('zhipu');
   });
 
+  it('安全写入失败时保留旧凭据，后续加载可重试迁移', async () => {
+    const legacy = JSON.stringify({ presetId: 'custom', baseUrl: 'https://x', apiKey: 'legacy-key', model: 'm' });
+    await AsyncStorage.setItem(STORAGE_KEY, legacy);
+    secureStore.setItemAsync.mockRejectedValueOnce(new Error('keystore unavailable'));
+    await useLlmConfigStore.getState().load();
+    expect(await AsyncStorage.getItem(STORAGE_KEY)).toBe(legacy);
+    expect(useLlmConfigStore.getState().apiKey).toBe('legacy-key');
+    await useLlmConfigStore.getState().load();
+    expect(JSON.parse((await AsyncStorage.getItem(STORAGE_KEY))!)).not.toHaveProperty('apiKey');
+  });
+
+  it('保存失败向调用方报错，不假装保存成功', async () => {
+    secureStore.setItemAsync.mockRejectedValueOnce(new Error('keystore unavailable'));
+    await expect(useLlmConfigStore.getState().save({ presetId: 'custom', baseUrl: 'https://x', apiKey: 'new-key', model: 'm' })).rejects.toThrow('安全存储失败');
+    expect(useLlmConfigStore.getState().apiKey).toBe('');
+    expect(await AsyncStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
   it('已迁过一次后再次 load 不会重复搬运', async () => {
     await AsyncStorage.setItem(
       STORAGE_KEY,

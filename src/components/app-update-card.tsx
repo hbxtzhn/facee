@@ -15,6 +15,7 @@ import {
   parseRelease,
   parseSha256Sums,
 } from '../lib/app-update';
+import { withNetworkTimeout } from '../lib/network';
 import { computeFileSha256Hex } from '../lib/apk-verify';
 import { AppButton, Surface } from './ui';
 import { colors, spacing, typography } from '../theme';
@@ -35,9 +36,12 @@ const CURRENT_VERSION = Constants.expoConfig?.version ?? '0.0.0';
 
 /** 下载完成后比对 SHA256SUMS；不匹配直接抛错，绝不给系统安装器 */
 async function verifyDownloadedApk(fileUri: string, apkName: string, sumsUrl: string): Promise<void> {
-  const response = await fetch(sumsUrl, { headers: { Accept: 'application/octet-stream' } });
-  if (!response.ok) throw new Error(`校验文件下载失败（HTTP ${response.status}）`);
-  const expected = findExpectedChecksum(parseSha256Sums(await response.text()), apkName);
+  const sums = await withNetworkTimeout(async (signal) => {
+    const response = await fetch(sumsUrl, { headers: { Accept: 'application/octet-stream' }, signal });
+    if (!response.ok) throw new Error(`校验文件下载失败（HTTP ${response.status}）`);
+    return response.text();
+  });
+  const expected = findExpectedChecksum(parseSha256Sums(sums), apkName);
   if (!expected) throw new Error(`SHA256SUMS 中没有 ${apkName} 的校验值，已中止安装`);
   const actual = await computeFileSha256Hex(fileUri);
   if (actual !== expected) throw new Error('安装包 SHA256 校验不匹配，可能与发布页上的不一致，已中止安装');
@@ -54,14 +58,17 @@ export function AppUpdateCard() {
     setMessage(null);
     setRelease(null);
     try {
-      const response = await fetch(UPDATE_RELEASES_API, {
-        headers: { Accept: 'application/vnd.github+json' },
+      const payload = await withNetworkTimeout(async (signal) => {
+        const response = await fetch(UPDATE_RELEASES_API, {
+          headers: { Accept: 'application/vnd.github+json' }, signal,
+        });
+        if (response.status === 403 || response.status === 429) {
+          throw new Error('检查过于频繁（GitHub 限流），请稍后再试');
+        }
+        if (!response.ok) throw new Error(`检查更新失败（HTTP ${response.status}）`);
+        return response.json();
       });
-      if (response.status === 403 || response.status === 429) {
-        throw new Error('检查过于频繁（GitHub 限流），请稍后再试');
-      }
-      if (!response.ok) throw new Error(`检查更新失败（HTTP ${response.status}）`);
-      const latest = parseRelease(await response.json());
+      const latest = parseRelease(payload);
       if (!latest) throw new Error('未找到可用的版本信息');
       if (!latest.apk) throw new Error('最新版本没有提供安装包');
       if (!isTrustedDownloadUrl(latest.apk.downloadUrl)) {

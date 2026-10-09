@@ -6,6 +6,7 @@ import {
   planBankImports,
   restoreBackupZip,
 } from './backup';
+import { assertBackupArchiveSize, BACKUP_LIMITS, inspectBackupEntries } from './backup-validation';
 import { TEST_QUESTION_BANK } from '../question-bank/fixture';
 import type { LocalBankSource } from '../question-bank/types';
 
@@ -16,7 +17,7 @@ class MemoryFileSystem {
 
   async getInfoAsync(uri: string) {
     const entry = this.entries.get(uri);
-    return { exists: Boolean(entry), isDirectory: entry?.isDirectory ?? false };
+    return { exists: Boolean(entry), isDirectory: entry?.isDirectory ?? false, size: entry?.value?.length ?? 0 };
   }
 
   async makeDirectoryAsync(uri: string) {
@@ -85,8 +86,10 @@ function createFakeZip(fileSystem: MemoryFileSystem) {
         }
       };
       await walk(source, '');
+      await fileSystem.writeAsStringAsync(target, 'fake-zip');
       return target;
     },
+    listContents: async () => snapshot.map(([path, value]) => ({ path, size: value.length, isDirectory: false })),
     unzip: async (_source: string, target: string) => {
       for (const [relative, value] of snapshot) {
         await fileSystem.writeAsStringAsync(`${target}${relative}`, value);
@@ -118,6 +121,32 @@ describe('backup 备份导入规划', () => {
     expect(plans[0].source.bankId).toMatch(/^local-/);
     expect(plans[0].source.package.catalog.title).toBe('我的题库（导入）');
     expect(plans[0].source.package.catalog.id).toBe(plans[0].source.bankId);
+  });
+});
+
+describe('backup 解压前安全检查', () => {
+  const manifest = { path: 'manifest.json', size: 100, isDirectory: false };
+  it.each(['../escape', '/absolute', 'C:/drive', 'assets/local-a/q/assets/%2e%2e/escape', 'unknown.txt'])('拒绝不安全/未知路径 %s', (path) => {
+    expect(() => inspectBackupEntries([manifest, { path, size: 1, isDirectory: false }])).toThrow();
+  });
+  it('拒绝重复、加密、大文件和缺失大小元数据', () => {
+    expect(() => inspectBackupEntries([manifest, manifest])).toThrow('重复');
+    expect(() => inspectBackupEntries([{ ...manifest, isEncrypted: true }])).toThrow('加密');
+    expect(() => inspectBackupEntries([{ ...manifest, size: BACKUP_LIMITS.entryBytes + 1 }])).toThrow('32 MB');
+    expect(() => inspectBackupEntries([{ path: 'manifest.json', isDirectory: false }])).toThrow('大小');
+    expect(() => assertBackupArchiveSize(BACKUP_LIMITS.archiveBytes + 1)).toThrow('128 MB');
+  });
+  it('拒绝总解压体积超限，允许单层包装目录', () => {
+    const assets = Array.from({ length: 9 }, (_, i) => ({ path: `assets/local-a/q/assets/${i}.png`, size: BACKUP_LIMITS.entryBytes, isDirectory: false }));
+    expect(() => inspectBackupEntries([manifest, ...assets])).toThrow('256 MB');
+    expect(inspectBackupEntries([{ ...manifest, path: 'backup/manifest.json' }]).root).toBe('backup/');
+  });
+  it('严格校验 manifest 的版本、路径 id、重复 id 和题目数', () => {
+    const value = buildBackupManifest([makeSource('local-a')]);
+    for (const schemaVersion of [-1, 0, 1.5, 2]) expect(() => parseBackupManifest(JSON.stringify({ ...value, schemaVersion }))).toThrow();
+    for (const bankId of ['../a', 'other', 'local-a/escape']) expect(() => parseBackupManifest(JSON.stringify({ ...value, banks: [{ ...value.banks[0], bankId }] }))).toThrow();
+    expect(() => parseBackupManifest(JSON.stringify({ ...value, banks: [value.banks[0], value.banks[0]] }))).toThrow();
+    expect(() => parseBackupManifest(JSON.stringify({ ...value, banks: [{ ...value.banks[0], questionCount: -1 }] }))).toThrow();
   });
 });
 
@@ -188,7 +217,11 @@ describe('backup 打包与恢复 round-trip', () => {
       cacheDirectory: 'file:///cache/',
       fileSystem: fileSystem as never,
       installBank: async () => undefined,
-      restoreBankAssets: async () => undefined,
+      restoreBankAssets: async (_assetsRoot, sourceId, targetId) => {
+        expect(sourceId).toBe('local-a');
+        expect(targetId).toMatch(/^local-/);
+        expect(targetId).not.toBe('local-a');
+      },
       zipArchive: zip,
     });
     expect(second.imported[0].reusedExisting).toBe(true);
@@ -196,7 +229,7 @@ describe('backup 打包与恢复 round-trip', () => {
     expect(second.imported[0].title).toBe('我的题库（导入）');
   });
 
-  it('manifest 声明的库缺失源文件时跳过；备份里没有题库时报错', async () => {
+  it('manifest 声明的库缺失源文件时报错且不安装任何题库', async () => {
     const fileSystem = new MemoryFileSystem();
     createFakeZip(fileSystem);
     await fileSystem.writeAsStringAsync(
@@ -204,16 +237,19 @@ describe('backup 打包与恢复 round-trip', () => {
       JSON.stringify(buildBackupManifest([makeSource('local-a')])),
     );
     // 没写 sources/local-a.json
+    await fileSystem.writeAsStringAsync('file:///cache/loose.zip', 'fake-zip');
+    const installBank = jest.fn(async () => undefined);
     await expect(
       restoreBackupZip({
         zipPath: 'file:///cache/loose.zip',
         existingCatalogIds: new Set(),
         cacheDirectory: 'file:///cache/',
         fileSystem: fileSystem as never,
-        installBank: async () => undefined,
+        installBank,
         restoreBankAssets: async () => undefined,
         zipArchive: {
           zip: async () => 'file:///cache/x.zip',
+          listContents: async () => [{ path: 'manifest.json', size: 100, isDirectory: false }],
           unzip: async (_s: string, target: string) => {
             const manifest = await fileSystem.readAsStringAsync('file:///cache/loose/manifest.json');
             await fileSystem.writeAsStringAsync(`${target}manifest.json`, manifest);
@@ -221,6 +257,7 @@ describe('backup 打包与恢复 round-trip', () => {
           },
         },
       }),
-    ).rejects.toThrow('没有可导入的题库');
+    ).rejects.toThrow('Missing file');
+    expect(installBank).not.toHaveBeenCalled();
   });
 });

@@ -1,2 +1,12 @@
+# pnpm 11 非 registry 配置放工作区 YAML；Windows 原生构建必须避免长路径。
+nodeLinker: hoisted
+
 allowBuilds:
   '@parcel/watcher': true
+
+# 已知安全公告的补丁版本；升级父依赖后可移除对应覆盖。
+overrides:
+  'react-native-markdown-display>markdown-it': '^14.3.2'
+  'xcode>uuid': '^11.1.1'
+  'source-map-js@<1.2.2': '^1.2.2'
+  'shell-quote@<1.11.0': '^1.11.0'

@@ -11,12 +11,13 @@
  *   - Node 22+、本地 Android SDK（local.properties 就绪）、gh 已登录（gh auth status）
  *   - 自定义签名：配置 FACEE_UPLOAD_STORE_FILE / FACEE_UPLOAD_STORE_PASSWORD /
  *     FACEE_UPLOAD_KEY_ALIAS / FACEE_UPLOAD_KEY_PASSWORD，见 plugins/withAndroidReleaseSigning.js；
- *     不配置则用 Expo 模板默认的调试证书（仅适合自用分发）
+ *     release 缺少自持签名配置会失败；发布前必须通过项目证书指纹验证
  *
  * 为什么强制 SHA256SUMS：App 的应用内更新会下载并校验这个文件，哈希不匹配即中止安装。
  */
 
 import { createHash } from 'node:crypto';
+import { assertReleaseCertificate, assertTagTarget } from './release-policy.mjs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
   copyFileSync,
@@ -91,26 +92,22 @@ function extractChangelog(version) {
 function badgingCheck(apkPath, expected) {
   const sdkDir = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT;
   if (!sdkDir) {
-    console.log('· 未设置 ANDROID_HOME，跳过 aapt 核对');
-    return;
+    fail('发布必须设置 ANDROID_HOME 或 ANDROID_SDK_ROOT，不能跳过 APK 核对');
   }
   const buildTools = join(sdkDir, 'build-tools');
   if (!existsSync(buildTools)) {
-    console.log('· 未找到 build-tools，跳过 aapt 核对');
-    return;
+    fail('未找到 Android build-tools，禁止发布');
   }
   const versions = readdirSync(buildTools, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
-    .sort()
-    .reverse();
+    .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
   const binary = process.platform === 'win32' ? 'aapt2.exe' : 'aapt2';
   const aapt = versions
     .map((version) => join(buildTools, version, binary))
     .find((candidate) => existsSync(candidate));
   if (!aapt) {
-    console.log('· 未找到 aapt2，跳过包信息核对');
-    return;
+    fail('未找到 aapt2，禁止发布');
   }
   const output = execFileSync(aapt, ['dump', 'badging', apkPath], { encoding: 'utf8' });
   const packageMatch = /package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'/.exec(output);
@@ -120,6 +117,13 @@ function badgingCheck(apkPath, expected) {
   if (code !== String(expected.versionCode)) fail(`versionCode 不符：${code} ≠ ${expected.versionCode}`);
   if (name2 !== expected.version) fail(`versionName 不符：${name2} ≠ ${expected.version}`);
   console.log(`· aapt2 核对通过：${name} ${name2}（versionCode ${code}）`);
+  const toolsDir = dirname(aapt);
+  // 直接运行 apksigner.jar，避免 Windows .bat 的 shell 参数注入/空格问题。
+  const jar = join(toolsDir, 'lib', 'apksigner.jar');
+  if (!existsSync(jar)) fail('未找到 apksigner.jar，禁止发布');
+  const certificateOutput = execFileSync('java', ['-jar', jar, 'verify', '--print-certs', apkPath], { encoding: 'utf8' });
+  assertReleaseCertificate(certificateOutput);
+  console.log('· APK 发布证书指纹核对通过');
 }
 
 function sha256File(filePath) {
@@ -132,6 +136,7 @@ function main() {
   }
   if (!existsSync(join(ROOT, '.git'))) fail('请在 git 仓库根目录运行');
 
+  run('gh', ['auth', 'status']);
   const info = readAppInfo();
   const tag = `v${info.version}`;
   console.log(`\n● 发版 ${tag}（versionCode ${info.versionCode}）\n`);
@@ -149,6 +154,7 @@ function main() {
     run(gradlew, ['assembleRelease'], { cwd: join(ROOT, 'android'), shell: isWin });
   }
 
+  run('node', ['scripts/generate-notices.mjs', '--check']);
   const builtApk = join(ROOT, APK_OUTPUT);
   if (!existsSync(builtApk)) fail(`找不到构建产物：${APK_OUTPUT}`);
   badgingCheck(builtApk, info);
@@ -158,6 +164,7 @@ function main() {
   const apkName = `FaceE-arm64-${info.version}-release.apk`;
   const stagedApk = join(RELEASE_DIR, apkName);
   copyFileSync(builtApk, stagedApk);
+  copyFileSync(join(ROOT, 'docs/third-party-licenses.txt'), join(RELEASE_DIR, 'THIRD_PARTY_LICENSES.txt'));
 
   const digest = sha256File(stagedApk);
   writeFileSync(join(RELEASE_DIR, 'SHA256SUMS'), `${digest}  ${apkName}\n`);
@@ -172,7 +179,10 @@ function main() {
   const hasTag = spawnSync('git', ['rev-parse', '-q', '--verify', `refs/tags/${tag}`], { cwd: ROOT })
     .status === 0;
   if (hasTag) {
-    console.log(`· tag ${tag} 已存在，复用`);
+    const target = execFileSync('git', ['rev-parse', `${tag}^{commit}`], { cwd: ROOT, encoding: 'utf8' });
+    const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' });
+    assertTagTarget(target, head);
+    console.log(`· tag ${tag} 已存在且指向 HEAD，复用`);
   } else {
     run('git', ['tag', '-a', tag, '-m', `FaceE ${tag}`]);
     console.log(`· 已打 tag ${tag}`);
@@ -184,6 +194,11 @@ function main() {
     tag,
     stagedApk,
     join(RELEASE_DIR, 'SHA256SUMS'),
+    join(RELEASE_DIR, 'THIRD_PARTY_LICENSES.txt'),
+    '--repo',
+    'HBxtzhn/facee',
+    '--target',
+    execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim(),
     '--title',
     `FaceE ${tag}`,
     '--notes-file',

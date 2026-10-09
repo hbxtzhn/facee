@@ -559,12 +559,15 @@ describe('FileSystemQuestionBankRepository exportPackage / copyBankAssets', () =
     await freshFs.makeDirectoryAsync(`${stagedRoot}local-my-bank/${firstQuestionId}/assets/`);
     await freshFs.writeAsStringAsync(`${stagedRoot}local-my-bank/${firstQuestionId}/assets/diagram.png`, 'png-bytes');
 
-    await freshRepository.restoreBankAssets(stagedRoot, 'local-my-bank');
+    await freshRepository.install(bankWithId('local-imported'));
+    const importedNamespace = (await freshRepository.listBanks()).find((bank) => bank.catalogId === 'local-imported')?.namespace;
+    await freshRepository.restoreBankAssets(stagedRoot, 'local-my-bank', 'local-imported');
 
     await expect(
       freshFs.readAsStringAsync(
-        `file:///documents/facee-question-bank/banks/${freshNamespace}/questions/${firstQuestionId}/assets/diagram.png`,
+        `file:///documents/facee-question-bank/banks/${importedNamespace}/questions/${firstQuestionId}/assets/diagram.png`,
       ),
     ).resolves.toBe('png-bytes');
+    expect((await freshFs.getInfoAsync(`file:///documents/facee-question-bank/banks/${freshNamespace}/questions/${firstQuestionId}/assets/diagram.png`)).exists).toBe(false);
   });
 });

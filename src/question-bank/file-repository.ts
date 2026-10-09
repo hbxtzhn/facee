@@ -618,9 +618,9 @@ export class FileSystemQuestionBankRepository
     return stagedBanks;
   }
 
-  async restoreBankAssets(assetsRoot: string, catalogId: string): Promise<void> {
+  async restoreBankAssets(assetsRoot: string, sourceCatalogId: string, targetCatalogId: string): Promise<void> {
     const registry = await this.readRegistry();
-    const namespace = registry[catalogId];
+    const namespace = registry[targetCatalogId];
     if (!namespace) return;
     let catalog: QuestionBankCatalog;
     try {
@@ -630,7 +630,7 @@ export class FileSystemQuestionBankRepository
     }
     for (const question of catalog.questions) {
       try {
-        const source = joinUri(joinUri(assetsRoot, `${catalogId}/`), `${question.id}/assets/`);
+        const source = joinUri(joinUri(assetsRoot, `${sourceCatalogId}/`), `${question.id}/assets/`);
         const info = await this.fs.getInfoAsync(source);
         if (!info.exists || !info.isDirectory) continue;
         await this.fs.copyAsync({ from: source, to: this.assetsPath(namespace, question.id) });

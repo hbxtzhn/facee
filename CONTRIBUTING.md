@@ -12,8 +12,8 @@
 
 | 依赖 | 版本 | 说明 |
 | --- | --- | --- |
-| Node | 22+ | 建议用 fnm / nvm 管理 |
-| pnpm | 10+ | 本项目不用 npm / yarn 装依赖 |
+| Node | 22.13+ | 建议用 fnm / nvm 管理 |
+| pnpm | 11（packageManager 固定补丁） | 本项目不用 npm / yarn 装依赖 |
 | JDK | 17 | Android Gradle Plugin 需要 |
 | Android SDK | platform 36 / build-tools 36 | 配好 `ANDROID_HOME` |
 
@@ -22,7 +22,8 @@ git clone https://github.com/HBxtzhn/facee.git && cd facee
 pnpm install
 ```
 
-> 注意：`.npmrc` 里固定了 `node-linker=hoisted`。这是 Windows 上的硬性要求——
+> 注意：`pnpm-workspace.yaml` 里固定了 `nodeLinker: hoisted`（pnpm 11 已不从旧
+> `.npmrc` 读取这类非 registry 项目配置）。这是 Windows 上的硬性要求——
 > pnpm 默认的隔离布局会让 CMake 原生构建路径超过 Windows 260 字符上限而失败
 > （ninja 报 "Filename longer than 260 characters"）。别改回去。
 
@@ -48,7 +49,7 @@ prebuild 之后配置就丢了。现有插件：
 
 Expo 模板默认 release 用公开的调试证书（口令全网公开），意味着任何人都能签出同名
 `com.facee.app` 覆盖安装。`plugins/withAndroidReleaseSigning.js` 负责把 release 切到
-你自己的 keystore：**不配置时行为与模板完全一致**，配置了才切换。
+你自己的 keystore：**不配置时 release 构建直接失败**，debug 开发不受影响。发布脚本还会核对项目证书 SHA256 指纹，阻止误发 debug 或其他证书包。
 
 > 现状：维护者本机已切换为自持 keystore（凭据在 `~/.gradle/gradle.properties`，
 > keystore 文件在仓库外）。**丢失该 keystore 将永远无法给已装用户发更新**，务必备份。
@@ -86,7 +87,7 @@ cd android && ./gradlew assembleRelease
 - Conventional Commits（`feat:` / `fix:` / `refactor:` / `docs:` / `chore:`），
   scope 用模块名，如 `feat(review): …`
 - 一个提交只做一件事；提交信息写「为什么」，代码注释写「约束是什么」
-- 提交前跑全量 `pnpm typecheck && pnpm test`
+- 提交前跑全量 `pnpm typecheck && pnpm test && pnpm test:release`
 
 ## 发版流程（维护者）
 
@@ -95,11 +96,20 @@ cd android && ./gradlew assembleRelease
 #    Android 靠它判断能否覆盖安装；versionName 不参与判定）
 # 2. 在 CHANGELOG.md 补对应版本小节（发布说明从这里自动取）
 # 3. 提交、合并到 main
-node scripts/release.mjs            # prebuild → assembleRelease → aapt 核对 →
+npx expo prebuild -p android --no-install # 先同步配置与插件（脚本不会自动 prebuild）
+node scripts/release.mjs            # assembleRelease → 包信息与签名核对 →
                                     # 生成 SHA256SUMS → 打 tag → 建 GitHub Release
 node scripts/release.mjs --skip-build   # APK 已构建时复用
 git push origin main --tags
 ```
+
+发布前必须设置 `ANDROID_HOME`（或 `ANDROID_SDK_ROOT`），不能跳过包信息或签名校验。
+已有 tag 必须指向当前 HEAD；请先推送 main，避免 GitHub 无法找到待发布提交。
+证书指纹固定在 `scripts/release-policy.mjs`，不是秘密，禁止为绕过检查随意修改。
+发布还会检查许可清单与依赖一致，并附带 `THIRD_PARTY_LICENSES.txt`。
+
+依赖变更后运行 `pnpm notices` 更新许可文件；依赖安全例外与 Expo 补丁阻塞见
+[依赖安全记录](docs/dependency-security.md)。本项目不增加性能基准；CI 的安全/功能回归不是压测。
 
 `SHA256SUMS` 是硬要求：App 的应用内更新会下载并校验它，哈希不匹配即中止安装。
 

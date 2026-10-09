@@ -76,6 +76,8 @@ export function LlmSettingsModal({ visible, onClose }: { visible: boolean; onClo
     try {
       await save({ presetId, baseUrl: trimmedBaseUrl, apiKey, model });
       onClose();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : String(saveError));
     } finally {
       setSaving(false);
     }

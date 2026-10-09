@@ -20,7 +20,7 @@ Name 之外的声明义务。
 | --- | --- |
 | Expo / React Native / React | MIT |
 | React Navigation（native / native-stack / bottom-tabs） | MIT |
-| react-native-markdown-display / markdown-it | BSD-2-Clause / MIT |
+| react-native-markdown-display / markdown-it | MIT / MIT |
 | lucide-react-native | ISC |
 | react-native-svg | MIT |
 | zustand | MIT |
@@ -29,6 +29,10 @@ Name 之外的声明义务。
 | react-native-zip-archive | MIT |
 | react-native-safe-area-context / react-native-screens | MIT |
 
+完整收集文本见 [docs/third-party-licenses.txt](docs/third-party-licenses.txt)，使用 `pnpm notices`
+从锁定的生产依赖生成，包含构建工具依赖（并不表示所有列出包都会进入 APK）。
+发布流程将其作为 `THIRD_PARTY_LICENSES.txt` 一同分发。部分上游包未提供独立许可文件，
+生成结果会明确标记；本清单不替代上游许可或 Android 原生传递依赖的独立法律核查。
 上游许可如有变更，以各组件仓库中的许可文件为准。
 
 ## 关联项目

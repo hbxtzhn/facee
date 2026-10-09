@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CheckSquare, FileText, Square } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
@@ -44,6 +44,11 @@ export function ImportTextModal({
   onOpenAiSettings: () => void;
 }) {
   const [phase, setPhase] = useState<ImportPhase>('input');
+  const request = useRef<AbortController | null>(null);
+  useEffect(() => {
+    if (!visible) request.current?.abort();
+    return () => { request.current?.abort(); };
+  }, [visible]);
   const [pastedText, setPastedText] = useState('');
   const [requirements, setRequirements] = useState(DEFAULT_EXTRACTION_REQUIREMENTS);
   const [progress, setProgress] = useState<{ completed: number; total: number } | null>(null);
@@ -65,6 +70,8 @@ export function ImportTextModal({
   }, [visible]);
 
   function reset() {
+    request.current?.abort();
+    request.current = null;
     setPhase('input');
     setPastedText('');
     setProgress(null);
@@ -76,7 +83,7 @@ export function ImportTextModal({
   }
 
   function handleClose() {
-    if (phase === 'extracting') return; // 抽取中不允许半途关闭造成状态错乱
+    reset();
     onClose();
   }
 
@@ -103,6 +110,7 @@ export function ImportTextModal({
   }
 
   async function startExtraction(text: string) {
+    if (request.current) return;
     const llmConfig = useLlmConfigStore.getState();
     if (!llmConfig.loaded) await llmConfig.load();
     const config = useLlmConfigStore.getState();
@@ -125,12 +133,15 @@ export function ImportTextModal({
     void config.saveExtractionPrompt(
       !trimmedRequirements || trimmedRequirements === DEFAULT_EXTRACTION_REQUIREMENTS ? '' : trimmedRequirements,
     );
+    const controller = new AbortController();
+    request.current = controller;
     try {
       const extracted = await extractQuestionsFromChunks(
         { baseUrl: config.baseUrl, apiKey: config.apiKey, model: config.model },
         chunks,
-        { onProgress: (completed, total) => setProgress({ completed, total }), requirements },
+        { onProgress: (completed, total) => { if (!controller.signal.aborted) setProgress({ completed, total }); }, requirements, signal: controller.signal },
       );
+      if (controller.signal.aborted) return;
       if (extracted.length === 0) {
         setError('没有从文本中提取到题目，试试换一段更完整的资料。');
         setPhase('input');
@@ -140,8 +151,11 @@ export function ImportTextModal({
       setSelectedKeys(new Set(extracted.map((_, index) => `draft-${index}`)));
       setPhase('review');
     } catch (extractError) {
+      if (controller.signal.aborted) return;
       setError(extractError instanceof Error ? extractError.message : String(extractError));
       setPhase('input');
+    } finally {
+      if (request.current === controller) request.current = null;
     }
   }
 
@@ -254,6 +268,7 @@ export function ImportTextModal({
             </Text>
           ) : null}
           <Text style={styles.extractingHint}>长资料可能需要一些时间，请保持网络畅通。</Text>
+          <AppButton label="取消抽取" variant="ghost" onPress={() => reset()} />
         </View>
       ) : null}
 

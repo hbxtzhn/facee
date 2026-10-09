@@ -61,7 +61,7 @@ FaceE 没有账号、没有统计、没有广告。所有数据（题库、收�
 - API Key 存在系统加密存储中（Android Keystore / iOS Keychain），不参与系统备份，也不进入题库备份 ZIP；换机后需要重新填写。Web 预览没有安全存储实现，会退化到浏览器本地存储（仅供功能预览）。
 - 填 `http://` 开头（非 https）的服务地址时，App 会提示：Key 与文本将以明文发送。
 - 系统自动备份（`allowBackup`）保持开启，用于迁移时恢复收藏与进度；其中已不含 LLM Key。
-- 联网清单：下载题库、检查应用与题库更新、以及上述可选的 AI 调用。
+- 联网清单：下载题库、检查应用与题库更新、上述可选的 AI 调用，以及题目 Markdown 引用的远程图片。远程图片会向其服务器发起请求（可暴露 IP），断网时无法加载；需要完全离线的题库应把图片放进 ZIP 的 assets/。
 
 安全漏洞请按 [SECURITY.md](SECURITY.md) 私下报告。
 
@@ -69,11 +69,11 @@ FaceE 没有账号、没有统计、没有广告。所有数据（题库、收�
 
 - **App 代码**：[MIT](LICENSE) © HBxtzhn（起步于 Expo 模板，Expo SDK 采用 MIT）
 - **示例题库内容**：独立的 [facee-bank](https://github.com/HBxtzhn/facee-bank) 仓库，采用 **CC-BY-4.0**，与 App 是两份许可
-- **第三方组件与字体许可**：见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+- **第三方组件与字体许可**：见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)；发布资产同时提供 `THIRD_PARTY_LICENSES.txt`，重新分发时请保留许可声明
 
 ## 开发
 
-需要 Node 22、pnpm 与 Android SDK（**目前仅支持 Android**，iOS 配置为模板残留未作支持承诺；Web 仅供功能预览）：
+需要 Node **22.13+**、pnpm **11** 与 Android SDK（**目前仅支持 Android**，iOS 配置为模板残留未作支持承诺；Web 仅供功能预览）：
 
 ```bash
 pnpm install && pnpm test
