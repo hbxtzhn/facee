@@ -31,6 +31,12 @@ jobs:
       # 三个已知上游无可安装补丁的工具链公告有记录；新增公告仍阻止合并。
       - run: node scripts/audit-dependencies.mjs
       - run: node scripts/generate-notices.mjs --check
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: license-check-diagnostic
+          path: ${{ runner.temp }}/facee-third-party-licenses.actual.txt
+          if-no-files-found: ignore
       - name: Web 预览冒烟（UI 调试通道）
         run: npx expo export --platform web --output-dir web-build
 
@@ -51,6 +57,8 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
       - run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006"
       - run: pnpm install --frozen-lockfile
       - run: npx expo prebuild --clean --platform android --no-install

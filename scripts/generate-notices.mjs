@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { tmpdir } from 'node:os';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const groups = JSON.parse(execFileSync('pnpm', ['licenses', 'list', '--prod', '--json'], {
   cwd: root, encoding: 'utf8', shell: process.platform === 'win32', maxBuffer: 10 * 1024 * 1024,
@@ -60,7 +61,12 @@ sections.push(`JetBrains Mono\n${readFileSync(join(root, 'assets/fonts/OFL.txt')
 const result = sections.join('\n\n' + '='.repeat(72) + '\n\n').replace(/[ \t]+$/gm, '') + '\n';
 const target = join(root, 'docs/third-party-licenses.txt');
 if (process.argv.includes('--check')) {
-  if (readFileSync(target, 'utf8') !== result) throw new Error('第三方许可清单过期，请运行 pnpm notices');
+  const expected = readFileSync(target, 'utf8').replace(/\r\n/g, '\n');
+  if (expected !== result) {
+    const diagnostic = join(process.env.RUNNER_TEMP || tmpdir(), 'facee-third-party-licenses.actual.txt');
+    writeFileSync(diagnostic, result);
+    throw new Error(`第三方许可清单过期，请运行 pnpm notices；实际内容：${diagnostic}`);
+  }
 } else {
   writeFileSync(target, result);
 }
