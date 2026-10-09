@@ -2,7 +2,7 @@
 export const RELEASE_CERTIFICATE_SHA256 = '3c4b61bba990ed07255d5ff354b993d8f4b98ea9787aa8fb0b4e309b34734251';
 
 export function assertReleaseCertificate(output) {
-  const fingerprints = [...output.matchAll(/Signer #\d+ certificate SHA-256 digest:\s*([0-9a-f]{64})/gi)]
+  const fingerprints = [...output.matchAll(/^(?:Signer #\d+:?|V[1-4] Signer(?: #\d+)?:) certificate SHA-256 digest:[ \t]*([0-9a-f]{64})[ \t\r]*$/gmi)]
     .map((match) => match[1].toLowerCase());
   if (fingerprints.length !== 1 || fingerprints[0] !== RELEASE_CERTIFICATE_SHA256) {
     throw new Error('APK 签名证书与项目发布证书不一致，禁止发布（包括 debug 证书）');

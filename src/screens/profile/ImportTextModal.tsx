@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CheckSquare, FileText, Square } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
+import { readImportedImage, type ImportedImage } from '../../lib/import-image';
 import { useLlmConfigStore, hasUsableLlmConfig } from '../../store/llm-config-store';
 import {
   DEFAULT_EXTRACTION_REQUIREMENTS,
   extractQuestionsFromChunks,
+  extractQuestionsFromImage,
   type GeneratedQuestionDraft,
 } from '../../lib/llm';
 import {
@@ -26,7 +29,7 @@ interface DraftWithKey extends GeneratedQuestionDraft {
 const DIFFICULTY_LABEL: Record<number, string> = { 1: '简单', 2: '中等', 3: '困难' };
 
 /**
- * 从文本导入题目：选择 .md/.txt 文件或直接粘贴文本 → 按块交给 LLM 抽取
+ * AI 导入题目：文本按块抽取，或用户确认后发送单张图片给视觉模型
  * → 预览勾选 → 交给编辑器并入本地题库。依赖「AI 设置」中的 OpenAI 兼容配置。
  * 「抽取要求」可由用户整段修改（对生成结果不满意时自行调整），
  * 题目 JSON 格式段由 App 写死追加，保证解析不被改坏。
@@ -46,10 +49,13 @@ export function ImportTextModal({
   const [phase, setPhase] = useState<ImportPhase>('input');
   const request = useRef<AbortController | null>(null);
   useEffect(() => {
-    if (!visible) request.current?.abort();
+    if (!visible) reset();
     return () => { request.current?.abort(); };
   }, [visible]);
   const [pastedText, setPastedText] = useState('');
+  const [source, setSource] = useState<'text' | 'image'>('text');
+  const [image, setImage] = useState<ImportedImage | null>(null);
+  const [picking, setPicking] = useState(false);
   const [requirements, setRequirements] = useState(DEFAULT_EXTRACTION_REQUIREMENTS);
   const [progress, setProgress] = useState<{ completed: number; total: number } | null>(null);
   const [drafts, setDrafts] = useState<DraftWithKey[]>([]);
@@ -61,12 +67,16 @@ export function ImportTextModal({
 
   useEffect(() => {
     if (!visible) return;
+    let active = true;
     const llmConfig = useLlmConfigStore.getState();
     void (async () => {
       if (!llmConfig.loaded) await llmConfig.load();
       const stored = useLlmConfigStore.getState().extractionPrompt;
-      setRequirements(stored.trim() ? stored : DEFAULT_EXTRACTION_REQUIREMENTS);
-    })();
+      if (active) setRequirements(stored.trim() ? stored : DEFAULT_EXTRACTION_REQUIREMENTS);
+    })().catch((loadError: unknown) => {
+      if (active) setError(loadError instanceof Error ? loadError.message : String(loadError));
+    });
+    return () => { active = false; };
   }, [visible]);
 
   function reset() {
@@ -74,6 +84,9 @@ export function ImportTextModal({
     request.current = null;
     setPhase('input');
     setPastedText('');
+    setSource('text');
+    setImage(null);
+    setPicking(false);
     setProgress(null);
     setDrafts([]);
     setSelectedKeys(new Set());
@@ -87,66 +100,86 @@ export function ImportTextModal({
     onClose();
   }
 
-  async function pickFile() {
+  async function pickSource(kind: 'text' | 'gallery' | 'image-file') {
+    if (request.current) return;
+    const controller = new AbortController();
+    request.current = controller;
+    setPicking(true);
     setError(null);
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        // .md 在各平台没有统一 MIME 映射，交由扩展名白名单过滤（isSupportedImportFileName）
-        type: '*/*',
-        copyToCacheDirectory: true,
-        multiple: false,
-      });
-      if (result.canceled || !result.assets?.length) return;
+      const result = kind === 'gallery'
+        ? await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'], allowsMultipleSelection: false, allowsEditing: false, quality: 1, exif: false,
+        })
+        : await DocumentPicker.getDocumentAsync({
+          // .md 没有统一 MIME 映射；图片另按内容签名验证，不能只信任文件名。
+          type: kind === 'text' ? '*/*' : ['image/jpeg', 'image/png', 'image/webp'],
+          copyToCacheDirectory: true, multiple: false,
+        });
+      if (controller.signal.aborted || result.canceled || !result.assets?.length) return;
       const asset = result.assets[0];
-      if (!isSupportedImportFileName(asset.name)) {
-        setError('只支持 .md / .markdown / .txt 纯文本文件');
-        return;
+      if (kind === 'text') {
+        if (!('name' in asset) || !isSupportedImportFileName(asset.name)) {
+          setError('只支持 .md / .markdown / .txt 纯文本文件');
+          return;
+        }
+        const text = await readImportedText(asset.uri);
+        if (controller.signal.aborted) return;
+        request.current = null;
+        setPicking(false);
+        await startExtraction(text);
+      } else {
+        const selected = await readImportedImage(asset);
+        if (!controller.signal.aborted) setImage(selected);
       }
-      const text = await readImportedText(asset.uri);
-      await startExtraction(text);
     } catch (pickError) {
-      setError(pickError instanceof Error ? pickError.message : String(pickError));
+      if (!controller.signal.aborted) setError(pickError instanceof Error ? pickError.message : String(pickError));
+    } finally {
+      if (request.current === controller) {
+        request.current = null;
+        setPicking(false);
+      }
     }
   }
 
   async function startExtraction(text: string) {
     if (request.current) return;
-    const llmConfig = useLlmConfigStore.getState();
-    if (!llmConfig.loaded) await llmConfig.load();
-    const config = useLlmConfigStore.getState();
-    if (!hasUsableLlmConfig(config)) {
-      setNeedsAiSetup(true);
-      setError('还没有配置 AI 服务：请先在「AI 设置」中填写服务地址、Key 与模型名。');
-      return;
-    }
-    const { chunks, truncated } = splitTextIntoChunks(text);
-    if (chunks.length === 0) {
-      setError('文本内容为空');
-      return;
-    }
-    setTruncatedNotice(truncated);
-    setError(null);
-    setProgress({ completed: 0, total: chunks.length });
-    setPhase('extracting');
-    // 持久化抽取要求：等于默认值（或清空）时存空串，以后改默认文案不牵连老用户
-    const trimmedRequirements = requirements.trim();
-    void config.saveExtractionPrompt(
-      !trimmedRequirements || trimmedRequirements === DEFAULT_EXTRACTION_REQUIREMENTS ? '' : trimmedRequirements,
-    );
+    if (source === 'image' && !image) { setError('请先选择一张图片'); return; }
     const controller = new AbortController();
     request.current = controller;
+    setError(null);
+    setNeedsAiSetup(false);
+    setPhase('extracting');
     try {
-      const extracted = await extractQuestionsFromChunks(
-        { baseUrl: config.baseUrl, apiKey: config.apiKey, model: config.model },
-        chunks,
-        { onProgress: (completed, total) => { if (!controller.signal.aborted) setProgress({ completed, total }); }, requirements, signal: controller.signal },
+      const llmConfig = useLlmConfigStore.getState();
+      if (!llmConfig.loaded) await llmConfig.load();
+      if (controller.signal.aborted) return;
+      const config = useLlmConfigStore.getState();
+      if (!hasUsableLlmConfig(config)) {
+        setNeedsAiSetup(true);
+        throw new Error('还没有配置 AI 服务：请先在「AI 设置」中填写服务地址、Key 与模型名。');
+      }
+      const { chunks, truncated } = splitTextIntoChunks(source === 'text' ? text : '');
+      if (source === 'text' && chunks.length === 0) throw new Error('文本内容为空');
+      setTruncatedNotice(truncated);
+      setProgress({ completed: 0, total: source === 'image' ? 1 : chunks.length });
+      const trimmedRequirements = requirements.trim();
+      await config.saveExtractionPrompt(
+        !trimmedRequirements || trimmedRequirements === DEFAULT_EXTRACTION_REQUIREMENTS ? '' : trimmedRequirements,
       );
       if (controller.signal.aborted) return;
-      if (extracted.length === 0) {
-        setError('没有从文本中提取到题目，试试换一段更完整的资料。');
-        setPhase('input');
-        return;
-      }
+      const extractionConfig = { baseUrl: config.baseUrl, apiKey: config.apiKey, model: config.model };
+      const options = {
+        onProgress: (completed: number, total: number) => { if (!controller.signal.aborted) setProgress({ completed, total }); },
+        requirements, signal: controller.signal,
+      };
+      const extracted = source === 'image' && image
+        ? await extractQuestionsFromImage(extractionConfig, image, options)
+        : await extractQuestionsFromChunks(extractionConfig, chunks, options);
+      if (controller.signal.aborted) return;
+      if (extracted.length === 0) throw new Error(source === 'image'
+        ? '没有从图片中提取到题目，请选择更清晰、包含完整题干的图片。'
+        : '没有从文本中提取到题目，试试换一段更完整的资料。');
       setDrafts(extracted.map((draft, index) => ({ ...draft, key: `draft-${index}` })));
       setSelectedKeys(new Set(extracted.map((_, index) => `draft-${index}`)));
       setPhase('review');
@@ -171,19 +204,19 @@ export function ImportTextModal({
   return (
     <ModalSheet
       visible={visible}
-      title="从文本导入题目"
-      hint={phase === 'input' ? '支持 .md / .markdown / .txt 文件，或直接粘贴文本；AI 会扫描出题目供你筛选。' : undefined}
+      title="AI 导入题目"
+      hint={phase === 'input' ? '从文本或单张图片提取题目，先预览筛选，再导入题库。' : undefined}
       onClose={handleClose}
       footer={
         phase === 'input' ? (
           <SheetActions
-            confirmLabel="开始抽取"
+            confirmLabel={source === 'image' ? '发送图片并抽取' : '开始抽取'}
             onCancel={() => {
               reset();
               onClose();
             }}
             onConfirm={() => void startExtraction(pastedText)}
-            confirmDisabled={!pastedText.trim()}
+            confirmDisabled={picking || (source === 'image' ? !image : !pastedText.trim())}
           />
         ) : phase === 'review' ? (
           <SheetActions
@@ -208,10 +241,22 @@ export function ImportTextModal({
 
       {phase === 'input' ? (
         <>
+          <View style={styles.sourceTabs}>
+            {(['text', 'image'] as const).map((kind) => (
+              <Pressable key={kind} accessibilityRole="tab" accessibilityState={{ selected: source === kind }}
+                accessibilityLabel={kind === 'text' ? '文本来源' : '图片来源'} disabled={picking}
+                onPress={() => { setSource(kind); setError(null); setNeedsAiSetup(false); setTruncatedNotice(false); }}
+                style={[styles.sourceTab, source === kind && styles.sourceTabActive]}>
+                <Text style={styles.pickTitle}>{kind === 'text' ? '文本' : '图片'}</Text>
+              </Pressable>
+            ))}
+          </View>
+          {source === 'text' ? <>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="选择文本文件"
-            onPress={() => void pickFile()}
+            disabled={picking}
+            onPress={() => void pickSource('text')}
             style={({ pressed }) => [styles.pickButton, pressed && styles.pressed]}
           >
             <FileText size={17} color={colors.primary} strokeWidth={2} />
@@ -230,6 +275,16 @@ export function ImportTextModal({
             style={[styles.input, styles.multiline]}
             accessibilityLabel="粘贴文本内容"
           />
+          </> : <>
+            <AppButton label="从相册选择图片" variant="ghost" disabled={picking} onPress={() => void pickSource('gallery')} />
+            <AppButton label="选择图片文件" variant="ghost" disabled={picking} onPress={() => void pickSource('image-file')} />
+            {picking ? <Text style={styles.pickHint}>正在读取图片…</Text> : null}
+            {image ? <Image source={{ uri: image.uri }} resizeMode="contain" style={styles.imagePreview} accessibilityLabel="所选图片预览" /> : null}
+            <Text style={styles.imageNotice}>
+              单张 JPEG / PNG / WebP，最大 8 MB。仅点击「发送图片并抽取」后上传到你配置的 AI 服务，可能产生费用；请避免上传隐私资料。
+              模型必须支持图片输入，普通文本模型不可用。图片只用于识别，不会作为附件保存到题库；识别结果请核对后导入。
+            </Text>
+          </>}
           <FieldLabel text="抽取要求（可修改）" />
           <TextInput
             value={requirements}
@@ -261,10 +316,10 @@ export function ImportTextModal({
 
       {phase === 'extracting' ? (
         <View style={styles.extractingBox}>
-          <Text style={styles.extractingTitle}>AI 正在扫描文本…</Text>
+          <Text style={styles.extractingTitle}>{source === 'image' ? 'AI 正在识别图片…' : 'AI 正在扫描文本…'}</Text>
           {progress ? (
             <Text style={styles.extractingMeta}>
-              {progress.completed}/{progress.total} 段完成
+              {progress.completed}/{progress.total} {source === 'image' ? '张' : '段'}完成
             </Text>
           ) : null}
           <Text style={styles.extractingHint}>长资料可能需要一些时间，请保持网络畅通。</Text>
@@ -309,6 +364,11 @@ export function ImportTextModal({
 }
 
 const styles = StyleSheet.create({
+  sourceTabs: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm },
+  sourceTab: { flex: 1, padding: spacing.sm, borderRadius: radii.sm, alignItems: 'center', backgroundColor: colors.surfaceSubtle },
+  sourceTabActive: { backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primaryMuted },
+  imagePreview: { width: '100%', height: 180, marginVertical: spacing.sm, borderRadius: radii.sm },
+  imageNotice: { ...typography.caption, color: colors.textMuted, lineHeight: 18, marginVertical: spacing.sm },
   pickButton: {
     flexDirection: 'row',
     alignItems: 'center',

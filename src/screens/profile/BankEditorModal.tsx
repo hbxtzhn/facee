@@ -19,7 +19,7 @@ import {
 import { ImportTextModal } from './ImportTextModal';
 
 /**
- * 本地题库编辑弹窗：题库改名、题目列表维护（增/改/删）、从文本导入。
+ * 本地题库编辑弹窗：题库改名、题目列表维护（增/改/删）、从文本或图片 AI 导入。
  * 编辑只改内存中的源包，点「保存并启用」才写源文件并重建安装。
  */
 export function BankEditorModal({
@@ -156,7 +156,7 @@ export function BankEditorModal({
               style={styles.toolButton}
             />
             <AppButton
-              label="从文本导入"
+              label="AI 导入"
               icon={TextSelect}
               variant="secondary"
               onPress={() => setImportVisible(true)}
@@ -171,7 +171,7 @@ export function BankEditorModal({
 
           {questions.length === 0 ? (
             <Text style={styles.emptyText}>
-              还没有题目：手动「新增题目」，或把面经/笔记「从文本导入」让 AI 帮你出题。
+              还没有题目：手动「新增题目」，或通过「AI 导入」从文本/图片抽取题目。
             </Text>
           ) : null}
 
