@@ -11,12 +11,51 @@ expo-env.d.ts
 /android
 /ios
 
-# 本地环境与密钥
+# 本地代理指令、配置与会话（保留本机，不提交）
+[Aa][Gg][Ee][Nn][Tt].[Mm][Dd]
+[Aa][Gg][Ee][Nn][Tt][Ss].[Mm][Dd]
+CLAUDE.md
+GEMINI.md
+.pi/
+.agent/
+.agents/
+.claude/
+.cline/
+.clinerules/
+.cursor/
+.codex/
+.cursorrules
+.clinerules
+/mcp.json
+/.mcp.json
+/models.json
+/auth.json
+facee-handoff-*.md
+
+# 本地环境与密钥；只允许无真实凭据的示例模板
 .env
+.env.*
 .env*.local
+!.env.example
+!.env.sample
+!.env.template
+!.env.*.example
+credentials/
+.credentials/
+secrets/
+.secrets/
+/credentials.json
+/secrets.json
+.gradle/
+local.properties
+key.properties
+keystore.properties
+signing.properties
 *.jks
+*.keystore
 *.p8
 *.p12
+*.pfx
 *.key
 *.pem
 *.mobileprovision
