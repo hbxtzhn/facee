@@ -61,11 +61,12 @@ export async function installConfiguredQuestionBank(
   // 下载即本地化。同 URL 已装过本地库 → 视为更新：沿用原 catalog.id，
   // install 原子替换旧库；首次下载生成新 local- id。
   const reuseCatalogId = await findLocalBankIdBySourceUrl(url);
-  const result = await remote.installFromUrl(url, onProgress, reuseCatalogId ? { reuseCatalogId } : undefined);
-  if (result.localSource) {
-    await saveLocalBankSource(result.localSource);
-  }
-  return result;
+  return remote.installFromUrl(url, onProgress, {
+    ...(reuseCatalogId ? { reuseCatalogId } : {}),
+    beforeCommit: (bank) => saveLocalBankSource({
+      bankId: bank.catalog.id, updatedAt: '', package: bank, sourceUrl: url,
+    }),
+  });
 }
 
 /** 找出由同一 URL 下载过的本地题库 id（更新语义）；没有则 null */

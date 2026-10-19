@@ -186,6 +186,131 @@ describe('question-bank asset links', () => {
 });
 
 describe('FileSystemQuestionBankRepository installation safety', () => {
+  it('坏ZIP给出中文提示，同时清理暂存文件并保留原题库', async () => {
+    const fileSystem = new MemoryFileSystem();
+    const original = Object.assign(new Error('Zip headers not found. Probably not a zip file'), {
+      code: 'ERR_CORRUPT_ARCHIVE',
+    });
+    const repository = new FileSystemQuestionBankRepository({
+      fileSystem: fileSystem as never,
+      zipArchive: {
+        ...createZipArchive(fileSystem),
+        listContents: async () => { throw original; },
+      },
+    });
+    await repository.install(TEST_QUESTION_BANK);
+    await expect(repository.installFromUrl('https://example.com/invalid.zip')).rejects.toMatchObject({
+      message: '题库包校验失败：题库包已损坏或不是有效的 ZIP 文件，请重新下载', cause: original,
+    });
+    expect(await repository.getCatalog()).toEqual(TEST_QUESTION_BANK.catalog);
+    expect(await fileSystem.readDirectoryAsync('file:///cache/facee-question-bank-downloads/')).toEqual([]);
+  });
+
+  it('HTTP错误保持原提示，不误报题库包校验失败', async () => {
+    const fileSystem = new MemoryFileSystem();
+    fileSystem.downloadAsync = async (_url, fileUri) => ({ uri: fileUri, status: 500 });
+    const repository = new FileSystemQuestionBankRepository({
+      fileSystem: fileSystem as never, zipArchive: createZipArchive(fileSystem),
+    });
+    await expect(repository.installFromUrl('https://example.com/bank.zip')).rejects.toThrow(
+      /^题库下载失败（HTTP 500）$/,
+    );
+  });
+  it.each([true, false])('更新提交源文件失败时保留旧题库并恢复原激活项（更新当前库=%s）', async (updatingActive) => {
+    const fileSystem = new MemoryFileSystem();
+    const repository = new FileSystemQuestionBankRepository({
+      fileSystem: fileSystem as never, zipArchive: createZipArchive(fileSystem),
+    });
+    const oldBank = { ...TEST_QUESTION_BANK, catalog: { ...TEST_QUESTION_BANK.catalog, id: 'local-old', title: '旧内容' } };
+    await repository.install(oldBank);
+    if (!updatingActive) await repository.install({
+      ...TEST_QUESTION_BANK, catalog: { ...TEST_QUESTION_BANK.catalog, id: 'local-other' },
+    });
+    const before = await repository.getCatalog();
+    await expect(repository.installFromUrl('https://example.com/bank.zip', undefined, {
+      reuseCatalogId: 'local-old', beforeCommit: async () => { throw new Error('ENOSPC'); },
+    })).rejects.toThrow('ENOSPC');
+    expect(await repository.getCatalog()).toEqual(before);
+    expect((await repository.exportPackage('local-old'))?.catalog.title).toBe('旧内容');
+    expect(await repository.listBanks()).toHaveLength(updatingActive ? 1 : 2);
+  });
+
+  it('首次安装源写入失败后恢复空题库，清除新包', async () => {
+    const fileSystem = new MemoryFileSystem();
+    const repository = new FileSystemQuestionBankRepository({
+      fileSystem: fileSystem as never, zipArchive: createZipArchive(fileSystem),
+    });
+    await expect(repository.installFromUrl('https://example.com/bank.zip', undefined, {
+      beforeCommit: async () => { throw new Error('ENOSPC'); },
+    })).rejects.toThrow('ENOSPC');
+    expect(await repository.getCatalog()).toBeNull();
+    expect(await repository.listBanks()).toEqual([]);
+  });
+
+  it('本地编辑源写入失败后保留旧题库', async () => {
+    const fileSystem = new MemoryFileSystem();
+    const repository = new FileSystemQuestionBankRepository({ fileSystem: fileSystem as never });
+    await repository.install(TEST_QUESTION_BANK);
+    await expect(repository.install({ ...TEST_QUESTION_BANK, catalog: { ...TEST_QUESTION_BANK.catalog, title: '新标题' } }, undefined, {
+      beforeCommit: async () => { throw new Error('ENOSPC'); },
+    })).rejects.toThrow('ENOSPC');
+    expect(await repository.getCatalog()).toEqual(TEST_QUESTION_BANK.catalog);
+    expect(await repository.listBanks()).toHaveLength(1);
+  });
+
+  it.each(['1.2.0', '1.3.0'])('包内版本1.2.0不高于本地%s时保留本地内容、激活题库并清理暂存文件', async (currentVersion) => {
+    const fileSystem = new MemoryFileSystem();
+    const archive = createZipArchive(fileSystem);
+    const unzip = archive.unzip;
+    archive.unzip = async (source, target) => {
+      await unzip(source, target);
+      await fileSystem.writeAsStringAsync(`${target}catalog.json`, JSON.stringify({
+        ...TEST_QUESTION_BANK.catalog, version: '1.2.0',
+      }));
+      return target;
+    };
+    const repository = new FileSystemQuestionBankRepository({ fileSystem: fileSystem as never, zipArchive: archive });
+    const local = {
+      ...TEST_QUESTION_BANK,
+      catalog: { ...TEST_QUESTION_BANK.catalog, id: 'local-existing', version: currentVersion, title: '本机已编辑内容' },
+    };
+    await repository.install(local);
+
+    await expect(repository.installFromUrl('https://example.com/bank.zip', undefined, {
+      reuseCatalogId: 'local-existing', currentVersion,
+    })).resolves.toEqual({ questionCount: 6, tagCount: 4, unchanged: true });
+    expect(await repository.getCatalog()).toEqual(local.catalog);
+    expect(await repository.listBanks()).toHaveLength(1);
+    expect(await fileSystem.readDirectoryAsync('file:///cache/facee-question-bank-downloads/')).toEqual([]);
+    expect(await fileSystem.readDirectoryAsync('file:///documents/facee-question-bank/staging/')).toEqual([]);
+  });
+
+  it('新版ZIP替换同一题库并保存新版本', async () => {
+    const fileSystem = new MemoryFileSystem();
+    const archive = createZipArchive(fileSystem);
+    const unzip = archive.unzip;
+    archive.unzip = async (source, target) => {
+      await unzip(source, target);
+      await fileSystem.writeAsStringAsync(`${target}catalog.json`, JSON.stringify({
+        ...TEST_QUESTION_BANK.catalog, version: '1.3.0',
+      }));
+      return target;
+    };
+    const repository = new FileSystemQuestionBankRepository({ fileSystem: fileSystem as never, zipArchive: archive });
+    await repository.install({
+      ...TEST_QUESTION_BANK,
+      catalog: { ...TEST_QUESTION_BANK.catalog, id: 'local-existing', version: '1.2.0' },
+    });
+    const result = await repository.installFromUrl('https://example.com/bank.zip', undefined, {
+      reuseCatalogId: 'local-existing', currentVersion: '1.2.0',
+    });
+    expect(result.unchanged).toBeUndefined();
+    expect((await repository.getCatalog())?.version).toBe('1.3.0');
+    expect((await repository.getCatalog())?.id).toBe('local-existing');
+    expect(await repository.listBanks()).toHaveLength(1);
+    expect(result.localSource?.package.catalog.version).toBe('1.3.0');
+  });
+
   it('does not let a progress listener interrupt activation', async () => {
     const repository = new FileSystemQuestionBankRepository({
       fileSystem: new MemoryFileSystem() as never,
@@ -220,7 +345,7 @@ describe('FileSystemQuestionBankRepository installation safety', () => {
     });
 
     await expect(repository.installFromUrl('https://example.test/bank.zip')).rejects.toThrow(
-      'Missing referenced asset',
+      '题库包缺少有效的答案文件或引用的图片资源',
     );
     expect(await repository.getCatalog()).toBeNull();
   });
