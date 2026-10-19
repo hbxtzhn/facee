@@ -3,6 +3,7 @@ import {
   installConfiguredQuestionBank,
 } from './installer';
 import type {
+  RemoteBankInstallOptions,
   QuestionBankRepository,
   RemoteQuestionBankRepository,
 } from './types';
@@ -74,7 +75,7 @@ describe('configured question-bank installer', () => {
     expect(installFromUrl).toHaveBeenCalledWith(
       'https://example.com/question-bank.zip',
       undefined,
-      undefined,
+      { beforeCommit: expect.any(Function) },
     );
     expect(saveLocalBankSource).not.toHaveBeenCalled();
   });
@@ -84,10 +85,13 @@ describe('configured question-bank installer', () => {
     const localSource = {
       bankId: 'local-new',
       updatedAt: '',
-      package: TEST_QUESTION_BANK,
+      package: { ...TEST_QUESTION_BANK, catalog: { ...TEST_QUESTION_BANK.catalog, id: 'local-new' } },
       sourceUrl: 'https://example.com/question-bank.zip',
     };
-    const installFromUrl = jest.fn(async () => ({ questionCount: 6, tagCount: 4, localSource }));
+    const installFromUrl = jest.fn(async (_url: string, _progress?: unknown, options?: RemoteBankInstallOptions) => {
+      await options?.beforeCommit?.(localSource.package);
+      return { questionCount: 6, tagCount: 4, localSource };
+    });
     const remoteRepository: RemoteQuestionBankRepository = {
       ...repository,
       installFromUrl,
@@ -109,18 +113,18 @@ describe('configured question-bank installer', () => {
       package: TEST_QUESTION_BANK,
       sourceUrl: url,
     });
-    const installFromUrl = jest.fn(async () => ({
-      questionCount: 6,
-      tagCount: 4,
-      localSource: { bankId: 'local-old', updatedAt: '', package: TEST_QUESTION_BANK, sourceUrl: url },
-    }));
+    const installFromUrl = jest.fn(async (_url: string, _progress?: unknown, options?: RemoteBankInstallOptions) => {
+      const bank = { ...TEST_QUESTION_BANK, catalog: { ...TEST_QUESTION_BANK.catalog, id: 'local-old' } };
+      await options?.beforeCommit?.(bank);
+      return { questionCount: 6, tagCount: 4 };
+    });
     const remoteRepository: RemoteQuestionBankRepository = {
       ...repository,
       installFromUrl,
     };
 
     await installConfiguredQuestionBank(remoteRepository);
-    expect(installFromUrl).toHaveBeenCalledWith(url, undefined, { reuseCatalogId: 'local-old' });
+    expect(installFromUrl).toHaveBeenCalledWith(url, undefined, { reuseCatalogId: 'local-old', beforeCommit: expect.any(Function) });
     expect(saveLocalBankSource).toHaveBeenCalled();
   });
 });

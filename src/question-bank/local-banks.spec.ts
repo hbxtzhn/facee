@@ -53,12 +53,52 @@ class MemoryFileSystem {
     return [...children];
   }
 
+  async moveAsync({ from, to }: { from: string; to: string }) {
+    const entry = this.entries.get(from);
+    if (!entry) throw new Error(`Missing file: ${from}`);
+    this.entries.set(to, entry);
+    this.entries.delete(from);
+  }
+
   async deleteAsync(uri: string) {
     for (const key of [...this.entries.keys()]) {
       if (key === uri || key.startsWith(uri.endsWith('/') ? uri : `${uri}/`)) this.entries.delete(key);
     }
   }
 }
+
+describe('local-banks 源文件故障恢复', () => {
+  it('更新源文件写入失败时保留旧版本和下载地址', async () => {
+    const fs = new MemoryFileSystem();
+    const bank = createLocalBankPackage('旧内容');
+    const source = { bankId: bank.catalog.id, updatedAt: '', package: bank, sourceUrl: 'https://example.com/bank.zip' };
+    await saveLocalBankSource(source, fs as never);
+    const write = fs.writeAsStringAsync.bind(fs);
+    fs.writeAsStringAsync = async (uri, value) => {
+      if (uri.endsWith('.part')) throw new Error('ENOSPC');
+      await write(uri, value);
+    };
+    await expect(saveLocalBankSource({ ...source, package: {
+      ...bank, catalog: { ...bank.catalog, title: '新内容' },
+    } }, fs as never)).rejects.toThrow('ENOSPC');
+    expect((await loadLocalBankSource(source.bankId, fs as never))?.package.catalog.title).toBe('旧内容');
+    expect((await loadLocalBankSource(source.bankId, fs as never))?.sourceUrl).toBe(source.sourceUrl);
+  });
+
+  it('不允许覆盖目标时替换失败能恢复旧文件', async () => {
+    const fs = new MemoryFileSystem();
+    const bank = createLocalBankPackage('旧内容');
+    const source = { bankId: bank.catalog.id, updatedAt: '', package: bank };
+    await saveLocalBankSource(source, fs as never);
+    const move = fs.moveAsync.bind(fs);
+    fs.moveAsync = async ({ from, to }) => {
+      if (from.endsWith('.part')) throw new Error('rename failed');
+      await move({ from, to });
+    };
+    await expect(saveLocalBankSource(source, fs as never)).rejects.toThrow('rename failed');
+    expect((await loadLocalBankSource(source.bankId, fs as never))?.package.catalog.title).toBe('旧内容');
+  });
+});
 
 const DRAFT = {
   title: 'HashMap 的底层实现？',

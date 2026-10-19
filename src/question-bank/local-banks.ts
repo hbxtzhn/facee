@@ -242,9 +242,9 @@ export async function listLocalBankSources(
     return [];
   }
   const summaries: LocalBankSourceSummary[] = [];
-  for (const entry of entries) {
-    if (!entry.endsWith('.json')) continue;
-    const bankId = entry.slice(0, -'.json'.length);
+  const bankIds = new Set(entries.filter((entry) => /\.json(?:\.previous)?$/.test(entry))
+    .map((entry) => entry.replace(/\.json(?:\.previous)?$/, '')));
+  for (const bankId of bankIds) {
     if (!isLocalBankId(bankId)) continue;
     const source = await loadLocalBankSource(bankId, fs);
     if (source) {
@@ -263,14 +263,18 @@ export async function loadLocalBankSource(
   bankId: string,
   fs: LocalBankFileSystem = defaultFs(),
 ): Promise<LocalBankSource | null> {
-  try {
-    const raw = await fs.readAsStringAsync(sourcePath(bankId, fs), { encoding: 'utf8' });
-    const parsed = parseLocalBankSource(raw);
-    if (!parsed || parsed.bankId !== bankId) return null;
-    return parsed;
-  } catch {
-    return null;
+  if (!isLocalBankId(bankId)) return null;
+  const path = sourcePath(bankId, fs);
+  for (const candidate of [path, `${path}.previous`]) {
+    try {
+      const raw = await fs.readAsStringAsync(candidate, { encoding: 'utf8' });
+      const parsed = parseLocalBankSource(raw);
+      if (parsed?.bankId === bankId) return parsed;
+    } catch {
+      // 中断在替换源文件之间时仍能读取上一份完整数据。
+    }
   }
+  return null;
 }
 
 export async function saveLocalBankSource(
@@ -283,9 +287,27 @@ export async function saveLocalBankSource(
   }
   const persisted: LocalBankSource = { ...source, updatedAt: new Date().toISOString() };
   await fs.makeDirectoryAsync(localSourcesRoot(fs), { intermediates: true });
-  await fs.writeAsStringAsync(sourcePath(source.bankId, fs), JSON.stringify(persisted), {
-    encoding: 'utf8',
-  });
+  const path = sourcePath(source.bankId, fs);
+  const temporary = `${path}.part`;
+  const previous = `${path}.previous`;
+  try {
+    await fs.writeAsStringAsync(temporary, JSON.stringify(persisted), { encoding: 'utf8' });
+    try {
+      await fs.moveAsync({ from: temporary, to: path });
+    } catch (error) {
+      if (!(await fs.getInfoAsync(path)).exists) throw error;
+      await fs.moveAsync({ from: path, to: previous });
+      try {
+        await fs.moveAsync({ from: temporary, to: path });
+      } catch (replaceError) {
+        await fs.moveAsync({ from: previous, to: path });
+        throw replaceError;
+      }
+    }
+  } finally {
+    await fs.deleteAsync(temporary, { idempotent: true }).catch(() => undefined);
+  }
+  await fs.deleteAsync(previous, { idempotent: true }).catch(() => undefined);
 }
 
 export async function deleteLocalBankSource(
@@ -295,6 +317,7 @@ export async function deleteLocalBankSource(
   assertLocalBankId(bankId);
   try {
     await fs.deleteAsync(sourcePath(bankId, fs), { idempotent: true });
+    await fs.deleteAsync(`${sourcePath(bankId, fs)}.previous`, { idempotent: true });
   } catch {
     // 源文件删除失败不阻塞：题库本体仍会被 repository.deleteBank 移除
   }
@@ -326,5 +349,7 @@ export function parseLocalBankSource(raw: string): LocalBankSource | null {
     bankId: record.bankId,
     updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : '',
     package: bankPackage as unknown as QuestionBankPackage,
+    ...(typeof record.sourceUrl === 'string' && record.sourceUrl.trim()
+      ? { sourceUrl: record.sourceUrl.trim() } : {}),
   };
 }

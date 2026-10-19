@@ -63,6 +63,17 @@ export function findCategoryName(
   return catalog.categories?.find((category) => category.id === categoryId)?.name ?? null;
 }
 
+/** 当前题库已刷进度；累计记录中的其他题库/已删除题目不计入分母和分子。 */
+export function getBankReadingProgress(
+  catalog: QuestionBankCatalog | null,
+  viewedQuestionIds: readonly string[],
+): { viewedCount: number; totalCount: number; ratio: number } {
+  const viewed = new Set(viewedQuestionIds);
+  const totalCount = catalog?.questions.length ?? 0;
+  const viewedCount = catalog?.questions.filter((question) => viewed.has(question.id)).length ?? 0;
+  return { viewedCount, totalCount, ratio: totalCount > 0 ? viewedCount / totalCount : 0 };
+}
+
 export function collectTagSubtreeIds(tags: readonly QuestionTag[], rootId: string): Set<string> {
   if (!tags.some((tag) => tag.id === rootId)) return new Set();
 

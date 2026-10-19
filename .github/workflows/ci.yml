@@ -26,7 +26,11 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test --runInBand
       - run: node --test scripts/*.test.mjs
-      - name: Expo SDK compatibility
+      - name: Expo SDK compatibility (locked SDK)
+        # install --check 仍逐项检查已装依赖；离线模式使用锁定 Expo 自带兼容表，
+        # 避免线上推荐补丁变化让同一提交的发布检查结果漂移。
+        env:
+          EXPO_OFFLINE: '1'
         run: npx expo install --check
       # node-forge 保留已记录例外；braces/sprintf-js 必须核验本地补丁与回归。新增公告仍阻止合并。
       - run: node scripts/audit-dependencies.mjs

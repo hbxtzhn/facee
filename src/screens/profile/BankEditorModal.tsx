@@ -20,7 +20,7 @@ import { ImportTextModal } from './ImportTextModal';
 
 /**
  * 本地题库编辑弹窗：题库改名、题目列表维护（增/改/删）、从文本或图片 AI 导入。
- * 编辑只改内存中的源包，点「保存并启用」才写源文件并重建安装。
+ * 编辑只改内存中的源包，点「保存题库」才写源文件并重建安装，保留当前使用的题库。
  */
 export function BankEditorModal({
   visible,
@@ -38,10 +38,14 @@ export function BankEditorModal({
   onOpenManager?: () => void;
 }) {
   const saveLocalBank = useQuestionBankStore((state) => state.saveLocalBank);
+  const installing = useQuestionBankStore((state) => state.installing);
   const [source, setSource] = useState<LocalBankSource | null>(null);
   const [title, setTitle] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [leaveIntent, setLeaveIntent] = useState<'close' | 'manager' | null>(null);
+  const busy = saving || installing;
   const [error, setError] = useState<string | null>(null);
   /** undefined = 关闭；null = 新建；对象 = 编辑既有题 */
   const [editingQuestion, setEditingQuestion] = useState<QuestionFormDraft | null | undefined>(undefined);
@@ -52,6 +56,12 @@ export function BankEditorModal({
     if (!visible || !bankId) return;
     let alive = true;
     setLoading(true);
+    setSource(null);
+    setTitle('');
+    setDirty(false);
+    setLeaveIntent(null);
+    setEditingQuestion(undefined);
+    setImportVisible(false);
     setError(null);
     setConfirmingDeleteId(null);
     void loadLocalBankSource(bankId).then((loaded) => {
@@ -69,7 +79,24 @@ export function BankEditorModal({
     };
   }, [visible, bankId]);
 
+  function requestLeave(intent: 'close' | 'manager') {
+    if (busy) return;
+    if (dirty) setLeaveIntent(intent);
+    else if (intent === 'manager') onOpenManager?.();
+    else onClose();
+  }
+
+  function discardAndLeave() {
+    if (busy) return;
+    setDirty(false);
+    if (leaveIntent === 'manager') onOpenManager?.();
+    else onClose();
+    setLeaveIntent(null);
+  }
+
   function mutatePackage(mutate: (bank: LocalBankSource['package']) => LocalBankSource['package']) {
+    if (busy) return;
+    setDirty(true);
     setSource((current) => (current ? { ...current, package: mutate(current.package) } : current));
   }
 
@@ -96,7 +123,7 @@ export function BankEditorModal({
   }
 
   async function handleSave() {
-    if (!source || saving) return;
+    if (!source || source.bankId !== bankId || loading || busy) return;
     setSaving(true);
     setError(null);
     try {
@@ -106,6 +133,7 @@ export function BankEditorModal({
         catalog: { ...source.package.catalog, title: trimmedTitle },
       };
       await saveLocalBank({ ...source, package: nextPackage });
+      setDirty(false);
       onClose();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : String(saveError));
@@ -121,19 +149,28 @@ export function BankEditorModal({
     <ModalSheet
       visible={visible && bankId !== null}
       title="编辑本地题库"
-      hint="改动只在本地保存；「保存并启用」后立即生效，可完全离线刷题。"
-      onClose={onClose}
+      hint="点击「保存题库」后修改生效，可离线刷题；保存不会切换当前使用的题库。"
+      onClose={() => requestLeave('close')}
+      dismissDisabled={Boolean(busy)}
       footer={
         <SheetActions
-          confirmLabel={saving ? '正在保存' : '保存并启用'}
+          confirmLabel={saving ? '正在保存' : '保存题库'}
           confirmLoading={saving}
-          onCancel={onClose}
+          onCancel={() => requestLeave('close')}
           onConfirm={() => void handleSave()}
-          cancelDisabled={saving}
+          cancelDisabled={Boolean(busy)}
+          confirmDisabled={Boolean(loading || busy || !source || source.bankId !== bankId)}
         />
       }
     >
       <SheetError message={error} />
+      {leaveIntent ? (
+        <View accessibilityRole="alert" style={{ gap: spacing.sm, marginTop: spacing.md }}>
+          <Text style={styles.loadingText}>有未保存的修改，离开后将丢失。</Text>
+          <AppButton label="继续编辑" disabled={Boolean(busy)} onPress={() => setLeaveIntent(null)} />
+          <AppButton label="放弃修改并离开" disabled={Boolean(busy)} variant="ghost" onPress={discardAndLeave} />
+        </View>
+      ) : null}
       {loading ? <Text style={styles.loadingText}>正在读取题库…</Text> : null}
 
       {!loading && source ? (
@@ -141,7 +178,8 @@ export function BankEditorModal({
           <Text style={styles.fieldLabel}>题库名称</Text>
           <TextInput
             value={title}
-            onChangeText={setTitle}
+            onChangeText={(value) => { setTitle(value); setDirty(true); }}
+            editable={!busy}
             placeholder="我的题库"
             placeholderTextColor={colors.textSubtle}
             style={styles.input}
@@ -151,12 +189,14 @@ export function BankEditorModal({
           <View style={styles.toolRow}>
             <AppButton
               label="新增题目"
+              disabled={Boolean(busy)}
               icon={FilePlus2}
               onPress={() => setEditingQuestion(null)}
               style={styles.toolButton}
             />
             <AppButton
               label="AI 导入"
+              disabled={Boolean(busy)}
               icon={TextSelect}
               variant="secondary"
               onPress={() => setImportVisible(true)}
@@ -179,7 +219,8 @@ export function BankEditorModal({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="管理其它题库"
-              onPress={onOpenManager}
+              onPress={() => requestLeave('manager')}
+              disabled={Boolean(busy)}
               style={({ pressed }) => [styles.managerLink, pressed && styles.pressed]}
             >
               <Text style={styles.managerLinkText}>管理其它题库（切换 / 新建）</Text>
@@ -203,6 +244,7 @@ export function BankEditorModal({
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`编辑题目 ${question.title}`}
+                  disabled={Boolean(busy)}
                   onPress={() => {
                     const content = contentsById.get(question.id);
                     setEditingQuestion({
@@ -222,6 +264,7 @@ export function BankEditorModal({
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={`确认删除题目 ${question.title}`}
+                    disabled={Boolean(busy)}
                     onPress={() => {
                       mutatePackage((bank) => removeQuestion(bank, question.id));
                       setConfirmingDeleteId(null);
@@ -234,6 +277,7 @@ export function BankEditorModal({
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={`删除题目 ${question.title}`}
+                    disabled={Boolean(busy)}
                     onPress={() => setConfirmingDeleteId(question.id)}
                     style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
                   >

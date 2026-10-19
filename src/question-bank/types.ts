@@ -103,9 +103,21 @@ export interface InstallationProgress {
 
 export type InstallationProgressListener = (progress: InstallationProgress) => void;
 
+export interface BankInstallOptions {
+  /** 新包激活后、旧包清理前保存编辑源；失败时恢复旧安装。 */
+  beforeCommit?: (bank: QuestionBankPackage) => Promise<void>;
+}
+
+export interface RemoteBankInstallOptions extends BankInstallOptions {
+  reuseCatalogId?: string;
+  currentVersion?: string;
+}
+
 export interface InstallResult {
   questionCount: number;
   tagCount: number;
+  /** 在线更新时包内版本相同或更低：不替换本地内容。 */
+  unchanged?: boolean;
   /** installFromUrl 专属：下载即本地化产出的题库源（调用方负责落盘 local-sources） */
   localSource?: LocalBankSource;
 }
@@ -147,6 +159,7 @@ export interface QuestionBankRepository {
   install(
     questionBank: QuestionBankPackage,
     onProgress?: InstallationProgressListener,
+    options?: BankInstallOptions,
   ): Promise<InstallResult>;
   /** Remove the installed bank. Favorites and user progress are unaffected. */
   clear(): Promise<void>;
@@ -178,6 +191,6 @@ export interface RemoteQuestionBankRepository extends QuestionBankRepository {
   installFromUrl(
     url: string,
     onProgress?: InstallationProgressListener,
-    options?: { reuseCatalogId?: string },
+    options?: RemoteBankInstallOptions,
   ): Promise<InstallResult>;
 }

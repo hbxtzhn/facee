@@ -52,6 +52,7 @@ export function QuestionEditModal({
   const [questionMd, setQuestionMd] = useState('');
   const [answerMd, setAnswerMd] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
 
   // AI 改写：idle（入口按钮）→ input（填改写要求+生成）→ comparing（原版/AI 版二选一）
   const [aiPhase, setAiPhase] = useState<AiPhase>('idle');
@@ -70,12 +71,26 @@ export function QuestionEditModal({
     setQuestionMd(initial?.questionMd ?? '');
     setAnswerMd(initial?.answerMd ?? '');
     setError(null);
+    setConfirmDiscard(false);
     setAiPhase('idle');
     setAiDraft(null);
     setAiOriginal(null);
     setAiInstruction('');
     setAiError(null);
   }, [visible, initial]);
+
+  const dirty = title !== (initial?.title ?? '')
+    || difficulty !== (initial?.difficulty ?? 2)
+    || tagsText !== (initial?.tags.join('，') ?? '')
+    || questionMd !== (initial?.questionMd ?? '')
+    || answerMd !== (initial?.answerMd ?? '')
+    || aiDraft !== null;
+
+  function requestClose() {
+    if (aiLoading) return;
+    if (dirty) setConfirmDiscard(true);
+    else onClose();
+  }
 
   function handleSave() {
     const trimmedTitle = title.trim();
@@ -156,17 +171,26 @@ export function QuestionEditModal({
       visible={visible}
       title={initial ? '编辑题目' : '新增题目'}
       hint="题干与答案都支持 Markdown（列表、代码块、表格）。参考答案留空则视为无答案题。"
-      onClose={onClose}
+      onClose={requestClose}
+      dismissDisabled={aiLoading}
       footer={
         <SheetActions
           confirmLabel="确定"
-          onCancel={onClose}
+          onCancel={requestClose}
+          cancelDisabled={aiLoading}
           onConfirm={handleSave}
-          confirmDisabled={!title.trim() || !questionMd.trim()}
+          confirmDisabled={aiLoading || !title.trim() || !questionMd.trim()}
         />
       }
     >
       <SheetError message={error} />
+      {confirmDiscard ? (
+        <View style={{ gap: spacing.sm }} accessibilityRole="alert">
+          <Text style={{ ...typography.caption, color: colors.textSecondary }}>有未保存的修改，离开后将丢失。</Text>
+          <AppButton label="继续编辑" disabled={aiLoading} onPress={() => setConfirmDiscard(false)} />
+          <AppButton label="放弃修改并离开" disabled={aiLoading} variant="ghost" onPress={() => { if (!aiLoading) onClose(); }} />
+        </View>
+      ) : null}
       <FieldLabel text="标题" />
       <TextInput
         value={title}

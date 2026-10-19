@@ -32,7 +32,7 @@ jest.mock('./local-banks', () => ({
 import { questionBankRepository } from './client';
 import { loadLocalBankSource, saveLocalBankSource } from './local-banks';
 import { useQuestionBankStore } from './store';
-import type { RemoteQuestionBankRepository } from './types';
+import type { InstallResult, RemoteQuestionBankRepository } from './types';
 
 const exportPackageMock =
   questionBankRepository.exportPackage as jest.MockedFunction<typeof questionBankRepository.exportPackage>;
@@ -59,6 +59,20 @@ const switchBankMock = questionBankRepository.switchBank as jest.MockedFunction<
   typeof questionBankRepository.switchBank
 >;
 
+function mockRemoteResult(result: InstallResult) {
+  installFromUrlMock.mockImplementation(async (_url, _progress, options) => {
+    if (result.localSource) await options?.beforeCommit?.(result.localSource.package);
+    return result;
+  });
+}
+
+beforeEach(() => {
+  installMock.mockImplementation(async (bank, _progress, options) => {
+    await options?.beforeCommit?.(bank);
+    return { questionCount: bank.catalog.questions.length, tagCount: bank.catalog.tags.length };
+  });
+});
+
 describe('question-bank store copyBank（复制为本地题库）', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -75,7 +89,6 @@ describe('question-bank store copyBank（复制为本地题库）', () => {
 
   it('导出 → 落盘 → 安装激活 → 拷资产 → 刷新，返回 local- 副本 id', async () => {
     exportPackageMock.mockResolvedValue(TEST_QUESTION_BANK);
-    installMock.mockResolvedValue({ questionCount: 6, tagCount: 4 });
     getCatalogMock.mockResolvedValue(TEST_QUESTION_BANK.catalog);
     copyBankAssetsMock.mockResolvedValue(undefined);
     saveLocalBankSourceMock.mockResolvedValue(undefined);
@@ -98,7 +111,6 @@ describe('question-bank store copyBank（复制为本地题库）', () => {
 
   it('副本标题追加（副本）且内容原样保留', async () => {
     exportPackageMock.mockResolvedValue(TEST_QUESTION_BANK);
-    installMock.mockResolvedValue({ questionCount: 6, tagCount: 4 });
     getCatalogMock.mockResolvedValue(TEST_QUESTION_BANK.catalog);
 
     await useQuestionBankStore.getState().copyBank('facee-fixture');
@@ -146,7 +158,7 @@ describe('question-bank store updateBank（题库在线更新）', () => {
     getQuestionIdsMock
       .mockResolvedValueOnce(new Set(['q1', 'q2']))
       .mockResolvedValueOnce(new Set(['q2', 'q3']));
-    installFromUrlMock.mockResolvedValue({
+    mockRemoteResult({
       questionCount: 6,
       tagCount: 4,
       localSource: { bankId: 'local-a', updatedAt: '', package: TEST_QUESTION_BANK, sourceUrl },
@@ -162,14 +174,81 @@ describe('question-bank store updateBank（题库在线更新）', () => {
     expect(installFromUrlMock).toHaveBeenCalledWith(
       sourceUrl,
       expect.any(Function),
-      { reuseCatalogId: 'local-a' },
+      { reuseCatalogId: 'local-a', currentVersion: undefined, beforeCommit: expect.any(Function) },
     );
     expect(saveLocalBankSourceMock).toHaveBeenCalledWith(
       expect.objectContaining({ bankId: 'local-a', sourceUrl }),
     );
     expect(switchBankMock).toHaveBeenCalledWith('local-other');
-    expect(diff).toEqual({ added: 1, removed: 1 });
+    expect(diff).toEqual({ added: 1, removed: 1, updated: true });
     expect(useQuestionBankStore.getState().installing).toBe(false);
+  });
+
+  it.each(['1.2.0', '1.1.0'])('Release 版本 %s 不高于本地时不下载ZIP', async (version) => {
+    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ tag_name: `v${version}`, assets: [{
+        name: 'bank.zip', browser_download_url: 'https://github.com/o/r/releases/download/new/bank.zip',
+      }] }),
+    } as Response);
+    try {
+      loadLocalBankSourceMock.mockResolvedValue({
+        bankId: 'local-a', updatedAt: '',
+        sourceUrl: 'https://github.com/o/r/releases/download/v1.0.0/bank.zip',
+        package: { ...TEST_QUESTION_BANK, catalog: { ...TEST_QUESTION_BANK.catalog, version: '1.2.0' } },
+      });
+      getQuestionIdsMock.mockResolvedValue(new Set(['q1']));
+      await expect(useQuestionBankStore.getState().updateBank('local-a'))
+        .resolves.toEqual({ added: 0, removed: 0, updated: false });
+      expect(installFromUrlMock).not.toHaveBeenCalled();
+      expect(saveLocalBankSourceMock).not.toHaveBeenCalled();
+      expect(switchBankMock).not.toHaveBeenCalled();
+    } finally { fetchMock.mockRestore(); }
+  });
+
+  it('新版Release下载新地址，保存原来源供下次更新继续使用', async () => {
+    const originalUrl = 'https://github.com/o/r/releases/download/v1.0.0/bank-old.zip';
+    const newUrl = 'https://github.com/o/r/releases/download/v1.3.0/bank-new.zip';
+    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ tag_name: 'v1.3.0', assets: [{ name: 'bank-new.zip', browser_download_url: newUrl }] }),
+    } as Response);
+    try {
+      loadLocalBankSourceMock.mockResolvedValue({
+        bankId: 'local-a', updatedAt: '', sourceUrl: originalUrl,
+        package: { ...TEST_QUESTION_BANK, catalog: { ...TEST_QUESTION_BANK.catalog, version: '1.2.0' } },
+      });
+      getQuestionIdsMock.mockResolvedValue(new Set(['q1']));
+      getCatalogMock.mockResolvedValue(TEST_QUESTION_BANK.catalog);
+      mockRemoteResult({ questionCount: 6, tagCount: 4, localSource: {
+        bankId: 'local-a', updatedAt: '', package: TEST_QUESTION_BANK, sourceUrl: newUrl,
+      } });
+      await expect(useQuestionBankStore.getState().updateBank('local-a'))
+        .resolves.toEqual({ added: 0, removed: 0, updated: true });
+      expect(installFromUrlMock).toHaveBeenCalledWith(
+        newUrl, expect.any(Function), { reuseCatalogId: 'local-a', currentVersion: '1.2.0', beforeCommit: expect.any(Function) },
+      );
+      expect(saveLocalBankSourceMock).toHaveBeenCalledWith(expect.objectContaining({ sourceUrl: originalUrl }));
+    } finally { fetchMock.mockRestore(); }
+  });
+
+  it('包内版本未变化时不保存、不切换题库，返回未更新', async () => {
+    loadLocalBankSourceMock.mockResolvedValue({
+      bankId: 'local-a', updatedAt: '', sourceUrl: 'https://example.com/bank.zip',
+      package: { ...TEST_QUESTION_BANK, catalog: { ...TEST_QUESTION_BANK.catalog, version: '1.2.0' } },
+    });
+    getQuestionIdsMock.mockResolvedValue(new Set(['q1']));
+    installFromUrlMock.mockResolvedValue({ questionCount: 1, tagCount: 1, unchanged: true });
+
+    await expect(useQuestionBankStore.getState().updateBank('local-a'))
+      .resolves.toEqual({ added: 0, removed: 0, updated: false });
+    expect(installFromUrlMock).toHaveBeenCalledWith(
+      'https://example.com/bank.zip', expect.any(Function),
+      { reuseCatalogId: 'local-a', currentVersion: '1.2.0', beforeCommit: expect.any(Function) },
+    );
+    expect(saveLocalBankSourceMock).not.toHaveBeenCalled();
+    expect(switchBankMock).not.toHaveBeenCalled();
+    expect(useQuestionBankStore.getState().installProgress).toBeNull();
   });
 
   it('没有记录下载地址时直接报错，不发起下载', async () => {

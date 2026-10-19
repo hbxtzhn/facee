@@ -2,7 +2,7 @@
   "expo": {
     "name": "FaceE",
     "slug": "facee",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "ios": {
@@ -16,7 +16,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.facee.app",
-      "versionCode": 9,
+      "versionCode": 10,
       "permissions": [
         "REQUEST_INSTALL_PACKAGES"
       ]

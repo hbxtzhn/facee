@@ -6,6 +6,8 @@ import {
 } from './schema';
 import { filterCatalogQuestions } from './catalog';
 import type {
+  BankInstallOptions,
+  RemoteBankInstallOptions,
   InstallationProgress,
   InstallationProgressListener,
   InstallResult,
@@ -19,6 +21,8 @@ import type {
   RemoteQuestionBankRepository,
 } from './types';
 import { buildSnippet, encodeCorpusLine, searchCorpus } from './search';
+import { shouldUpdateBank } from './update';
+import { formatQuestionBankPackageError } from './package-error';
 
 export interface ZipEntryLike {
   path: string;
@@ -224,6 +228,7 @@ export class FileSystemQuestionBankRepository
   async install(
     questionBank: QuestionBankPackage,
     onProgress?: InstallationProgressListener,
+    options?: BankInstallOptions,
   ): Promise<InstallResult> {
     validateDecodedPackage(questionBank);
     await this.ensureRoot();
@@ -241,6 +246,7 @@ export class FileSystemQuestionBankRepository
     const total = questionBank.contents.length + 1;
     notifyProgress(onProgress, { completed: 0, total, label: '正在准备题库' });
     let activated = false;
+    let committed = false;
 
     try {
       await this.fs.makeDirectoryAsync(stagingPath, { intermediates: true });
@@ -290,6 +296,8 @@ export class FileSystemQuestionBankRepository
       notifyProgress(onProgress, { completed: total, total, label: '正在激活题库' });
       await this.activateDirectory(stagingPath, finalPath, namespace, previousNamespace);
       activated = true;
+      await options?.beforeCommit?.(questionBank);
+      committed = true;
       notifyProgress(onProgress, { completed: total, total, label: '题库安装完成' });
       await this.reconcileBanksAfterActivate(
         questionBank.catalog.id,
@@ -302,7 +310,8 @@ export class FileSystemQuestionBankRepository
         tagCount: questionBank.catalog.tags.length,
       };
     } catch (error) {
-      if (!activated) {
+      if (activated && !committed) await this.restoreActivation(previousNamespace, namespace);
+      if (!committed) {
         await this.removeDirectory(stagingPath);
         await this.removeDirectory(finalPath);
       }
@@ -313,7 +322,7 @@ export class FileSystemQuestionBankRepository
   async installFromUrl(
     url: string,
     onProgress?: InstallationProgressListener,
-    options?: { reuseCatalogId?: string },
+    options?: RemoteBankInstallOptions,
   ): Promise<InstallResult> {
     assertHttpUrl(url);
     await this.ensureRoot();
@@ -328,6 +337,9 @@ export class FileSystemQuestionBankRepository
     // 设备上会变成「移入子目录」或直接失败。
     const extractPath = this.stagingPath(`${token}-raw`);
     let activated = false;
+    let committed = false;
+    let previousNamespace: string | null = null;
+    let validatingPackage = false;
 
     try {
       notifyProgress(onProgress, { completed: 0, total: 1, label: '正在下载完整题库' });
@@ -337,6 +349,7 @@ export class FileSystemQuestionBankRepository
       }
       notifyProgress(onProgress, { completed: 1, total: 1, label: '正在检查压缩包' });
 
+      validatingPackage = true;
       const entries = await this.getZipArchive().listContents(partPath, 'UTF-8');
       // GitHub 归档 ZIP 会多包一层 <repo>-<branch>/，先定位题库根再校验路径。
       const zipRoot = resolveQuestionBankZipRoot(entries);
@@ -349,14 +362,19 @@ export class FileSystemQuestionBankRepository
       await this.removeDirectory(extractPath);
 
       const catalog = await this.readCatalogAt(stagingPath);
+      if (options?.reuseCatalogId && !shouldUpdateBank(options.currentVersion, catalog.version)) {
+        await this.removeDirectory(stagingPath);
+        return { questionCount: catalog.questions.length, tagCount: catalog.tags.length, unchanged: true };
+      }
       assertArchiveMatchesCatalog(entries, catalog, zipRoot);
       const total = catalog.questions.length + 1;
       notifyProgress(onProgress, { completed: 0, total, label: '正在校验题库' });
       const corpusLines: string[] = [];
       await this.validateExtractedFiles(stagingPath, catalog, onProgress, total, corpusLines);
+      validatingPackage = false;
       await this.writeCorpus(stagingPath, corpusLines);
 
-      const previousNamespace = await this.readActiveNamespace();
+      previousNamespace = await this.readActiveNamespace();
       const previousCatalogId = await this.readCatalogIdAt(previousNamespace);
       // 下载即本地化：ZIP 落地即成为可编辑的本地题库。catalog.id 重写为
       // local- 前缀（同 URL 更新时沿用原 id，install 原子替换旧库）；
@@ -371,22 +389,28 @@ export class FileSystemQuestionBankRepository
       notifyProgress(onProgress, { completed: total, total, label: '正在激活题库' });
       await this.activateDirectory(stagingPath, finalPath, token, previousNamespace);
       activated = true;
+      const contents: QuestionContent[] = [];
+      for (const question of localizedCatalog.questions) {
+        contents.push(await this.readQuestionContentAt(token, question.id));
+      }
+      const localPackage = { catalog: localizedCatalog, contents };
+      await options?.beforeCommit?.(localPackage);
+      committed = true;
       notifyProgress(onProgress, { completed: total, total, label: '题库安装完成' });
       await this.reconcileBanksAfterActivate(localizedCatalog.id, token, previousNamespace, previousCatalogId);
-      const localPackage = await this.exportPackage(localId);
-      if (!localPackage) throw new Error('题库安装完成，但无法读取本地目录');
       return {
         questionCount: localizedCatalog.questions.length,
         tagCount: localizedCatalog.tags.length,
         localSource: { bankId: localId, updatedAt: '', package: localPackage, sourceUrl: url },
       };
     } catch (error) {
-      if (!activated) {
+      if (activated && !committed) await this.restoreActivation(previousNamespace, token);
+      if (!committed) {
         await this.removeDirectory(extractPath);
         await this.removeDirectory(stagingPath);
         await this.removeDirectory(finalPath);
       }
-      throw error;
+      throw validatingPackage ? formatQuestionBankPackageError(error) : error;
     } finally {
       await this.removeFile(partPath);
     }
@@ -806,6 +830,16 @@ export class FileSystemQuestionBankRepository
   private async readCatalogAt(root: string): Promise<QuestionBankCatalog> {
     const raw = await this.readUtf8(`${root}${QUESTION_BANK_ZIP_CATALOG_PATH}`);
     return parseCatalog(raw);
+  }
+
+  private async restoreActivation(previousNamespace: string | null, failedNamespace: string): Promise<void> {
+    if (previousNamespace) {
+      await this.activatePointer(previousNamespace, failedNamespace);
+    } else {
+      await this.fs.deleteAsync(this.activePointerPath(), { idempotent: true });
+    }
+    this.catalogCache = null;
+    this.corpusCache = null;
   }
 
   private async activateDirectory(

@@ -14,6 +14,7 @@ import {
   Archive,
 } from 'lucide-react-native';
 import { useQuestionBankStore } from '../question-bank/store';
+import { getBankReadingProgress } from '../question-bank/catalog';
 import { useUserStore } from '../store/userStore';
 import { AppButton, ProgressBar, TabHeader } from '../components/ui';
 import { AppUpdateCard } from '../components/app-update-card';
@@ -53,8 +54,8 @@ export function ProfileScreen() {
     if (status === 'idle') void initializeQuestionBank();
   }, [initializeQuestionBank, status, user.load]);
 
-  const totalBankCount = catalog?.questions.length ?? 0;
-  const progressRatio = totalBankCount > 0 ? Math.min(1, user.totalCount / totalBankCount) : 0;
+  const { totalCount: totalBankCount, viewedCount, ratio: progressRatio } =
+    getBankReadingProgress(catalog, user.viewedQuestionIds);
   const progressPercent = Math.round(progressRatio * 100);
 
   const openUrlDialog = () => {
@@ -119,9 +120,6 @@ export function ProfileScreen() {
               <View style={styles.statNumberRow}>
                 <Text style={styles.statNumber}>{user.totalCount}</Text>
                 <Text style={styles.statUnit}>道</Text>
-                {totalBankCount > 0 ? (
-                  <Text style={styles.statRatio}>/ 题库共 {totalBankCount} 题</Text>
-                ) : null}
               </View>
             </View>
           </View>
@@ -129,10 +127,10 @@ export function ProfileScreen() {
           {totalBankCount > 0 ? (
             <View style={styles.progressBarSection}>
               <View style={styles.progressLabelRow}>
-                <Text style={styles.progressMetaText}>题库掌握度</Text>
+                <Text style={styles.progressMetaText}>当前题库已刷 {viewedCount} / {totalBankCount} 题</Text>
                 <Text style={styles.progressPercentText}>{progressPercent}%</Text>
               </View>
-              <ProgressBar value={progressRatio} accessibilityLabel="刷题覆盖进度" />
+              <ProgressBar value={progressRatio} accessibilityLabel="当前题库已刷进度" />
             </View>
           ) : null}
           <Text style={styles.statFooterNote}>只统计累计刷过题数，不按天计，温故而知新。</Text>

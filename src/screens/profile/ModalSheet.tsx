@@ -12,6 +12,7 @@ export function ModalSheet({
   title,
   hint,
   onClose,
+  dismissDisabled = false,
   children,
   footer,
 }: {
@@ -19,13 +20,14 @@ export function ModalSheet({
   title: string;
   hint?: string;
   onClose: () => void;
+  dismissDisabled?: boolean;
   children: React.ReactNode;
   footer?: React.ReactNode;
 }) {
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal testID={`profile-sheet-${title}`} visible={visible} transparent animationType="fade" onRequestClose={dismissDisabled ? () => undefined : onClose}>
       <View style={styles.scrim}>
-        <Pressable style={styles.scrimTouchable} onPress={onClose} accessibilityLabel="关闭弹窗" />
+        <Pressable style={styles.scrimTouchable} onPress={onClose} disabled={dismissDisabled} accessibilityLabel="关闭弹窗" />
         <View style={styles.card}>
           <Text style={styles.title}>{title}</Text>
           {hint ? <Text style={styles.hint}>{hint}</Text> : null}
