@@ -7,18 +7,22 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, type CompositeNavigationProp, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { CheckCircle2, ChevronRight, FileText, Search, Shuffle, X } from 'lucide-react-native';
 import type { Question, QuestionBankCatalog } from '../question-bank';
 import { collectTagSubtreeIds, filterCatalogQuestions, questionBankRepository } from '../question-bank';
-import type { HomeStackParamList } from '../navigation/AppNavigator';
+import type { HomeStackParamList, RootStackParamList } from '../navigation/AppNavigator';
 import { DifficultyBadge, EmptyState } from '../components/ui';
 import { SkeletonBlock } from '../components/skeleton';
 import { shuffled } from '../lib/shuffle';
 import { cardChrome, colors, difficultyStyles, pressedScale, radii, spacing, typography } from '../theme';
 
-type Nav = NativeStackNavigationProp<HomeStackParamList, 'List'>;
+/** 列表在 HomeStack 内；详情页挂在 RootStack，push 会冒泡到根栈 */
+type Nav = CompositeNavigationProp<
+  NativeStackNavigationProp<HomeStackParamList, 'List'>,
+  NativeStackNavigationProp<RootStackParamList>
+>;
 type ListRoute = RouteProp<HomeStackParamList, 'List'>;
 const DIFFICULTY = difficultyStyles;
 

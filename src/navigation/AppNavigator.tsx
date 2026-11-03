@@ -32,10 +32,10 @@ export type RootStackParamList = {
   BankEditor: { bankId: string };
 };
 
+/** 详情页只注册在 RootStack：从首页/列表 push 会冒泡到根栈，刷题时盖住底部标签栏 */
 export type HomeStackParamList = {
   Home: undefined;
   List: ListParams;
-  Detail: DetailParams;
 };
 
 /** 列表页入口：来自分类（§5.1）或来自标签领域（向后兼容）。 */
@@ -77,11 +77,6 @@ function HomeStack() {
         name="List"
         component={ListScreen}
         options={({ route }) => ({ title: route.params.tagName ?? '题目' })}
-      />
-      <HomeStackNavigator.Screen
-        name="Detail"
-        component={DetailScreen}
-        options={{ title: '题目详情' }}
       />
     </HomeStackNavigator.Navigator>
   );
@@ -165,7 +160,14 @@ export function AppNavigator() {
         <RootStack.Screen
           name="Detail"
           component={DetailScreen}
-          options={{ title: '题目详情' }}
+          options={{
+            title: '题目详情',
+            headerBackTitle: '返回',
+            gestureEnabled: true,
+            // 全屏返回手势会与左右翻页冲突，保持仅边缘返回
+            fullScreenGestureEnabled: false,
+            animation: 'slide_from_right',
+          }}
         />
         <RootStack.Screen
           name="BankManager"

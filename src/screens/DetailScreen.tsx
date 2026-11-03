@@ -6,7 +6,7 @@ import {
   FullscreenImageModal,
   ImageViewerProvider,
 } from '../components/image-viewer';
-import type { HomeStackParamList } from '../navigation/AppNavigator';
+import type { RootStackParamList } from '../navigation/AppNavigator';
 import { useQuestionBankStore } from '../question-bank/store';
 import { useUserStore } from '../store/userStore';
 import { useFavoritesStore } from '../store/favoritesStore';
@@ -15,8 +15,8 @@ import { PracticeBar } from './detail/PracticeBar';
 import { QuestionPage } from './detail/QuestionPage';
 import { QuestionPager } from './detail/QuestionPager';
 
-type Nav = NativeStackNavigationProp<HomeStackParamList, 'Detail'>;
-type DetailRoute = RouteProp<HomeStackParamList, 'Detail'>;
+type Nav = NativeStackNavigationProp<RootStackParamList, 'Detail'>;
+type DetailRoute = RouteProp<RootStackParamList, 'Detail'>;
 
 /**
  * 题目详情页。
