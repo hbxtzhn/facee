@@ -12,6 +12,7 @@ const mockActions = {
   copyBank: jest.fn(),
   deleteLocalBank: jest.fn(),
   updateBank: jest.fn(),
+  setBankSourceUrl: jest.fn(),
 };
 
 const mockState = {
@@ -20,6 +21,7 @@ const mockState = {
   catalog: null as null | { title: string },
   installing: false,
   installProgress: null as null | { label: string; completed: number; total: number },
+  sourceUrl: '',
 };
 
 jest.mock('../../question-bank/store', () => ({
@@ -129,6 +131,29 @@ describe('BankManagerModal 题库管理弹窗', () => {
     expect(view.getByLabelText('题库信息 我的错题集').props.accessibilityState.expanded).toBe(true);
     await act(async () => { fireEvent.press(view.getByLabelText('题库信息 我的错题集')); });
     expect(view.queryByText('题目数量：2 题')).toBeNull();
+  });
+
+  it('没有更新地址的本地题库可在信息里关联地址（预填上次输入的地址）', async () => {
+    mockState.sourceUrl = 'https://github.com/o/r/releases/latest/download/question-bank.zip';
+    mockActions.setBankSourceUrl.mockResolvedValue(undefined);
+    const props = { visible: true, onClose: jest.fn(), onEditBank: jest.fn(), onBankCopied: jest.fn(),
+      onCreateLocal: jest.fn(), onAddOnline: jest.fn() };
+    const view = await render(<BankManagerModal {...props} />);
+    await act(async () => { fireEvent.press(view.getByLabelText('题库信息 我的错题集')); });
+    await act(async () => { fireEvent.press(view.getByLabelText('关联更新地址 我的错题集')); });
+    expect(view.getByLabelText('题库 我的错题集 的更新地址').props.value).toBe(mockState.sourceUrl);
+    await act(async () => { fireEvent.press(view.getByLabelText('保存题库 我的错题集 的更新地址')); });
+    expect(mockActions.setBankSourceUrl).toHaveBeenCalledWith('local-my', mockState.sourceUrl);
+    expect(view.getByText('「我的错题集」已关联更新地址，可以在线更新了。')).toBeTruthy();
+    mockState.sourceUrl = '';
+  });
+
+  it('线上（非本地）题库不显示关联更新地址入口', async () => {
+    const props = { visible: true, onClose: jest.fn(), onEditBank: jest.fn(), onBankCopied: jest.fn(),
+      onCreateLocal: jest.fn(), onAddOnline: jest.fn() };
+    const view = await render(<BankManagerModal {...props} />);
+    await act(async () => { fireEvent.press(view.getByLabelText('题库信息 Java 面试题库')); });
+    expect(view.queryByLabelText('关联更新地址 Java 面试题库')).toBeNull();
   });
 
   it('重新挂载后可查看每个库保存的更新结果，失败不写成成功', async () => {

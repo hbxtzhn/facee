@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Database, FolderPlus, Download, Pencil, Trash2, Copy, RefreshCw, Info } from 'lucide-react-native';
 import {
   loadBankUpdateRecord, saveBankUpdateRecord, removeBankUpdateRecord, type BankUpdateRecord,
@@ -37,6 +37,9 @@ export function BankManagerModal({
   const copyBank = useQuestionBankStore((state) => state.copyBank);
   const deleteLocalBank = useQuestionBankStore((state) => state.deleteLocalBank);
   const updateBank = useQuestionBankStore((state) => state.updateBank);
+  const setBankSourceUrl = useQuestionBankStore((state) => state.setBankSourceUrl);
+  /** 上次在「添加线上题库」里填过的地址：关联更新地址时作为预填 */
+  const lastEnteredUrl = useQuestionBankStore((state) => state.sourceUrl);
   const installing = useQuestionBankStore((state) => state.installing);
   const installProgress = useQuestionBankStore((state) => state.installProgress);
   const [activeBusyId, setBusyId] = useState<string | null>(null);
@@ -101,6 +104,32 @@ export function BankManagerModal({
       onBankCopied(bankId);
     } catch (copyError) {
       setError(copyError instanceof Error ? copyError.message : String(copyError));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  // 关联更新地址（找回旧版本保存后丢失的更新入口）：行内输入框
+  const [linkingId, setLinkingId] = useState<string | null>(null);
+  const [linkDraft, setLinkDraft] = useState('');
+
+  function startLinking(catalogId: string) {
+    setLinkingId(catalogId);
+    setLinkDraft(lastEnteredUrl.trim());
+    setError(null);
+  }
+
+  async function handleLink(catalogId: string, title: string) {
+    if (busyId) return;
+    setBusyId(catalogId);
+    setError(null);
+    setNotice(null);
+    try {
+      await setBankSourceUrl(catalogId, linkDraft);
+      setLinkingId(null);
+      setNotice(`「${title}」已关联更新地址，可以在线更新了。`);
+    } catch (linkError) {
+      setError(linkError instanceof Error ? linkError.message : String(linkError));
     } finally {
       setBusyId(null);
     }
@@ -400,6 +429,55 @@ export function BankManagerModal({
                 <Text style={styles.informationText}>题库更新日期：{bank.updatedAt?.slice(0, 10) ?? '未提供'}</Text>
                 <Text style={styles.informationText}>来源：{bank.sourceUrl ? '线上下载，可在线更新' : bank.source === 'local' ? '本地题库' : '线上题库'}</Text>
                 {bank.sourceUrl ? <Text selectable style={styles.informationText}>来源地址：{bank.sourceUrl}</Text> : null}
+                {!bank.sourceUrl && bank.source === 'local' ? (
+                  linkingId === bank.catalogId ? (
+                    <View style={styles.linkBox}>
+                      <TextInput
+                        value={linkDraft}
+                        onChangeText={setLinkDraft}
+                        placeholder="https://github.com/.../releases/latest/download/question-bank.zip"
+                        placeholderTextColor={colors.textSubtle}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        keyboardType="url"
+                        editable={!busy}
+                        accessibilityLabel={`题库 ${bank.title} 的更新地址`}
+                        style={styles.linkInput}
+                      />
+                      <View style={styles.linkActions}>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`保存题库 ${bank.title} 的更新地址`}
+                          disabled={busy || !linkDraft.trim()}
+                          accessibilityState={{ disabled: busy || !linkDraft.trim() }}
+                          onPress={() => void handleLink(bank.catalogId, bank.title)}
+                          style={({ pressed }) => [styles.confirmYes, (busy || !linkDraft.trim()) && styles.disabled, pressed && styles.pressed]}
+                        >
+                          <Text style={styles.confirmYesText}>保存</Text>
+                        </Pressable>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="取消关联更新地址"
+                          disabled={busy}
+                          onPress={() => setLinkingId(null)}
+                          style={({ pressed }) => [styles.confirmNo, busy && styles.disabled, pressed && styles.pressed]}
+                        >
+                          <Text style={styles.confirmNoText}>取消</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  ) : (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`关联更新地址 ${bank.title}`}
+                      disabled={busy}
+                      onPress={() => startLinking(bank.catalogId)}
+                      style={({ pressed }) => [styles.linkButton, busy && styles.disabled, pressed && styles.pressed]}
+                    >
+                      <Text style={styles.linkButtonText}>关联更新地址（从线上下载过、但没有更新按钮时使用）</Text>
+                    </Pressable>
+                  )
+                ) : null}
                 <Text style={styles.informationText}>最近检查：{updateRecords[bank.catalogId]
                   ? new Date(updateRecords[bank.catalogId].checkedAt).toLocaleString() : '尚未检查更新'}</Text>
                 {updateRecords[bank.catalogId] ? (
@@ -420,6 +498,20 @@ export function BankManagerModal({
 }
 
 const styles = StyleSheet.create({
+  linkBox: { gap: spacing.sm, marginTop: spacing.xs },
+  linkInput: {
+    ...typography.caption,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.surface,
+  },
+  linkActions: { flexDirection: 'row', gap: spacing.sm },
+  linkButton: { paddingVertical: spacing.xs },
+  linkButtonText: { ...typography.caption, color: colors.primary, fontWeight: '600' },
   footerActions: { gap: spacing.sm },
   actionPair: { flexDirection: 'row', gap: spacing.sm },
   createButton: {

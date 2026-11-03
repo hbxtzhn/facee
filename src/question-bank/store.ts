@@ -70,6 +70,11 @@ interface QuestionBankState {
   /** 保存本地题库源并重建安装；若编辑的不是当前题库，保存后保持原题库激活 */
   saveLocalBank(source: LocalBankSource): Promise<void>;
   deleteLocalBank(bankId: string): Promise<void>;
+  /**
+   * 为本地题库关联在线更新地址。用于找回旧版本（≤ v0.1.1 读源时丢弃 sourceUrl）
+   * 编辑保存后丢失的更新入口；关联后视为「已修改」，首次更新前会先征求确认。
+   */
+  setBankSourceUrl(bankId: string, url: string): Promise<void>;
   switchBank(catalogId: string): Promise<void>;
   /**
    * 仅按发布/包内版本判断是否更新；更新时沿用原 catalogId。
@@ -224,6 +229,17 @@ export const useQuestionBankStore = create<QuestionBankState>((set, get) => {
       await reloadCatalog(set);
       await get().refreshBanks();
     }
+  }),
+
+  setBankSourceUrl: (bankId, url) => exclusive(async () => {
+    assertNativeBankOperations();
+    const normalized = url.trim();
+    if (!/^https:\/\/[^\s]+$/i.test(normalized)) throw new Error('更新地址需要以 https:// 开头');
+    const source = await loadLocalBankSource(bankId);
+    if (!source) throw new Error(`没有找到本地题库：${bankId}`);
+    // 无法判断丢地址前是否改过题：保守视为已修改，更新时先让用户选择是否覆盖
+    await saveLocalBankSource({ ...source, sourceUrl: normalized, locallyModified: true });
+    await get().refreshBanks();
   }),
 
   deleteLocalBank: (bankId) => exclusive(async () => {

@@ -430,3 +430,48 @@ describe('question-bank store 下载库本地修改保护', () => {
     expect(switchBankMock).toHaveBeenLastCalledWith('local-a');
   });
 });
+
+describe('question-bank store setBankSourceUrl（找回丢失的更新地址）', () => {
+  const localBank = {
+    ...TEST_QUESTION_BANK,
+    catalog: { ...TEST_QUESTION_BANK.catalog, id: 'local-lost-url' },
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    listLocalBankSourcesMock.mockResolvedValue([]);
+    listBanksMock.mockResolvedValue([]);
+    useQuestionBankStore.setState({ installing: false, installError: null, banks: [] });
+  });
+
+  it('写回源文件：保留题目内容，补上地址并保守标记为已修改', async () => {
+    loadLocalBankSourceMock.mockResolvedValue({ bankId: 'local-lost-url', updatedAt: '', package: localBank });
+    saveLocalBankSourceMock.mockResolvedValue(undefined);
+
+    await useQuestionBankStore.getState().setBankSourceUrl(
+      'local-lost-url', '  https://github.com/o/r/releases/latest/download/question-bank.zip ',
+    );
+
+    expect(saveLocalBankSourceMock).toHaveBeenCalledWith({
+      bankId: 'local-lost-url',
+      updatedAt: '',
+      package: localBank,
+      sourceUrl: 'https://github.com/o/r/releases/latest/download/question-bank.zip',
+      locallyModified: true,
+    });
+    expect(listBanksMock).toHaveBeenCalled();
+  });
+
+  it('拒绝非 https 地址，不写源文件', async () => {
+    await expect(useQuestionBankStore.getState().setBankSourceUrl('local-lost-url', 'ftp://x/bank.zip'))
+      .rejects.toThrow('https://');
+    expect(saveLocalBankSourceMock).not.toHaveBeenCalled();
+  });
+
+  it('源文件不存在时报错', async () => {
+    loadLocalBankSourceMock.mockResolvedValue(null);
+    await expect(useQuestionBankStore.getState().setBankSourceUrl('local-lost-url', 'https://e.com/b.zip'))
+      .rejects.toThrow('没有找到本地题库');
+    expect(saveLocalBankSourceMock).not.toHaveBeenCalled();
+  });
+});
