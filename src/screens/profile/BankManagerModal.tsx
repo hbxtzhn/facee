@@ -6,7 +6,7 @@ import {
 } from '../../question-bank/update-history';
 import { useQuestionBankStore } from '../../question-bank/store';
 import { colors, radii, spacing, typography } from '../../theme';
-import { ModalSheet, SheetActions, SheetError } from './ModalSheet';
+import { ModalSheet, SheetActions, SheetError, type SheetPresentation } from './ModalSheet';
 
 /**
  * 题库管理弹窗：列出本机全部题库（本地 + 线上），点按切换当前使用；
@@ -19,6 +19,7 @@ export function BankManagerModal({
   onBankCopied,
   onCreateLocal,
   onAddOnline,
+  presentation,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -26,6 +27,8 @@ export function BankManagerModal({
   onBankCopied: (bankId: string) => void;
   onCreateLocal: () => void;
   onAddOnline: () => void;
+  /** 默认弹窗；BankManagerScreen 传 screen 作为栈页面正文 */
+  presentation?: SheetPresentation;
 }) {
   const banks = useQuestionBankStore((state) => state.banks);
   const banksLoading = useQuestionBankStore((state) => state.banksLoading);
@@ -172,6 +175,7 @@ export function BankManagerModal({
       hint="点按题库切换当前使用；「复制」把任意题库（含线上）复制成本地可编辑副本，编辑不影响原题库。"
       onClose={() => { if (!busy) onClose(); }}
       dismissDisabled={busy}
+      presentation={presentation}
       footer={
         <View style={styles.footerActions}>
           <View style={styles.actionPair}>

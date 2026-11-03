@@ -9,6 +9,8 @@ import { ListScreen } from '../screens/ListScreen';
 import { DetailScreen } from '../screens/DetailScreen';
 import { FavoritesScreen } from '../screens/FavoritesScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
+import { BankManagerScreen } from '../screens/BankManagerScreen';
+import { BankEditorScreen } from '../screens/BankEditorScreen';
 import { colors, navigationTheme, typography } from '../theme';
 import type { Question } from '../question-bank';
 
@@ -24,6 +26,10 @@ export type DetailParams = {
 export type RootStackParamList = {
   Tabs: undefined;
   Detail: DetailParams;
+  /** 题库管理：切换 / 复制 / 删除 / 在线更新 / 新建本地题库 */
+  BankManager: undefined;
+  /** 本地题库编辑：bankId 为 local- 前缀的题库 id */
+  BankEditor: { bankId: string };
 };
 
 export type HomeStackParamList = {
@@ -160,6 +166,16 @@ export function AppNavigator() {
           name="Detail"
           component={DetailScreen}
           options={{ title: '题目详情' }}
+        />
+        <RootStack.Screen
+          name="BankManager"
+          component={BankManagerScreen}
+          options={{ title: '管理题库', headerBackTitle: '返回' }}
+        />
+        <RootStack.Screen
+          name="BankEditor"
+          component={BankEditorScreen}
+          options={{ title: '编辑本地题库', headerBackTitle: '返回' }}
         />
       </RootStack.Navigator>
     </NavigationContainer>
