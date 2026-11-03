@@ -1,11 +1,17 @@
 import React from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { usePreventRemove } from '@react-navigation/native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppButton } from '../../components/ui';
 import { colors, radii, spacing, typography } from '../../theme';
+
+/** 弹窗骨架的呈现方式：modal = 居中卡片弹窗；screen = 作为栈页面正文（标题交给导航栏） */
+export type SheetPresentation = 'modal' | 'screen';
 
 /**
  * Profile 弹窗统一骨架：与「增加题库」弹窗同风格（居中卡片 + 蒙层），
  * 但内容区可滚动、高度自适应到 86%，承载编辑器/导入等更大的表单。
+ * presentation="screen" 时同一份内容直接铺满栈页面，忙碌（dismissDisabled）时拦截返回键/手势。
  */
 export function ModalSheet({
   visible,
@@ -13,6 +19,7 @@ export function ModalSheet({
   hint,
   onClose,
   dismissDisabled = false,
+  presentation = 'modal',
   children,
   footer,
 }: {
@@ -21,9 +28,17 @@ export function ModalSheet({
   hint?: string;
   onClose: () => void;
   dismissDisabled?: boolean;
+  presentation?: SheetPresentation;
   children: React.ReactNode;
   footer?: React.ReactNode;
 }) {
+  if (presentation === 'screen') {
+    return (
+      <ScreenSheet title={title} hint={hint} dismissDisabled={dismissDisabled} footer={footer}>
+        {children}
+      </ScreenSheet>
+    );
+  }
   return (
     <Modal testID={`profile-sheet-${title}`} visible={visible} transparent animationType="fade" onRequestClose={dismissDisabled ? () => undefined : onClose}>
       <View style={styles.scrim}>
@@ -38,6 +53,34 @@ export function ModalSheet({
         </View>
       </View>
     </Modal>
+  );
+}
+
+/** 栈页面形态：无蒙层与卡片，正文可滚动，底部操作栏固定；忙碌时阻止页面被移除 */
+function ScreenSheet({
+  title,
+  hint,
+  dismissDisabled,
+  children,
+  footer,
+}: {
+  title: string;
+  hint?: string;
+  dismissDisabled: boolean;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+}) {
+  // 处理题库期间离开会打断写入：返回键 / 返回手势一律吞掉，等操作结束
+  usePreventRemove(dismissDisabled, () => undefined);
+  return (
+    // 栈页面不自带底部安全区：整页让开手势条，固定操作栏不被遮挡
+    <SafeAreaView testID={`profile-screen-${title}`} style={styles.screen} edges={['bottom']}>
+      <ScrollView style={styles.screenBody} contentContainerStyle={styles.screenBodyContent} keyboardShouldPersistTaps="handled">
+        {hint ? <Text style={[styles.hint, styles.screenHint]}>{hint}</Text> : null}
+        {children}
+      </ScrollView>
+      {footer ? <View style={styles.screenFooter}>{footer}</View> : null}
+    </SafeAreaView>
   );
 }
 
@@ -116,6 +159,16 @@ const styles = StyleSheet.create({
   footer: {
     marginTop: spacing.md,
     paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  screen: { flex: 1, backgroundColor: colors.background },
+  screenBody: { flex: 1 },
+  screenBodyContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.lg },
+  screenHint: { marginTop: 0, marginBottom: spacing.md },
+  screenFooter: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },

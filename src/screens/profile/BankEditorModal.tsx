@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { usePreventRemove, useNavigation, type NavigationAction } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { FilePlus2, Pencil, TextSelect, Trash2 } from 'lucide-react-native';
 import { useQuestionBankStore } from '../../question-bank/store';
 import {
@@ -18,25 +21,22 @@ import {
 } from './QuestionEditModal';
 import { ImportTextModal } from './ImportTextModal';
 
+type Nav = NativeStackNavigationProp<RootStackParamList>;
+
 /**
- * 本地题库编辑弹窗：题库改名、题目列表维护（增/改/删）、从文本或图片 AI 导入。
+ * 本地题库编辑内容（BankEditorScreen 的正文）：题库改名、题目列表维护（增/改/删）、从文本或图片 AI 导入。
  * 编辑只改内存中的源包，点「保存题库」才写源文件并重建安装，保留当前使用的题库。
+ * 离开统一走导航移除：取消 / 返回键 / 返回手势 / 跳管理页都经 usePreventRemove，有未保存修改先询问。
  */
-export function BankEditorModal({
-  visible,
+export function BankEditorContent({
   bankId,
-  onClose,
   onOpenAiSettings,
-  onOpenManager,
 }: {
-  visible: boolean;
   /** 本地题库 id（local- 前缀） */
-  bankId: string | null;
-  onClose: () => void;
+  bankId: string;
   onOpenAiSettings: () => void;
-  /** 从编辑器跳到题库管理弹窗（切换 / 新建其它题库） */
-  onOpenManager?: () => void;
 }) {
+  const navigation = useNavigation<Nav>();
   const saveLocalBank = useQuestionBankStore((state) => state.saveLocalBank);
   const installing = useQuestionBankStore((state) => state.installing);
   const [source, setSource] = useState<LocalBankSource | null>(null);
@@ -44,7 +44,10 @@ export function BankEditorModal({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
-  const [leaveIntent, setLeaveIntent] = useState<'close' | 'manager' | null>(null);
+  /** 被拦下的离开动作：确认放弃后原样重放（返回 / 跳管理页） */
+  const [leaveIntent, setLeaveIntent] = useState<NavigationAction | null>(null);
+  /** 保存成功后待离开：等 dirty / busy 状态提交、拦截解除后再返回 */
+  const [leaveAfterSave, setLeaveAfterSave] = useState(false);
   const busy = saving || installing;
   const [error, setError] = useState<string | null>(null);
   /** undefined = 关闭；null = 新建；对象 = 编辑既有题 */
@@ -53,13 +56,13 @@ export function BankEditorModal({
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!visible || !bankId) return;
     let alive = true;
     setLoading(true);
     setSource(null);
     setTitle('');
     setDirty(false);
     setLeaveIntent(null);
+    setLeaveAfterSave(false);
     setEditingQuestion(undefined);
     setImportVisible(false);
     setError(null);
@@ -77,21 +80,35 @@ export function BankEditorModal({
     return () => {
       alive = false;
     };
-  }, [visible, bankId]);
+  }, [bankId]);
+
+  // 忙碌时一律拦截（保存中途离开会丢失写入）；有未保存修改时拦下并询问
+  usePreventRemove(dirty || Boolean(busy), ({ data }) => {
+    if (busy) return;
+    setLeaveIntent(data.action);
+  });
+
+  useEffect(() => {
+    if (leaveAfterSave && !dirty && !busy) {
+      setLeaveAfterSave(false);
+      navigation.goBack();
+    }
+  }, [leaveAfterSave, dirty, busy, navigation]);
 
   function requestLeave(intent: 'close' | 'manager') {
     if (busy) return;
-    if (dirty) setLeaveIntent(intent);
-    else if (intent === 'manager') onOpenManager?.();
-    else onClose();
+    // 真正的拦截在 usePreventRemove：这里只发起导航，未保存时会被拦下并弹出确认
+    if (intent === 'manager') navigation.popTo('BankManager');
+    else navigation.goBack();
   }
 
   function discardAndLeave() {
-    if (busy) return;
-    setDirty(false);
-    if (leaveIntent === 'manager') onOpenManager?.();
-    else onClose();
+    if (busy || !leaveIntent) return;
+    const action = leaveIntent;
     setLeaveIntent(null);
+    setDirty(false);
+    // 重放被拦下的动作：导航库会跳过本页的 beforeRemove，不会再次拦截
+    navigation.dispatch(action);
   }
 
   function mutatePackage(mutate: (bank: LocalBankSource['package']) => LocalBankSource['package']) {
@@ -134,7 +151,7 @@ export function BankEditorModal({
       };
       await saveLocalBank({ ...source, package: nextPackage });
       setDirty(false);
-      onClose();
+      setLeaveAfterSave(true);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : String(saveError));
     } finally {
@@ -147,30 +164,33 @@ export function BankEditorModal({
 
   return (
     <ModalSheet
-      visible={visible && bankId !== null}
+      visible
+      presentation="screen"
       title="编辑本地题库"
       hint="点击「保存题库」后修改生效，可离线刷题；保存不会切换当前使用的题库。"
       onClose={() => requestLeave('close')}
       dismissDisabled={Boolean(busy)}
       footer={
-        <SheetActions
-          confirmLabel={saving ? '正在保存' : '保存题库'}
-          confirmLoading={saving}
-          onCancel={() => requestLeave('close')}
-          onConfirm={() => void handleSave()}
-          cancelDisabled={Boolean(busy)}
-          confirmDisabled={Boolean(loading || busy || !source || source.bankId !== bankId)}
-        />
+        // 离开确认放在固定底栏：返回键触发时无论正文滚到哪里都能看到
+        leaveIntent ? (
+          <View accessibilityRole="alert" style={{ gap: spacing.sm }}>
+            <Text style={styles.leaveText}>有未保存的修改，离开后将丢失。</Text>
+            <AppButton label="继续编辑" disabled={Boolean(busy)} onPress={() => setLeaveIntent(null)} />
+            <AppButton label="放弃修改并离开" disabled={Boolean(busy)} variant="ghost" onPress={discardAndLeave} />
+          </View>
+        ) : (
+          <SheetActions
+            confirmLabel={saving ? '正在保存' : '保存题库'}
+            confirmLoading={saving}
+            onCancel={() => requestLeave('close')}
+            onConfirm={() => void handleSave()}
+            cancelDisabled={Boolean(busy)}
+            confirmDisabled={Boolean(loading || busy || !source || source.bankId !== bankId)}
+          />
+        )
       }
     >
       <SheetError message={error} />
-      {leaveIntent ? (
-        <View accessibilityRole="alert" style={{ gap: spacing.sm, marginTop: spacing.md }}>
-          <Text style={styles.loadingText}>有未保存的修改，离开后将丢失。</Text>
-          <AppButton label="继续编辑" disabled={Boolean(busy)} onPress={() => setLeaveIntent(null)} />
-          <AppButton label="放弃修改并离开" disabled={Boolean(busy)} variant="ghost" onPress={discardAndLeave} />
-        </View>
-      ) : null}
       {loading ? <Text style={styles.loadingText}>正在读取题库…</Text> : null}
 
       {!loading && source ? (
@@ -215,17 +235,16 @@ export function BankEditorModal({
             </Text>
           ) : null}
 
-          {onOpenManager ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="管理其它题库"
-              onPress={() => requestLeave('manager')}
-              disabled={Boolean(busy)}
-              style={({ pressed }) => [styles.managerLink, pressed && styles.pressed]}
-            >
-              <Text style={styles.managerLinkText}>管理其它题库（切换 / 新建）</Text>
-            </Pressable>
-          ) : null}
+          {/* 回到（或打开）题库管理页：栈内 popTo，同样经过未保存守卫 */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="管理其它题库"
+            onPress={() => requestLeave('manager')}
+            disabled={Boolean(busy)}
+            style={({ pressed }) => [styles.managerLink, pressed && styles.pressed]}
+          >
+            <Text style={styles.managerLinkText}>管理其它题库（切换 / 新建）</Text>
+          </Pressable>
 
           {questions.map((question) => {
             const confirmingDelete = confirmingDeleteId === question.id;
@@ -309,6 +328,7 @@ export function BankEditorModal({
 
 const styles = StyleSheet.create({
   loadingText: { ...typography.caption, color: colors.textMuted, marginTop: spacing.sm },
+  leaveText: { ...typography.caption, color: colors.textSecondary, fontWeight: '600' },
   fieldLabel: { ...typography.caption, color: colors.textMuted, fontWeight: '600', marginBottom: spacing.xs },
   input: {
     ...typography.body,

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AppState,
   FlatList,
+  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -9,11 +10,12 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, type CompositeNavigationProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   Boxes,
   BriefcaseBusiness,
+  ChevronDown,
   ChevronRight,
   Code2,
   Cpu,
@@ -32,7 +34,7 @@ import {
   Zap,
   type LucideIcon,
 } from 'lucide-react-native';
-import type { HomeStackParamList } from '../navigation/AppNavigator';
+import type { HomeStackParamList, RootStackParamList } from '../navigation/AppNavigator';
 import {
   buildCategorySummaries,
   collectTagSubtreeIds,
@@ -47,8 +49,13 @@ import { computeDueQuestionIds, mergeBankReviewRecords } from '../lib/spaced-rev
 import { EmptyState, TabHeader } from '../components/ui';
 import { SkeletonBlock } from '../components/skeleton';
 import { cardChrome, colors, pressedScale, radii, spacing, tints, typography } from '../theme';
+import { BankSwitcherSheet } from './home/BankSwitcherSheet';
 
-type Nav = NativeStackNavigationProp<HomeStackParamList, 'Home'>;
+/** 首页在 HomeStack 内；题库管理页挂在 RootStack，navigate 会冒泡到根栈 */
+type Nav = CompositeNavigationProp<
+  NativeStackNavigationProp<HomeStackParamList, 'Home'>,
+  NativeStackNavigationProp<RootStackParamList>
+>;
 
 interface TagItem extends QuestionTag {
   questionCount: number;
@@ -123,15 +130,23 @@ export function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** 本机没有任何已启用题库（区别于读取失败）：空态给「新建或添加题库」入口 */
+  const [noBank, setNoBank] = useState(false);
+  const [switcherVisible, setSwitcherVisible] = useState(false);
+  const canManageBanks = Platform.OS !== 'web';
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     setError(null);
+    setNoBank(false);
     try {
       await useMasteryStore.getState().load();
       const loadedCatalog = await questionBankRepository.getCatalog();
-      if (!loadedCatalog) throw new Error('本机还没有安装题库');
+      if (!loadedCatalog) {
+        setNoBank(true);
+        throw new Error('本机还没有安装题库');
+      }
       setCatalog(loadedCatalog);
       setCategories(buildCategorySummaries(loadedCatalog).map((item) => ({ ...item, kind: 'category' as const })));
       setRoots(buildRootTags(loadedCatalog));
@@ -281,6 +296,21 @@ export function HomeScreen() {
               ) : null}
             />
 
+            {/* 当前题库切换器：点按弹出底部题库列表 */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={catalog ? `当前题库 ${catalog.title}，点按切换` : '还没有题库，点按添加'}
+              accessibilityHint="打开题库列表，切换或管理题库"
+              onPress={() => setSwitcherVisible(true)}
+              style={({ pressed }) => [styles.bankSwitcher, pressed && styles.pressed]}
+            >
+              <Database size={15} color={colors.primary} strokeWidth={2} />
+              <Text style={styles.bankSwitcherText} numberOfLines={1}>
+                {catalog ? catalog.title : '还没有题库，点此添加'}
+              </Text>
+              <ChevronDown size={16} color={colors.textMuted} strokeWidth={2} />
+            </Pressable>
+
             {/* 强化但不过度臃肿的“继续上次”快捷卡片 */}
             {lastViewedExists ? (
               <Pressable
@@ -368,14 +398,30 @@ export function HomeScreen() {
           );
         }}
         ListEmptyComponent={
-          <EmptyState
-            title={error ? '无法读取本地题库' : '题库里还没有分类'}
-            description={error ?? '重新安装一个有效的题库包后即可开始学习。'}
-            actionLabel="重新读取"
-            onAction={() => void load()}
-          />
+          noBank && canManageBanks ? (
+            <EmptyState
+              title="还没有题库"
+              description="新建一个本地题库，或添加线上题库后即可开始练习。"
+              actionLabel="新建或添加题库"
+              onAction={() => nav.navigate('BankManager')}
+            />
+          ) : (
+            <EmptyState
+              title={error ? '无法读取本地题库' : '题库里还没有分类'}
+              description={error ?? '重新安装一个有效的题库包后即可开始学习。'}
+              actionLabel="重新读取"
+              onAction={() => void load()}
+            />
+          )
         }
         contentContainerStyle={styles.content}
+      />
+      <BankSwitcherSheet
+        visible={switcherVisible}
+        onClose={() => setSwitcherVisible(false)}
+        onSwitched={() => void load(true)}
+        onManage={() => nav.navigate('BankManager')}
+        canManage={canManageBanks}
       />
     </SafeAreaView>
   );
@@ -415,6 +461,26 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontWeight: '600',
     fontSize: 11,
+  },
+  bankSwitcher: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+    gap: 6,
+    minHeight: 36,
+    marginBottom: spacing.lg,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.pill,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  bankSwitcherText: {
+    ...typography.bodyStrong,
+    color: colors.text,
+    fontSize: 13,
+    flexShrink: 1,
   },
   resumeCard: {
     flexDirection: 'row',

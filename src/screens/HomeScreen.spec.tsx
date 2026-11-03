@@ -1,4 +1,4 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /**
@@ -12,7 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const DAY = 24 * 60 * 60 * 1000;
 
-const mockNav = { push: jest.fn(), goBack: jest.fn(), popToTop: jest.fn(), canGoBack: () => true };
+const mockNav = { push: jest.fn(), navigate: jest.fn(), goBack: jest.fn(), popToTop: jest.fn(), canGoBack: () => true };
 
 jest.mock('@react-navigation/native', () => ({
   useNavigation: () => mockNav,
@@ -31,6 +31,21 @@ jest.mock('../question-bank/client', () => ({
   },
   createQuestionBankRepository: jest.fn(),
   asRemoteQuestionBankRepository: jest.fn(() => null),
+}));
+
+// 题库切换器读写 store：用可控替身，避免碰真实安装器 / 文件系统
+const mockBankActions = {
+  refreshBanks: jest.fn(),
+  switchBank: jest.fn(),
+};
+const mockBankState = {
+  banks: [] as unknown[],
+  banksLoading: false,
+  installing: false,
+};
+jest.mock('../question-bank/store', () => ({
+  useQuestionBankStore: (selector: (state: unknown) => unknown) =>
+    selector({ ...mockBankState, ...mockBankActions }),
 }));
 
 // eslint-disable-next-line import/first
@@ -110,5 +125,88 @@ describe('HomeScreen 今日复习卡片', () => {
     // 等 load 完成后再断言（find* 会在超时后抛错，用轮询兜底确认卡片一直不出现）
     await view.findByLabelText('Java，2 道题');
     expect(view.queryByLabelText(/今日复习/)).toBeNull();
+  });
+});
+
+describe('HomeScreen 题库切换器', () => {
+  const otherCatalog = { ...catalog, id: 'bank-y', title: '另一个题库' };
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    await AsyncStorage.clear();
+    useMasteryStore.setState({ marks: {}, markedAt: {} });
+    mockRepository.getCatalog.mockResolvedValue(catalog);
+    mockBankState.banks = [
+      { catalogId: 'bank-x', namespace: 'ns-x', title: '测试题库', questionCount: 2, source: 'online', active: true },
+      { catalogId: 'bank-y', namespace: 'ns-y', title: '另一个题库', questionCount: 5, source: 'local', active: false },
+    ];
+    mockBankState.banksLoading = false;
+    mockBankState.installing = false;
+    mockBankActions.refreshBanks.mockResolvedValue(undefined);
+    mockBankActions.switchBank.mockResolvedValue(undefined);
+  });
+
+  it('标题显示当前题库，打开后刷新并列出全部题库、标记使用中', async () => {
+    const view = await render(<HomeScreen />);
+    await act(async () => { fireEvent.press(await view.findByLabelText('当前题库 测试题库，点按切换')); });
+
+    expect(mockBankActions.refreshBanks).toHaveBeenCalledTimes(1);
+    expect(view.getByLabelText('当前题库 测试题库').props.accessibilityState).toEqual(
+      expect.objectContaining({ selected: true }),
+    );
+    expect(view.getByText('使用中')).toBeTruthy();
+    expect(view.getByLabelText('切换到题库 另一个题库')).toBeTruthy();
+  });
+
+  it('点其它题库调用 switchBank 并重新读取首页', async () => {
+    const view = await render(<HomeScreen />);
+    await act(async () => { fireEvent.press(await view.findByLabelText('当前题库 测试题库，点按切换')); });
+    mockRepository.getCatalog.mockResolvedValue(otherCatalog);
+
+    await act(async () => { fireEvent.press(view.getByLabelText('切换到题库 另一个题库')); });
+
+    expect(mockBankActions.switchBank).toHaveBeenCalledWith('bank-y');
+    expect(await view.findByLabelText('当前题库 另一个题库，点按切换')).toBeTruthy();
+  });
+
+  it('切换中禁用其它行，失败时在弹层内提示错误', async () => {
+    let fail!: (error: Error) => void;
+    mockBankActions.switchBank.mockImplementation(() => new Promise<void>((_, reject) => { fail = reject; }));
+    const view = await render(<HomeScreen />);
+    await act(async () => { fireEvent.press(await view.findByLabelText('当前题库 测试题库，点按切换')); });
+
+    await act(async () => { fireEvent.press(view.getByLabelText('切换到题库 另一个题库')); });
+    expect(view.getByText('正在切换题库…')).toBeTruthy();
+    expect(view.getByLabelText('当前题库 测试题库')).toBeDisabled();
+    expect(view.getByLabelText('管理题库')).toBeDisabled();
+
+    await act(async () => { fail(new Error('正在处理题库，请稍后再试')); });
+    expect(view.getByText('正在处理题库，请稍后再试')).toBeTruthy();
+    expect(view.getByLabelText('切换到题库 另一个题库')).not.toBeDisabled();
+  });
+
+  it('「管理题库」进入题库管理页', async () => {
+    const view = await render(<HomeScreen />);
+    await act(async () => { fireEvent.press(await view.findByLabelText('当前题库 测试题库，点按切换')); });
+    await act(async () => { fireEvent.press(view.getByLabelText('管理题库')); });
+    expect(mockNav.navigate).toHaveBeenCalledWith('BankManager');
+  });
+
+  it('本机没有题库时空态与切换器都给新建 / 添加入口', async () => {
+    mockRepository.getCatalog.mockResolvedValue(null);
+    mockBankState.banks = [];
+    const view = await render(<HomeScreen />);
+
+    expect(await view.findByText('还没有题库')).toBeTruthy();
+    await act(async () => { fireEvent.press(view.getByText('新建或添加题库')); });
+    expect(mockNav.navigate).toHaveBeenCalledWith('BankManager');
+
+    mockNav.navigate.mockClear();
+    await act(async () => { fireEvent.press(view.getByLabelText('还没有题库，点按添加')); });
+    expect(view.getByText(/本机还没有题库/)).toBeTruthy();
+    // 空态按钮与弹层末尾入口同名：弹层后渲染，取最后一个
+    const sheetEntries = view.getAllByLabelText('新建或添加题库');
+    await act(async () => { fireEvent.press(sheetEntries[sheetEntries.length - 1]); });
+    expect(mockNav.navigate).toHaveBeenCalledWith('BankManager');
   });
 });
