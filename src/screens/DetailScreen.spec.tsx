@@ -26,7 +26,12 @@ jest.mock('../question-bank/client', () => ({
 
 // 可变路由参数：默认浏览模式；练习模式用例改成 { mode: 'practice' } 等。
 // jest.mock 工厂只允许引用 mock* 前缀的变量。
-const mockRouteParams: { id: string; mode?: 'practice'; queue?: string[] } = { id: 'jvm-memory-01' };
+const mockRouteParams: {
+  id: string;
+  mode?: 'practice' | 'review';
+  queue?: string[];
+  queueIndex?: number;
+} = { id: 'jvm-memory-01' };
 
 jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({
@@ -51,6 +56,8 @@ import { DetailScreen } from './DetailScreen';
 import { useUserStore } from '../store/userStore';
 // eslint-disable-next-line import/first
 import { useMasteryStore } from '../store/masteryStore';
+// eslint-disable-next-line import/first
+import { useFavoritesStore } from '../store/favoritesStore';
 // eslint-disable-next-line import/first
 import { useQuestionBankStore } from '../question-bank/store';
 // eslint-disable-next-line import/first
@@ -288,14 +295,15 @@ describe('DetailScreen 掌握度打标', () => {
 
     await render(<DetailScreen />);
 
+    // 打标在底部操作栏；无答案时答案开关置灰
     await screen.findByLabelText('标记这道题为会了');
-    expect(screen.getByText('这道题掌握了吗？')).toBeTruthy();
+    expect(screen.getByLabelText('这道题暂无参考答案')).toBeDisabled();
 
     fireEvent.press(screen.getByLabelText('标记这道题为会了'));
     expect(useMasteryStore.getState().getMark('bank-a', 'jvm-memory-01')).toBe('known');
   });
 
-  it('练习模式：揭答案后出现自评 chips', async () => {
+  it('练习模式：底栏常驻自评 chips（揭答案前后都可打标）', async () => {
     useQuestionBankStore.setState({ catalog: catalogFor('bank-a') });
     mockRouteParams.mode = 'practice';
     useUserStore.setState({ answerExpandedByDefault: true });
@@ -310,8 +318,153 @@ describe('DetailScreen 掌握度打标', () => {
     await render(<DetailScreen />);
     await waitFor(() => expect(screen.getByText('参考答案正文。')).toBeTruthy());
 
-    expect(screen.getByText('这道题掌握了吗？')).toBeTruthy();
+    // 练习模式下浏览态的头部打标入口不出现，打标只在底栏
+    expect(screen.queryByLabelText('标记掌握程度')).toBeNull();
     fireEvent.press(screen.getByLabelText('标记这道题为模糊'));
     expect(useMasteryStore.getState().getMark('bank-a', 'jvm-memory-01')).toBe('fuzzy');
+  });
+});
+
+describe('DetailScreen 队列分页 + 底部操作栏', () => {
+  const QUEUE = ['q1', 'q2', 'q3', 'q4', 'q5'];
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useMasteryStore.setState({ marks: {} });
+    useQuestionBankStore.setState({ catalog: catalogFor('bank-a') });
+    useUserStore.setState({ answerExpandedByDefault: false, lastViewedQuestionId: null });
+    mockRouteParams.id = 'q1';
+    mockRouteParams.mode = 'practice';
+    mockRouteParams.queue = QUEUE;
+    mockRouteParams.queueIndex = 0;
+    mockRepository.getQuestion.mockImplementation(async (id: string) => ({ ...meta, id, title: `标题 ${id}` }));
+    mockRepository.getContent.mockImplementation(async (id: string) => ({
+      id,
+      questionMd: `# 标题 ${id}\n\n题干 ${id}。`,
+      answerMd: `答案 ${id}。`,
+      followupsMd: null,
+      assetBaseUri: undefined,
+    }));
+  });
+
+  afterAll(() => {
+    mockRouteParams.id = 'jvm-memory-01';
+    delete mockRouteParams.mode;
+    delete mockRouteParams.queue;
+    delete mockRouteParams.queueIndex;
+  });
+
+  it('只渲染当前页 ±1，下一题/上一题更新进度与当前题（继续练习数据）', async () => {
+    await render(<DetailScreen />);
+    await waitFor(() => expect(screen.getByText('题干 q1。')).toBeTruthy());
+
+    expect(screen.getByText('1 / 5')).toBeTruthy();
+    expect(screen.getByLabelText('第 1 题，共 5 题')).toBeTruthy();
+    // 窗口：q1 当前、q2 预加载，q3 之后不挂载
+    await waitFor(() => expect(screen.getByText('题干 q2。')).toBeTruthy());
+    expect(screen.queryByText('题干 q3。')).toBeNull();
+    // 预加载页不记进度
+    await waitFor(() => expect(useUserStore.getState().lastViewedQuestionId).toBe('q1'));
+
+    await fireEvent.press(screen.getByLabelText('下一题'));
+    expect(screen.getByText('2 / 5')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('题干 q3。')).toBeTruthy());
+    await waitFor(() => expect(useUserStore.getState().lastViewedQuestionId).toBe('q2'));
+
+    await fireEvent.press(screen.getByLabelText('上一题'));
+    expect(screen.getByText('1 / 5')).toBeTruthy();
+    await waitFor(() => expect(useUserStore.getState().lastViewedQuestionId).toBe('q1'));
+    // 回到首页后 q3 移出窗口被卸载
+    await waitFor(() => expect(screen.queryByText('题干 q3。')).toBeNull());
+  });
+
+  it('原生滑动选中新页（onPageSelected）同步进度', async () => {
+    await render(<DetailScreen />);
+    await waitFor(() => expect(screen.getByText('题干 q1。')).toBeTruthy());
+
+    await fireEvent(screen.getByTestId('question-pager'), 'pageSelected', { nativeEvent: { position: 1 } });
+    expect(screen.getByText('2 / 5')).toBeTruthy();
+    await waitFor(() => expect(useUserStore.getState().lastViewedQuestionId).toBe('q2'));
+  });
+
+  it('首题禁用上一题，末题禁用下一题', async () => {
+    await render(<DetailScreen />);
+    await waitFor(() => expect(screen.getByText('题干 q1。')).toBeTruthy());
+
+    expect(screen.getByLabelText('上一题')).toBeDisabled();
+    expect(screen.getByLabelText('下一题')).toBeEnabled();
+
+    await fireEvent(screen.getByTestId('question-pager'), 'pageSelected', { nativeEvent: { position: 4 } });
+    expect(screen.getByText('5 / 5')).toBeTruthy();
+    expect(screen.getByLabelText('下一题')).toBeDisabled();
+    expect(screen.getByLabelText('上一题')).toBeEnabled();
+
+    // 末题再点下一题无效（按钮置灰，越界保护）
+    await fireEvent.press(screen.getByLabelText('下一题'));
+    expect(screen.getByText('5 / 5')).toBeTruthy();
+  });
+
+  it('从队列中间进入（继续上次练习）时起始页即 queueIndex', async () => {
+    mockRouteParams.id = 'q4';
+    mockRouteParams.queueIndex = 3;
+    await render(<DetailScreen />);
+
+    await waitFor(() => expect(screen.getByText('题干 q4。')).toBeTruthy());
+    expect(screen.getByText('4 / 5')).toBeTruthy();
+    expect(screen.queryByText('题干 q1。')).toBeNull();
+    await waitFor(() => expect(useUserStore.getState().lastViewedQuestionId).toBe('q4'));
+  });
+
+  it('答案开关只作用于当前题，新题仍按默认设置', async () => {
+    await render(<DetailScreen />);
+    await waitFor(() => expect(screen.getByText('题干 q1。')).toBeTruthy());
+    expect(screen.queryByText('答案 q1。')).toBeNull();
+
+    await fireEvent.press(await screen.findByLabelText('显示答案'));
+    await waitFor(() => expect(screen.getByText('答案 q1。')).toBeTruthy());
+    expect(screen.queryByText('答案 q2。')).toBeNull();
+
+    await fireEvent.press(screen.getByLabelText('收起答案'));
+    expect(screen.queryByText('答案 q1。')).toBeNull();
+
+    await fireEvent.press(screen.getByLabelText('显示答案'));
+    await fireEvent.press(screen.getByLabelText('下一题'));
+    // q2 跟随默认（收起）；底栏开关回到「显示答案」
+    expect(screen.queryByText('答案 q2。')).toBeNull();
+    expect(await screen.findByLabelText('显示答案')).toBeTruthy();
+    // 回到 q1 时保留刚才的手动展开
+    await fireEvent.press(screen.getByLabelText('上一题'));
+    expect(screen.getByText('答案 q1。')).toBeTruthy();
+  });
+
+  it('默认展开设置开启时，底栏开关初始为「收起答案」', async () => {
+    useUserStore.setState({ answerExpandedByDefault: true });
+    await render(<DetailScreen />);
+    await waitFor(() => expect(screen.getByText('答案 q1。')).toBeTruthy());
+    expect(await screen.findByLabelText('收起答案')).toBeTruthy();
+  });
+
+  it('底栏打标写入当前题', async () => {
+    await render(<DetailScreen />);
+    await waitFor(() => expect(screen.getByText('题干 q1。')).toBeTruthy());
+
+    await fireEvent.press(screen.getByLabelText('标记这道题为不会'));
+    expect(useMasteryStore.getState().getMark('bank-a', 'q1')).toBe('unknown');
+
+    await fireEvent.press(screen.getByLabelText('下一题'));
+    await fireEvent.press(screen.getByLabelText('标记这道题为会了'));
+    expect(useMasteryStore.getState().getMark('bank-a', 'q2')).toBe('known');
+    expect(useMasteryStore.getState().getMark('bank-a', 'q1')).toBe('unknown');
+  });
+
+  it('收藏按当前页的题目写入', async () => {
+    useFavoritesStore.setState({ ids: [] });
+    await render(<DetailScreen />);
+    await waitFor(() => expect(screen.getByText('题干 q1。')).toBeTruthy());
+
+    // 当前页与预加载页各有一个收藏按钮；第一个属于 q1
+    const buttons = await screen.findAllByLabelText('收藏这道题');
+    await fireEvent.press(buttons[0]);
+    await waitFor(() => expect(useFavoritesStore.getState().ids).toEqual(['q1']));
   });
 });

@@ -24,23 +24,28 @@ const MASTERY_META: Record<Mastery, MasteryMeta> = {
 
 const MASTERY_ORDER: Mastery[] = ['known', 'fuzzy', 'unknown'];
 
-/** 三态 chips 行。再点当前态 = 清除标记。 */
+/**
+ * 三态 chips 行。再点当前态 = 清除标记。
+ * compact：底部操作栏用的紧凑形态——不换行、三枚等宽、高度收窄。
+ */
 export function MasteryChips({
   bankId,
   questionId,
   showPrompt = false,
+  compact = false,
 }: {
   bankId: string;
   questionId: string;
   showPrompt?: boolean;
+  compact?: boolean;
 }) {
   const mark = useMasteryStore((s) => s.marks[bankId]?.[questionId]);
   const setMark = useMasteryStore((s) => s.setMark);
 
   return (
-    <View>
+    <View style={compact ? styles.compactContainer : null}>
       {showPrompt ? <Text style={styles.prompt}>这道题掌握了吗？</Text> : null}
-      <View style={styles.chipsRow}>
+      <View style={[styles.chipsRow, compact && styles.compactRow]}>
         {MASTERY_ORDER.map((value) => {
           const meta = MASTERY_META[value];
           const active = mark === value;
@@ -54,6 +59,7 @@ export function MasteryChips({
               onPress={() => setMark(bankId, questionId, active ? null : value)}
               style={({ pressed }) => [
                 styles.chip,
+                compact && styles.compactChip,
                 { backgroundColor: active ? meta.bg : colors.surfaceSubtle },
                 active && { borderColor: meta.fg },
                 pressed && styles.pressed,
@@ -146,5 +152,14 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   chipText: { ...typography.caption, color: colors.textSecondary, fontWeight: '600' },
+  compactContainer: { flex: 1 },
+  compactRow: { flexWrap: 'nowrap', gap: spacing.xs },
+  compactChip: {
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 36,
+    paddingHorizontal: spacing.xs,
+    gap: 3,
+  },
   pressed: { opacity: 0.75 },
 });
