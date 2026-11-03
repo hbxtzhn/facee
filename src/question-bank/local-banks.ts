@@ -351,5 +351,7 @@ export function parseLocalBankSource(raw: string): LocalBankSource | null {
     package: bankPackage as unknown as QuestionBankPackage,
     ...(typeof record.sourceUrl === 'string' && record.sourceUrl.trim()
       ? { sourceUrl: record.sourceUrl.trim() } : {}),
+    // 旧文件没有该字段：视为未修改（向后兼容）
+    ...(record.locallyModified === true ? { locallyModified: true } : {}),
   };
 }

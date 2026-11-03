@@ -161,6 +161,53 @@ describe('BankManagerModal 题库管理弹窗', () => {
     expect(view.queryByText('disk full')).toBeNull();
   });
 
+  it('已修改的下载库显示「已修改」徽标；需确认时行内三选一，取消不更新', async () => {
+    mockState.banks = [{
+      catalogId: 'local-my', namespace: 'ns-local', title: '我的题库', questionCount: 2,
+      source: 'local', active: true, sourceUrl: 'https://example.com/bank.zip', locallyModified: true,
+    }, {
+      catalogId: 'local-clean', namespace: 'ns-clean', title: '未改题库', questionCount: 2,
+      source: 'local', active: false, sourceUrl: 'https://example.com/clean.zip',
+    }];
+    mockActions.updateBank.mockResolvedValueOnce({ added: 0, removed: 0, updated: false, needsConfirmation: true });
+    const view = await render(<BankManagerModal visible onClose={jest.fn()} onEditBank={jest.fn()}
+      onBankCopied={jest.fn()} onCreateLocal={jest.fn()} onAddOnline={jest.fn()} />);
+    expect(view.getAllByText('已修改')).toHaveLength(1);
+
+    await act(async () => { fireEvent.press(view.getByLabelText('在线更新题库 我的题库')); });
+    expect(mockActions.updateBank).toHaveBeenCalledWith('local-my', undefined);
+    expect(view.getByLabelText('另存副本后更新题库 我的题库')).toBeTruthy();
+    expect(view.getByLabelText('直接覆盖更新题库 我的题库')).toBeTruthy();
+    // 需确认不是检查结果：不提示「已是最新」
+    expect(view.queryByText(/已是最新版本/)).toBeNull();
+
+    await act(async () => { fireEvent.press(view.getByLabelText('取消更新')); });
+    expect(view.queryByLabelText('另存副本后更新题库 我的题库')).toBeNull();
+    expect(view.getByLabelText('在线更新题库 我的题库')).toBeTruthy();
+    expect(mockActions.updateBank).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['另存副本后更新题库 我的题库', 'keepCopy', '「我的题库」更新完成：新增 1 题。本地修改已另存为副本。'],
+    ['直接覆盖更新题库 我的题库', 'overwrite', '「我的题库」更新完成：新增 1 题。'],
+  ])('确认「%s」后带 onLocalEdits=%s 重试并提示结果', async (label, decision, notice) => {
+    mockState.banks = [{
+      catalogId: 'local-my', namespace: 'ns-local', title: '我的题库', questionCount: 2,
+      source: 'local', active: true, sourceUrl: 'https://example.com/bank.zip', locallyModified: true,
+    }];
+    mockActions.updateBank
+      .mockResolvedValueOnce({ added: 0, removed: 0, updated: false, needsConfirmation: true })
+      .mockResolvedValueOnce({ added: 1, removed: 0, updated: true,
+        ...(decision === 'keepCopy' ? { copiedBankId: 'local-copy' } : {}) });
+    const view = await render(<BankManagerModal visible onClose={jest.fn()} onEditBank={jest.fn()}
+      onBankCopied={jest.fn()} onCreateLocal={jest.fn()} onAddOnline={jest.fn()} />);
+    await act(async () => { fireEvent.press(view.getByLabelText('在线更新题库 我的题库')); });
+    await act(async () => { fireEvent.press(view.getByLabelText(label)); });
+    expect(mockActions.updateBank).toHaveBeenLastCalledWith('local-my', { onLocalEdits: decision });
+    expect(view.getByText(notice)).toBeTruthy();
+    expect(view.queryByLabelText(label)).toBeNull();
+  });
+
   it('版本未变化时显示已是最新版本，不显示新增0题', async () => {
     mockState.banks = [{
       catalogId: 'local-my', namespace: 'ns-local', title: '我的题库', questionCount: 2,

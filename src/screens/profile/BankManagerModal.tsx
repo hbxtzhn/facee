@@ -103,18 +103,30 @@ export function BankManagerModal({
     }
   }
 
-  async function handleUpdate(catalogId: string, title: string) {
+  // 下载库被本地编辑过且有新版本时，行内确认如何处理本地修改
+  const [confirmingUpdateId, setConfirmingUpdateId] = useState<string | null>(null);
+
+  async function handleUpdate(catalogId: string, title: string, onLocalEdits?: 'overwrite' | 'keepCopy') {
     if (busyId) return;
     setBusyId(catalogId);
     setError(null);
     setNotice(null);
+    setConfirmingUpdateId(null);
     try {
-      const { added, removed, updated } = await updateBank(catalogId);
-      const message = !updated
+      const { added, removed, updated, needsConfirmation, copiedBankId } = await updateBank(
+        catalogId, onLocalEdits ? { onLocalEdits } : undefined,
+      );
+      if (needsConfirmation) {
+        // 尚未下载也未改动任何内容：等用户选择后带选项重试，不记录检查结果
+        setConfirmingUpdateId(catalogId);
+        return;
+      }
+      const copiedNote = copiedBankId ? '本地修改已另存为副本。' : '';
+      const message = (!updated
         ? `「${title}」已是最新版本。`
         : removed > 0
           ? `「${title}」更新完成：新增 ${added} 题，移除 ${removed} 题。`
-          : `「${title}」更新完成：新增 ${added} 题。`;
+          : `「${title}」更新完成：新增 ${added} 题。`) + copiedNote;
       setNotice(message);
       await rememberUpdate(catalogId, updated ? 'updated' : 'unchanged', message);
     } catch (updateError) {
@@ -247,6 +259,11 @@ export function BankManagerModal({
                       {bank.source === 'local' ? '本地' : '线上'}
                     </Text>
                   </View>
+                  {bank.locallyModified ? (
+                    <View style={styles.sourceBadge} accessibilityLabel="本地已修改">
+                      <Text style={styles.sourceBadgeText}>已修改</Text>
+                    </View>
+                  ) : null}
                 </View>
               </View>
             </Pressable>
@@ -261,7 +278,41 @@ export function BankManagerModal({
               >
                 <Info size={15} color={colors.textSecondary} strokeWidth={2} />
               </Pressable>
-              {bank.sourceUrl ? (
+              {bank.sourceUrl && confirmingUpdateId === bank.catalogId ? (
+                <View style={styles.confirmRow}>
+                  <Text style={styles.confirmText}>本地有修改，更新会覆盖</Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`另存副本后更新题库 ${bank.title}`}
+                    disabled={busy}
+                    accessibilityState={{ disabled: busy }}
+                    onPress={() => void handleUpdate(bank.catalogId, bank.title, 'keepCopy')}
+                    style={({ pressed }) => [styles.confirmYes, busy && styles.disabled, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.confirmYesText}>另存副本后更新</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`直接覆盖更新题库 ${bank.title}`}
+                    disabled={busy}
+                    accessibilityState={{ disabled: busy }}
+                    onPress={() => void handleUpdate(bank.catalogId, bank.title, 'overwrite')}
+                    style={({ pressed }) => [styles.confirmYes, busy && styles.disabled, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.confirmYesText}>直接覆盖</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="取消更新"
+                    disabled={busy}
+                    accessibilityState={{ disabled: busy }}
+                    onPress={() => setConfirmingUpdateId(null)}
+                    style={({ pressed }) => [styles.confirmNo, busy && styles.disabled, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.confirmNoText}>取消</Text>
+                  </Pressable>
+                </View>
+              ) : bank.sourceUrl ? (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={busyId === bank.catalogId ? `正在更新题库 ${bank.title}` : `在线更新题库 ${bank.title}`}

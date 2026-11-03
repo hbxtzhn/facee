@@ -30,6 +30,24 @@ import type {
 
 export type QuestionBankStatus = 'idle' | 'loading' | 'empty' | 'ready';
 
+/** 更新本机已编辑过的下载库时如何处理本地修改 */
+export type LocalEditsDecision = 'overwrite' | 'keepCopy';
+
+export interface UpdateBankOptions {
+  /** 未给出且题库被本地编辑过时，不下载也不覆盖，返回 needsConfirmation */
+  onLocalEdits?: LocalEditsDecision;
+}
+
+export interface UpdateBankResult {
+  added: number;
+  removed: number;
+  updated: boolean;
+  /** 有新版本但题库被本地编辑过，需调用方确认后带 onLocalEdits 重试 */
+  needsConfirmation?: boolean;
+  /** keepCopy 时另存的副本 bankId */
+  copiedBankId?: string;
+}
+
 interface QuestionBankState {
   catalog: QuestionBankCatalog | null;
   status: QuestionBankStatus;
@@ -53,8 +71,11 @@ interface QuestionBankState {
   saveLocalBank(source: LocalBankSource): Promise<void>;
   deleteLocalBank(bankId: string): Promise<void>;
   switchBank(catalogId: string): Promise<void>;
-  /** 仅按发布/包内版本判断是否更新；更新时沿用原 catalogId。 */
-  updateBank(catalogId: string): Promise<{ added: number; removed: number; updated: boolean }>;
+  /**
+   * 仅按发布/包内版本判断是否更新；更新时沿用原 catalogId。
+   * 题库被本地编辑过时须给出 onLocalEdits，否则返回 needsConfirmation 且不做任何改动。
+   */
+  updateBank(catalogId: string, options?: UpdateBankOptions): Promise<UpdateBankResult>;
   /** 把全部本地题库（含图片资产）打包为备份 ZIP，返回分享用路径 */
   exportBackup(): Promise<{ zipPath: string; bankCount: number }>;
   /** 从备份 ZIP 增量导入题库（id 冲突时自动换新 id 加「导入」后缀） */
@@ -138,21 +159,29 @@ export const useQuestionBankStore = create<QuestionBankState>((set, get) => {
     try {
       const banks = await questionBankRepository.listBanks();
       // 线上更新入口：本地源文件里记录了下载地址的库才可在线更新（尽力而为）
-      const sourceUrls = new Map<string, string>();
+      const sourceUrls = new Map<string, { sourceUrl: string; locallyModified: boolean }>();
       if (Platform.OS !== 'web') {
         try {
           for (const summary of await listLocalBankSources()) {
             const full = await loadLocalBankSource(summary.bankId);
-            if (full?.sourceUrl) sourceUrls.set(full.bankId, full.sourceUrl);
+            if (full?.sourceUrl) {
+              sourceUrls.set(full.bankId, {
+                sourceUrl: full.sourceUrl, locallyModified: full.locallyModified === true,
+              });
+            }
           }
         } catch {
           // 读不到源文件时只是没有更新按钮，不影响列表
         }
       }
       set({
-        banks: banks.map((bank) =>
-          sourceUrls.has(bank.catalogId) ? { ...bank, sourceUrl: sourceUrls.get(bank.catalogId) } : bank,
-        ),
+        banks: banks.map((bank) => {
+          const remote = sourceUrls.get(bank.catalogId);
+          if (!remote) return bank;
+          return remote.locallyModified
+            ? { ...bank, sourceUrl: remote.sourceUrl, locallyModified: true }
+            : { ...bank, sourceUrl: remote.sourceUrl };
+        }),
         banksLoading: false,
       });
     } catch {
@@ -173,25 +202,20 @@ export const useQuestionBankStore = create<QuestionBankState>((set, get) => {
 
   copyBank: (catalogId) => exclusive(async () => {
     assertNativeBankOperations();
-    const exported = await questionBankRepository.exportPackage(catalogId);
-    if (!exported) throw new Error(`没有找到题库：${catalogId}`);
-    const source = copyBankAsLocal(exported);
-    await runInstall(set, () => questionBankRepository.install(source.package, undefined, {
-      beforeCommit: () => saveLocalBankSource(source),
-    }));
-    // install 只落 markdown；题目图片资产从源库逐题拷贝（方法内部尽力而为）
-    await questionBankRepository.copyBankAssets(catalogId, source.bankId);
+    const bankId = await copyBankInstalled(set, catalogId);
     await get().refreshBanks();
-    return source.bankId;
+    return bankId;
   }),
 
   saveLocalBank: (source) => exclusive(async () => {
     assertNativeBankOperations();
     // 保存前记住当前题库：编辑非激活的题库不应该把它顶成当前使用
     const activeIdBefore = get().catalog?.id ?? null;
+    // 下载库被编辑后标记为已修改：在线更新前需要用户确认，避免整包覆盖丢失编辑
+    const persisted: LocalBankSource = source.sourceUrl ? { ...source, locallyModified: true } : source;
     try {
-      await runInstall(set, () => questionBankRepository.install(source.package, undefined, {
-        beforeCommit: () => saveLocalBankSource(source),
+      await runInstall(set, () => questionBankRepository.install(persisted.package, undefined, {
+        beforeCommit: () => saveLocalBankSource(persisted),
       }));
     } finally {
       if (activeIdBefore && activeIdBefore !== source.bankId) {
@@ -217,7 +241,7 @@ export const useQuestionBankStore = create<QuestionBankState>((set, get) => {
     await get().refreshBanks();
   }),
 
-  updateBank: (catalogId) => exclusive(async () => {
+  updateBank: (catalogId, options) => exclusive(async () => {
     assertNativeBankOperations();
     const source = await loadLocalBankSource(catalogId);
     if (!source?.sourceUrl) throw new Error('该题库没有记录下载地址，无法在线更新');
@@ -226,6 +250,13 @@ export const useQuestionBankStore = create<QuestionBankState>((set, get) => {
     const activeIdBefore = get().catalog?.id ?? null;
     const remote = asRemoteQuestionBankRepository(questionBankRepository);
     if (!remote) throw new Error('当前平台暂不支持在线更新题库');
+    let copiedBankId: string | undefined;
+    // 另存副本会激活副本：副本存在时即使更新的就是当前库，也要切回原库
+    const restoreActiveBank = async () => {
+      if (activeIdBefore && (copiedBankId || activeIdBefore !== catalogId)) {
+        await questionBankRepository.switchBank(activeIdBefore);
+      }
+    };
     set({
       installError: null,
       installProgress: { completed: 0, total: 1, label: '正在检查题库版本' },
@@ -236,34 +267,47 @@ export const useQuestionBankStore = create<QuestionBankState>((set, get) => {
       if (!shouldUpdateBank(currentVersion, latest.version)) {
         return { added: 0, removed: 0, updated: false };
       }
+      // 先确认确有新版本再询问；本地编辑过且调用方未决定时，不下载、不覆盖
+      if (source.locallyModified && !options?.onLocalEdits) {
+        return { added: 0, removed: 0, updated: false, needsConfirmation: true };
+      }
+      if (source.locallyModified && options?.onLocalEdits === 'keepCopy') {
+        set({ installProgress: { completed: 0, total: 1, label: '正在另存本地修改副本' } });
+        copiedBankId = await copyBankInstalled(set, catalogId);
+      }
+      const copied = copiedBankId ? { copiedBankId } : {};
       const result = await remote.installFromUrl(
         latest.url,
         (progress) => set({ installProgress: progress }),
         {
           reuseCatalogId: catalogId, currentVersion,
+          // 新下载内容即线上原样：复位已修改标记
           beforeCommit: (bank) => saveLocalBankSource({
             bankId: catalogId, updatedAt: '', package: bank, sourceUrl: source.sourceUrl,
+            locallyModified: false,
           }),
         },
       );
       if (result.unchanged) {
-        return { added: 0, removed: 0, updated: false };
+        if (copiedBankId) {
+          // 包内版本未变：原库保持不动，已另存的副本保留，仅恢复激活题库
+          await restoreActiveBank();
+          await reloadCatalog(set);
+          await get().refreshBanks();
+        }
+        return { added: 0, removed: 0, updated: false, ...copied };
       }
-      if (activeIdBefore && activeIdBefore !== catalogId) {
-        await questionBankRepository.switchBank(activeIdBefore);
-      }
+      await restoreActiveBank();
       await reloadCatalog(set);
       set({ installProgress: null });
       await get().refreshBanks();
       const after = await questionBankRepository.getQuestionIds(catalogId);
       const added = after && before ? [...after].filter((id) => !before.has(id)).length : after?.size ?? 0;
       const removed = before && after ? [...before].filter((id) => !after.has(id)).length : 0;
-      return { added, removed, updated: true };
+      return { added, removed, updated: true, ...copied };
     } catch (error) {
       try {
-        if (activeIdBefore && activeIdBefore !== catalogId) {
-          await questionBankRepository.switchBank(activeIdBefore);
-        }
+        await restoreActiveBank();
         await reloadCatalog(set);
         await get().refreshBanks();
       } finally {
@@ -313,6 +357,22 @@ export const useQuestionBankStore = create<QuestionBankState>((set, get) => {
 });
 
 type SetQuestionBankState = (partial: Partial<QuestionBankState>) => void;
+
+/**
+ * 把已装题库复制为新的本地题库（安装并激活 + 拷图片资产），返回副本 bankId。
+ * 不加 exclusive：供 copyBank 与 updateBank(keepCopy) 在各自的独占区内复用。
+ */
+async function copyBankInstalled(set: SetQuestionBankState, catalogId: string): Promise<string> {
+  const exported = await questionBankRepository.exportPackage(catalogId);
+  if (!exported) throw new Error(`没有找到题库：${catalogId}`);
+  const source = copyBankAsLocal(exported);
+  await runInstall(set, () => questionBankRepository.install(source.package, undefined, {
+    beforeCommit: () => saveLocalBankSource(source),
+  }));
+  // install 只落 markdown；题目图片资产从源库逐题拷贝（方法内部尽力而为）
+  await questionBankRepository.copyBankAssets(catalogId, source.bankId);
+  return source.bankId;
+}
 
 /** 重建安装题库并刷新 catalog；失败时写 installError 并向上抛出 */
 async function runInstall(

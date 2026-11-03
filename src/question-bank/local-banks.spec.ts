@@ -8,6 +8,7 @@ import {
   listLocalBankSources,
   loadLocalBankSource,
   newLocalBankId,
+  parseLocalBankSource,
   questionIdFromTitle,
   removeQuestion,
   saveLocalBankSource,
@@ -396,6 +397,40 @@ describe('local-banks 源文件 CRUD', () => {
     await fs.writeAsStringAsync('file:///documents/facee-question-bank/local-sources/local-bad.json', '{oops');
     expect(await loadLocalBankSource('local-bad', fs as never)).toBeNull();
     expect(await listLocalBankSources(fs as never)).toHaveLength(0);
+  });
+
+  it('locallyModified 落盘往返保留；旧文件没有该字段时视为未修改', async () => {
+    const bank = createLocalBankPackage('下载库');
+    const sourceUrl = 'https://example.com/bank.zip';
+    await saveLocalBankSource({ bankId: bank.catalog.id, updatedAt: '', package: bank, sourceUrl,
+      locallyModified: true }, fs as never);
+    expect((await loadLocalBankSource(bank.catalog.id, fs as never))?.locallyModified).toBe(true);
+
+    // 旧版本写出的源文件（无字段）
+    await fs.writeAsStringAsync(
+      `file:///documents/facee-question-bank/local-sources/${bank.catalog.id}.json`,
+      JSON.stringify({ bankId: bank.catalog.id, updatedAt: '2024-01-01', package: bank, sourceUrl }),
+    );
+    const legacy = await loadLocalBankSource(bank.catalog.id, fs as never);
+    expect(legacy?.sourceUrl).toBe(sourceUrl);
+    expect(legacy?.locallyModified).toBeUndefined();
+
+    await saveLocalBankSource({ bankId: bank.catalog.id, updatedAt: '', package: bank, sourceUrl,
+      locallyModified: false }, fs as never);
+    expect((await loadLocalBankSource(bank.catalog.id, fs as never))?.locallyModified).toBeFalsy();
+  });
+
+  it('备份解析（parseLocalBankSource）保留已修改标记', () => {
+    const bank = createLocalBankPackage('下载库');
+    const parsed = parseLocalBankSource(JSON.stringify({
+      bankId: bank.catalog.id, updatedAt: '', package: bank, sourceUrl: 'https://example.com/bank.zip',
+      locallyModified: true,
+    }));
+    expect(parsed?.locallyModified).toBe(true);
+    // 非布尔 true 一律不视为已修改
+    expect(parseLocalBankSource(JSON.stringify({
+      bankId: bank.catalog.id, updatedAt: '', package: bank, locallyModified: 'yes',
+    }))?.locallyModified).toBeUndefined();
   });
 
   it('保存时 bankId 与 catalog.id 不一致会拒绝', async () => {
