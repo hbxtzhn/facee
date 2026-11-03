@@ -265,18 +265,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: spacing.md,
   },
-  tabHeaderBadge: {
-    backgroundColor: colors.surfaceSubtle,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: radii.pill,
-  },
+  // 极简阅读风：眉题是纯文字，不再包胶囊底色
+  tabHeaderBadge: {},
   tabHeaderBadgeText: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    fontWeight: '600',
-    fontSize: 11,
-    letterSpacing: 0.4,
+    ...typography.eyebrow,
+    color: colors.textMuted,
   },
   tabHeaderTitle: {
     ...typography.display,
@@ -291,8 +284,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
+  // 无底色的纯文字难度：去掉水平内边距，与相邻元信息左对齐
   difficultyBadge: {
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: 0,
     paddingVertical: 2,
     borderRadius: 6,
     alignSelf: 'flex-start',
