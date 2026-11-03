@@ -82,6 +82,8 @@ export interface LocalBankSource {
   package: QuestionBankPackage;
   /** 若该库来自线上 ZIP 下载，记录下载地址：同地址重复下载按"更新原库"处理 */
   sourceUrl?: string;
+  /** 下载库被用户编辑保存过：在线更新会整包覆盖，需先确认；重新下载/更新提交后复位 */
+  locallyModified?: boolean;
 }
 
 export interface QuestionFilter {
@@ -139,6 +141,8 @@ export interface InstalledBankSummary {
   updatedAt?: string;
   /** 线上下载来源地址；存在即可在管理弹窗里在线更新（来自本地源文件） */
   sourceUrl?: string;
+  /** 下载库在本机被编辑过（来自本地源文件）；在线更新前需要用户确认 */
+  locallyModified?: boolean;
 }
 
 export interface QuestionBankRepository {
