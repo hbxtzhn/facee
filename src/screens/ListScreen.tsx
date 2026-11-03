@@ -15,7 +15,6 @@ import { collectTagSubtreeIds, filterCatalogQuestions, questionBankRepository } 
 import type { HomeStackParamList } from '../navigation/AppNavigator';
 import { DifficultyBadge, EmptyState } from '../components/ui';
 import { SkeletonBlock } from '../components/skeleton';
-import { useEdgeSwipeBack } from '../lib/use-edge-swipe-back';
 import { shuffled } from '../lib/shuffle';
 import { cardChrome, colors, difficultyStyles, pressedScale, radii, spacing, typography } from '../theme';
 
@@ -157,16 +156,8 @@ export function ListScreen() {
 
   const hasFilters = Boolean(keyword || difficulties.size > 0 || tagFilter.size > 0);
 
-  // 左缘右滑返回首页（与详情页同一套手势 hook）
-  const { panHandlers: swipeHandlers, onTouchStart: recordSwipeStart } = useEdgeSwipeBack({
-    onEdgeBack: () => {
-      if (nav.canGoBack()) nav.goBack();
-      else nav.popToTop();
-    },
-  });
-
   return (
-    <View style={styles.container} {...swipeHandlers} onTouchStart={recordSwipeStart}>
+    <View style={styles.container}>
       <View style={styles.toolbar}>
         <View style={styles.searchBox}>
           <Search size={20} color={colors.textMuted} strokeWidth={1.8} />

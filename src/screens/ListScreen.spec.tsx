@@ -202,3 +202,29 @@ describe('ListScreen 标签筛选 chips（§6.4）', () => {
     );
   });
 });
+
+describe('ListScreen 返回手势交给原生栈', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockRepository.getCatalog.mockResolvedValue(null);
+    mockRepository.listQuestions.mockResolvedValue([titleMatch]);
+    mockRepository.searchBody.mockResolvedValue([]);
+  });
+
+  it('根节点不再挂 JS 侧边缘滑动 responder，列表照常渲染与搜索', async () => {
+    const view = await render(<ListScreen />);
+    await waitFor(() => expect(screen.getByText(titleMatch.title)).toBeTruthy());
+
+    const root = view.toJSON() as { props: Record<string, unknown> } | null;
+    expect(root?.props.onMoveShouldSetResponder).toBeUndefined();
+    expect(root?.props.onResponderRelease).toBeUndefined();
+    expect(root?.props.onTouchStart).toBeUndefined();
+
+    await fireEvent.changeText(screen.getByPlaceholderText('搜索计算机网络题目'), 'http');
+    await waitFor(() =>
+      expect(mockRepository.listQuestions).toHaveBeenLastCalledWith(
+        expect.objectContaining({ query: 'http' }),
+      ),
+    );
+  });
+});
