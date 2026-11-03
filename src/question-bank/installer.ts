@@ -69,13 +69,16 @@ export async function installConfiguredQuestionBank(
   });
 }
 
-/** 找出由同一 URL 下载过的本地题库 id（更新语义）；没有则 null */
+/**
+ * 找出由同一 URL 下载过、且未被用户修改的本地题库 id（更新语义）；没有则 null。
+ * 用户改过的库不复用：否则整包替换会静默丢掉修改——此时按新题库安装，旧库原样保留。
+ */
 async function findLocalBankIdBySourceUrl(url: string): Promise<string | null> {
   const summaries = await listLocalBankSources();
   for (const summary of summaries) {
     try {
       const source = await loadLocalBankSource(summary.bankId);
-      if (source?.sourceUrl === url) return source.bankId;
+      if (source?.sourceUrl === url && !source.locallyModified) return source.bankId;
     } catch {
       // 单个源读取失败不影响查找
     }

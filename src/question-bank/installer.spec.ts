@@ -127,4 +127,27 @@ describe('configured question-bank installer', () => {
     expect(installFromUrl).toHaveBeenCalledWith(url, undefined, { reuseCatalogId: 'local-old', beforeCommit: expect.any(Function) });
     expect(saveLocalBankSource).toHaveBeenCalled();
   });
+
+  it('同 URL 的库已被用户修改：不复用其 id，按新题库安装以保留修改', async () => {
+    const url = 'https://example.com/question-bank.zip';
+    process.env.EXPO_PUBLIC_QUESTION_BANK_URL = url;
+    (listLocalBankSources as jest.Mock).mockResolvedValue([
+      { bankId: 'local-old', title: '旧库', questionCount: 6, updatedAt: '' },
+    ]);
+    (loadLocalBankSource as jest.Mock).mockResolvedValue({
+      bankId: 'local-old',
+      updatedAt: '',
+      package: TEST_QUESTION_BANK,
+      sourceUrl: url,
+      locallyModified: true,
+    });
+    const installFromUrl = jest.fn(async () => ({ questionCount: 6, tagCount: 4 }));
+    const remoteRepository: RemoteQuestionBankRepository = {
+      ...repository,
+      installFromUrl,
+    };
+
+    await installConfiguredQuestionBank(remoteRepository);
+    expect(installFromUrl).toHaveBeenCalledWith(url, undefined, { beforeCommit: expect.any(Function) });
+  });
 });
