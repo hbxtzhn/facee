@@ -75,6 +75,7 @@ export function HomeScreen() {
   const totalCount = useUserStore((state) => state.totalCount);
   const masteryMarks = useMasteryStore((state) => state.marks);
   const masteryMarkedAt = useMasteryStore((state) => state.markedAt);
+  const knownStreaks = useMasteryStore((state) => state.knownStreaks);
   const sessions = usePracticeSessionStore((state) => state.sessions);
   const [roots, setRoots] = useState<TagItem[]>([]);
   const [categories, setCategories] = useState<CategoryItem[]>([]);
@@ -196,9 +197,9 @@ export function HomeScreen() {
 
   const dueQuestionIds = useMemo(() => {
     if (!catalog) return [];
-    const records = mergeBankReviewRecords(catalog.id, masteryMarks, masteryMarkedAt);
+    const records = mergeBankReviewRecords(catalog.id, masteryMarks, masteryMarkedAt, knownStreaks);
     return computeDueQuestionIds(records, dueTick).filter((questionId) => questionById.has(questionId));
-  }, [catalog, masteryMarks, masteryMarkedAt, dueTick, questionById]);
+  }, [catalog, masteryMarks, masteryMarkedAt, knownStreaks, dueTick, questionById]);
 
   function startReview() {
     if (!catalog || dueQuestionIds.length === 0) return;

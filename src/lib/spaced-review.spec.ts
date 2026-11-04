@@ -75,16 +75,17 @@ describe('间隔复习口径（spaced-review）', () => {
       {
         'bank-a': { q1: NOW - DAY, q2: NOW - 8 * DAY }, // q3 缺时间戳
       },
+      {},
     );
     expect(merged).toEqual({
       q1: { mastery: 'fuzzy', markedAt: NOW - DAY },
-      // 未传连续次数表 ⇒ known 按首档 1 计
+      // 连续次数表为空 ⇒ known 按首档 1 计
       q2: { mastery: 'known', markedAt: NOW - 8 * DAY, knownStreak: 1 },
     });
   });
 
   it('mergeBankReviewRecords：没打过标的库返回空档案', () => {
-    expect(mergeBankReviewRecords('none', { 'bank-a': { q1: 'known' } }, {})).toEqual({});
+    expect(mergeBankReviewRecords('none', { 'bank-a': { q1: 'known' } }, {}, {})).toEqual({});
   });
 
   it('mergeBankReviewRecords 带上连续「会了」次数，非 known 不带', () => {

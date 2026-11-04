@@ -76,15 +76,12 @@ type StreakTable = Record<string, Record<string, number>>;
  * 从 masteryStore 的平行切片（marks + markedAt + knownStreaks）合成单库复习档案。
  * 缺时间戳的旧条目跳过（理论上只出现在迁移前的极端脏数据，不参与排期）。
  *
- * knownStreaks 省略时回退读 masteryStore 当前状态。
- * TODO(merge): HomeScreen 目前只传 marks + markedAt（不在本次改动范围），集成时让它订阅
- * `useMasteryStore((s) => s.knownStreaks)` 并显式传入第 4 个参数，然后删掉这个回退。
  */
 export function mergeBankReviewRecords(
   bankId: string,
   marks: Record<string, Record<string, Mastery>>,
   markedAt: Record<string, Record<string, number>>,
-  knownStreaks: StreakTable = readStoreStreaks(),
+  knownStreaks: StreakTable,
 ): BankReviewRecords {
   const bankMarks = marks[bankId];
   if (!bankMarks) return {};
@@ -100,17 +97,6 @@ export function mergeBankReviewRecords(
     records[questionId] = record;
   }
   return records;
-}
-
-function readStoreStreaks(): StreakTable {
-  try {
-    // 运行时惰性读取，避免 masteryStore ⇄ spaced-review 的静态循环依赖
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { useMasteryStore } = require('../store/masteryStore') as typeof import('../store/masteryStore');
-    return useMasteryStore.getState().knownStreaks;
-  } catch {
-    return {};
-  }
 }
 
 /** 单库到期题 id 列表：到期过滤 + 最久未复习优先，同刻按题目 id 决胜 */
