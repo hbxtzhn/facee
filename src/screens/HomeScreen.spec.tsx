@@ -52,6 +52,10 @@ jest.mock('../question-bank/store', () => ({
 import { HomeScreen } from './HomeScreen';
 // eslint-disable-next-line import/first
 import { useMasteryStore } from '../store/masteryStore';
+// eslint-disable-next-line import/first
+import { useUserStore } from '../store/userStore';
+// eslint-disable-next-line import/first
+import { PRACTICE_SESSION_STORAGE_KEY, usePracticeSessionStore } from '../store/practiceSessionStore';
 
 const mockRepository = jest.requireMock('../question-bank/client').questionBankRepository as {
   getCatalog: jest.Mock;
@@ -192,21 +196,160 @@ describe('HomeScreen 题库切换器', () => {
     expect(mockNav.navigate).toHaveBeenCalledWith('BankManager');
   });
 
-  it('本机没有题库时空态与切换器都给新建 / 添加入口', async () => {
+  it('题库按「线上题库 / 本地题库」分组，末尾是「线上题库」与「管理题库」入口', async () => {
+    const view = await render(<HomeScreen />);
+    await act(async () => { fireEvent.press(await view.findByLabelText('当前题库 测试题库，点按切换')); });
+
+    expect(view.getByRole('header', { name: '线上题库' })).toBeTruthy();
+    expect(view.getByRole('header', { name: '本地题库' })).toBeTruthy();
+
+    await act(async () => { fireEvent.press(view.getByLabelText('线上题库')); });
+    expect(mockNav.navigate).toHaveBeenCalledWith('OnlineBanks');
+  });
+
+  it('只有一种来源时只显示对应分组', async () => {
+    mockBankState.banks = [mockBankState.banks[1]];
+    const view = await render(<HomeScreen />);
+    await act(async () => { fireEvent.press(await view.findByLabelText('当前题库 测试题库，点按切换')); });
+
+    expect(view.getByRole('header', { name: '本地题库' })).toBeTruthy();
+    // 分组标题不出现，但末尾入口仍在（入口文字同为「线上题库」，按 header 角色区分）
+    expect(view.queryByRole('header', { name: '线上题库' })).toBeNull();
+    expect(view.getByLabelText('线上题库')).toBeTruthy();
+  });
+
+  it('本机没有题库时空态给「安装官方题库」与新建本地题库入口', async () => {
     mockRepository.getCatalog.mockResolvedValue(null);
     mockBankState.banks = [];
     const view = await render(<HomeScreen />);
 
     expect(await view.findByText('还没有题库')).toBeTruthy();
-    await act(async () => { fireEvent.press(view.getByText('新建或添加题库')); });
+    await act(async () => { fireEvent.press(view.getByText('安装官方题库')); });
+    expect(mockNav.navigate).toHaveBeenCalledWith('OnlineBanks');
+
+    await act(async () => { fireEvent.press(view.getByLabelText('新建本地题库')); });
     expect(mockNav.navigate).toHaveBeenCalledWith('BankManager');
 
     mockNav.navigate.mockClear();
     await act(async () => { fireEvent.press(view.getByLabelText('还没有题库，点按添加')); });
     expect(view.getByText(/本机还没有题库/)).toBeTruthy();
-    // 空态按钮与弹层末尾入口同名：弹层后渲染，取最后一个
-    const sheetEntries = view.getAllByLabelText('新建或添加题库');
+    // 空态按钮与弹层入口同名：弹层后渲染，取最后一个
+    const sheetEntries = view.getAllByLabelText('安装官方题库');
     await act(async () => { fireEvent.press(sheetEntries[sheetEntries.length - 1]); });
-    expect(mockNav.navigate).toHaveBeenCalledWith('BankManager');
+    expect(mockNav.navigate).toHaveBeenCalledWith('OnlineBanks');
+  });
+});
+
+describe('HomeScreen 继续上次练习', () => {
+  const bigCatalog = {
+    ...catalog,
+    questions: [
+      ...catalog.questions,
+      { id: 'q3', title: '题目三', difficulty: 3, hasAnswer: true, sort: 3, tags: [], categoryId: 'java' },
+    ],
+  };
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    await AsyncStorage.clear();
+    useMasteryStore.setState({ marks: {}, markedAt: {} });
+    usePracticeSessionStore.setState({ sessions: {} });
+    useUserStore.setState({ lastViewedQuestionId: null });
+    mockRepository.getCatalog.mockResolvedValue(bigCatalog);
+  });
+
+  it('按题库保存的会话原样恢复队列、位置与模式', async () => {
+    usePracticeSessionStore.getState().saveSession('bank-x', {
+      queue: ['q3', 'q1'],
+      index: 1,
+      mode: 'review',
+      title: '今日复习',
+    });
+    const view = await render(<HomeScreen />);
+
+    const row = await view.findByLabelText('继续上次练习，题目一');
+    expect(view.getByText('今日复习 · 第 2 / 2 题')).toBeTruthy();
+    await act(async () => { fireEvent.press(row); });
+
+    expect(mockNav.push).toHaveBeenCalledWith(
+      'Detail',
+      expect.objectContaining({ id: 'q1', queue: ['q3', 'q1'], queueIndex: 1, mode: 'review' }),
+    );
+  });
+
+  it('首页启动时懒加载持久化的会话', async () => {
+    await AsyncStorage.setItem(
+      PRACTICE_SESSION_STORAGE_KEY,
+      JSON.stringify({ sessions: { 'bank-x': { queue: ['q2', 'q3'], index: 1, mode: 'practice', updatedAt: 1 } } }),
+    );
+    const view = await render(<HomeScreen />);
+    expect(await view.findByLabelText('继续上次练习，题目三')).toBeTruthy();
+  });
+
+  it('详情页 updateIndex 推进后，恢复到新位置', async () => {
+    usePracticeSessionStore.getState().saveSession('bank-x', { queue: ['q1', 'q2', 'q3'], index: 0, mode: 'practice' });
+    usePracticeSessionStore.getState().updateIndex('bank-x', 2);
+    const view = await render(<HomeScreen />);
+
+    await act(async () => { fireEvent.press(await view.findByLabelText('继续上次练习，题目三')); });
+    expect(mockNav.push).toHaveBeenCalledWith('Detail', expect.objectContaining({ id: 'q3', queueIndex: 2 }));
+  });
+
+  it('会话里的题已被删时跳过，落到仍存在的题', async () => {
+    usePracticeSessionStore.getState().saveSession('bank-x', { queue: ['q1', 'gone', 'q2'], index: 1, mode: 'practice' });
+    const view = await render(<HomeScreen />);
+
+    await act(async () => { fireEvent.press(await view.findByLabelText('继续上次练习，题目二')); });
+    expect(mockNav.push).toHaveBeenCalledWith(
+      'Detail',
+      expect.objectContaining({ id: 'q2', queue: ['q1', 'q2'], queueIndex: 1 }),
+    );
+  });
+
+  it('别的题库的会话不会出现在当前题库', async () => {
+    usePracticeSessionStore.getState().saveSession('bank-other', { queue: ['q1'], index: 0, mode: 'practice' });
+    const view = await render(<HomeScreen />);
+    await view.findByLabelText('Java，3 道题');
+    expect(view.queryByLabelText(/继续上次练习/)).toBeNull();
+  });
+
+  it('没有会话时回退到 lastViewedQuestionId（分类整队列），并补记会话', async () => {
+    useUserStore.setState({ lastViewedQuestionId: 'q2' });
+    const view = await render(<HomeScreen />);
+
+    await act(async () => { fireEvent.press(await view.findByLabelText('继续上次练习，题目二')); });
+    expect(mockNav.push).toHaveBeenCalledWith(
+      'Detail',
+      expect.objectContaining({ id: 'q2', queue: ['q1', 'q2', 'q3'], queueIndex: 1, mode: 'practice' }),
+    );
+    expect(usePracticeSessionStore.getState().getSession('bank-x')).toEqual(
+      expect.objectContaining({ queue: ['q1', 'q2', 'q3'], index: 1, title: 'Java' }),
+    );
+  });
+
+  it('lastViewed 不在当前题库时不显示入口', async () => {
+    useUserStore.setState({ lastViewedQuestionId: 'other-bank-q' });
+    const view = await render(<HomeScreen />);
+    await view.findByLabelText('Java，3 道题');
+    expect(view.queryByLabelText(/继续上次练习/)).toBeNull();
+  });
+
+  it('开始今日复习时记为 review 会话', async () => {
+    const now = Date.now();
+    await seedMastery({ 'bank-x': { q1: 'unknown' } }, { 'bank-x': { q1: now - 2 * DAY } });
+    const view = await render(<HomeScreen />);
+
+    await act(async () => { fireEvent.press(await view.findByLabelText('今日复习，1 道题到期')); });
+    expect(usePracticeSessionStore.getState().getSession('bank-x')).toEqual(
+      expect.objectContaining({ queue: ['q1'], index: 0, mode: 'review', title: '今日复习' }),
+    );
+  });
+
+  it('分类行显示题数与已掌握数', async () => {
+    const now = Date.now();
+    await seedMastery({ 'bank-x': { q1: 'known', q2: 'fuzzy' } }, { 'bank-x': { q1: now, q2: now } });
+    const view = await render(<HomeScreen />);
+    await view.findByLabelText('Java，3 道题');
+    expect(view.getByText('已掌握 1 题')).toBeTruthy();
   });
 });

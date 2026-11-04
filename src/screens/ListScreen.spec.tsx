@@ -33,13 +33,17 @@ jest.mock('../question-bank/client', () => ({
   asRemoteQuestionBankRepository: jest.fn(() => null),
 }));
 
+const mockPush = jest.fn();
+
 jest.mock('@react-navigation/native', () => ({
-  useNavigation: () => ({ push: jest.fn(), goBack: jest.fn(), popToTop: jest.fn(), canGoBack: () => true }),
+  useNavigation: () => ({ push: mockPush, goBack: jest.fn(), popToTop: jest.fn(), canGoBack: () => true }),
   useRoute: () => ({ params: { categoryId: 'network', categoryName: '计算机网络' } }),
 }));
 
 // eslint-disable-next-line import/first
-import { ListScreen } from './ListScreen';
+import { ListScreen, filterBodyHits } from './ListScreen';
+// eslint-disable-next-line import/first
+import { usePracticeSessionStore } from '../store/practiceSessionStore';
 
 type RepoMock = {
   getCatalog: jest.Mock;
@@ -160,8 +164,23 @@ describe('ListScreen 标签筛选 chips（§6.4）', () => {
     mockRepository.listQuestions.mockResolvedValue([titleMatch]);
   });
 
+  it('筛选默认收起为单行摘要，点按展开原有筛选项', async () => {
+    await render(<ListScreen />);
+
+    expect(await screen.findByText('全部难度 · 全部标签 · 顺序')).toBeTruthy();
+    expect(screen.queryByLabelText('简单难度')).toBeNull();
+
+    await fireEvent.press(screen.getByLabelText('筛选条件'));
+    expect(screen.getByLabelText('简单难度')).toBeTruthy();
+
+    await fireEvent.press(screen.getByLabelText('困难难度'));
+    await fireEvent.press(screen.getByLabelText('随机刷'));
+    expect(screen.getByText('困难 · 全部标签 · 随机')).toBeTruthy();
+  });
+
   it('只展示范围内出现的根标签（子树计数），点选按并集收窄、再点取消', async () => {
     await render(<ListScreen />);
+    await fireEvent.press(screen.getByLabelText('筛选条件'));
 
     // network 子树（含 http）覆盖范围内唯一的题；os 无题 → 不出现
     expect(await screen.findByText(/计算机网络 · 1/)).toBeTruthy();
@@ -184,6 +203,7 @@ describe('ListScreen 标签筛选 chips（§6.4）', () => {
 
   it('难度多选：点两个难度按并集查询，再点全部取消', async () => {
     await render(<ListScreen />);
+    await fireEvent.press(screen.getByLabelText('筛选条件'));
 
     await fireEvent.press(screen.getByLabelText('简单难度'));
     await fireEvent.press(screen.getByLabelText('困难难度'));
@@ -226,5 +246,104 @@ describe('ListScreen 返回手势交给原生栈', () => {
         expect.objectContaining({ query: 'http' }),
       ),
     );
+  });
+});
+
+describe('ListScreen 正文命中遵守当前筛选（修复）', () => {
+  const tags = [
+    { id: 'network', name: '计算机网络', parentId: null, sort: 10 },
+    { id: 'http', name: 'HTTP', parentId: 'network', sort: 10 },
+    { id: 'os', name: '操作系统', parentId: null, sort: 20 },
+  ];
+  // 正文命中但属于别的分类 / 难度 / 标签的题
+  const otherCategory = question({ id: 'os-01', title: '进程与线程', categoryId: 'os', tags: [{ id: 'os', name: '操作系统' }] });
+  const hardHttp = question({ id: 'net-hard', title: 'QUIC 握手', difficulty: 3, tags: [{ id: 'http', name: 'HTTP' }] });
+  const easyOtherTag = question({ id: 'net-easy', title: 'TCP 三次握手', difficulty: 1, tags: [{ id: 'network', name: '计算机网络' }] });
+  const byId: Record<string, Question> = {
+    [otherCategory.id]: otherCategory,
+    [hardHttp.id]: hardHttp,
+    [easyOtherTag.id]: easyOtherTag,
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockRepository.getCatalog.mockResolvedValue({
+      schemaVersion: 1,
+      id: 'bank-x',
+      title: '测试题库',
+      tags,
+      questions: [hardHttp, easyOtherTag, otherCategory],
+    });
+    mockRepository.listQuestions.mockResolvedValue([]);
+    mockRepository.searchBody.mockResolvedValue([
+      { id: 'os-01', hits: 2, snippet: '握手' },
+      { id: 'net-hard', hits: 1, snippet: '握手' },
+      { id: 'net-easy', hits: 1, snippet: '握手' },
+    ]);
+    mockRepository.getQuestion.mockImplementation(async (id: string) => byId[id] ?? null);
+  });
+
+  it('不在当前分类范围的正文命中被排除', async () => {
+    await render(<ListScreen />);
+    await fireEvent.changeText(screen.getByPlaceholderText('搜索计算机网络题目'), '握手');
+
+    await waitFor(() => expect(screen.getByText('正文命中 2 题')).toBeTruthy());
+    expect(screen.queryByText('进程与线程')).toBeNull();
+  });
+
+  it('难度与标签筛选同样作用于正文命中', async () => {
+    await render(<ListScreen />);
+    await fireEvent.press(screen.getByLabelText('筛选条件'));
+    await fireEvent.press(screen.getByLabelText('困难难度'));
+    await fireEvent.changeText(screen.getByPlaceholderText('搜索计算机网络题目'), '握手');
+
+    await waitFor(() => expect(screen.getByText('正文命中 1 题')).toBeTruthy());
+    expect(screen.getByText('QUIC 握手')).toBeTruthy();
+    expect(screen.queryByText('TCP 三次握手')).toBeNull();
+  });
+
+  it('filterBodyHits：标签 chips 含子孙、保持命中顺序', () => {
+    const hits = [easyOtherTag, otherCategory, hardHttp].map((item) => ({ question: item, snippet: null }));
+    expect(filterBodyHits(hits, tags, { tagIds: ['network'] }).map((hit) => hit.question.id)).toEqual([
+      'net-easy',
+      'net-hard',
+    ]);
+    expect(filterBodyHits(hits, tags, { categoryId: 'network', difficulties: [1] }).map((hit) => hit.question.id)).toEqual([
+      'net-easy',
+    ]);
+  });
+});
+
+describe('ListScreen 进入练习时记录会话', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    usePracticeSessionStore.setState({ sessions: {} });
+    const second = question({ id: 'net-2', title: '第二题', sort: 20 });
+    mockRepository.getCatalog.mockResolvedValue({
+      schemaVersion: 1,
+      id: 'bank-x',
+      title: '测试题库',
+      tags: [],
+      questions: [titleMatch, second],
+    });
+    mockRepository.listQuestions.mockResolvedValue([titleMatch, second]);
+  });
+
+  it('点题以练习模式进入，并按题库保存队列与位置', async () => {
+    await render(<ListScreen />);
+    await fireEvent.press(await screen.findByText('第二题'));
+
+    expect(mockPush).toHaveBeenCalledWith(
+      'Detail',
+      expect.objectContaining({ id: 'net-2', queue: ['net-http-01', 'net-2'], queueIndex: 1, mode: 'practice' }),
+    );
+    expect(usePracticeSessionStore.getState().getSession('bank-x')).toEqual(
+      expect.objectContaining({ queue: ['net-http-01', 'net-2'], index: 1, mode: 'practice', title: '计算机网络' }),
+    );
+  });
+
+  it('行内元信息显示难度 · 标签', async () => {
+    await render(<ListScreen />);
+    expect(await screen.findByText('中等 · 计算机网络')).toBeTruthy();
   });
 });
