@@ -31,6 +31,10 @@ import { useMasteryStore } from '../store/masteryStore';
 import { useQuestionBankStore } from '../question-bank/store';
 // eslint-disable-next-line import/first
 import AsyncStorage from '@react-native-async-storage/async-storage';
+// eslint-disable-next-line import/first
+import { resetFavoritesForTests } from '../store/favoritesStore';
+// eslint-disable-next-line import/first
+import { usePracticeSessionStore } from '../store/practiceSessionStore';
 
 const mockRepository = jest.requireMock('../question-bank').questionBankRepository as {
   listQuestions: jest.Mock;
@@ -108,5 +112,71 @@ describe('FavoritesScreen 收藏 | 错题 双段', () => {
     }));
     const params = mockNavigate.mock.calls[0][1] as { queue: string[] };
     expect(params.queue).toEqual(['wrong-1', 'wrong-2']);
+  });
+});
+
+describe('FavoritesScreen 收藏按题库隔离 / 练习会话', () => {
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    await AsyncStorage.clear();
+    resetFavoritesForTests();
+    usePracticeSessionStore.setState({ sessions: {} });
+    useMasteryStore.setState({ marks: {} });
+    mockRepository.listQuestions.mockResolvedValue([
+      question('fav-1', '收藏题：HashMap 的底层实现'),
+      question('fav-2', '收藏题：ConcurrentHashMap'),
+      question('b-only', '另一题库的收藏'),
+    ]);
+    await AsyncStorage.setItem(
+      'facee-favorites.v2',
+      JSON.stringify({ byBank: { [BANK_ID]: ['fav-1', 'fav-2'], 'bank-b': ['b-only'] } }),
+    );
+  });
+
+  it('只显示当前题库的收藏', async () => {
+    useQuestionBankStore.setState({
+      catalog: { schemaVersion: 1, id: 'bank-b', title: '题库 B', tags: [], questions: [] },
+    });
+    await render(<FavoritesScreen />);
+
+    await waitFor(() => expect(screen.getByText('另一题库的收藏')).toBeTruthy());
+    expect(screen.queryByText('收藏题：HashMap 的底层实现')).toBeNull();
+    expect(screen.getByLabelText('收藏（1 题）')).toBeTruthy();
+  });
+
+  it('点收藏题以练习模式进入整组收藏，并记为当前题库的会话', async () => {
+    useQuestionBankStore.setState({
+      catalog: { schemaVersion: 1, id: BANK_ID, title: '测试题库', tags: [], questions: [] },
+    });
+    await render(<FavoritesScreen />);
+
+    await fireEvent.press(await screen.findByText('收藏题：ConcurrentHashMap'));
+
+    expect(mockNavigate).toHaveBeenCalledWith('Detail', expect.objectContaining({
+      id: 'fav-2',
+      queue: ['fav-1', 'fav-2'],
+      queueIndex: 1,
+      mode: 'practice',
+    }));
+    expect(usePracticeSessionStore.getState().getSession(BANK_ID)).toEqual(
+      expect.objectContaining({ queue: ['fav-1', 'fav-2'], index: 1, title: '收藏' }),
+    );
+  });
+
+  it('错题「开始复习」同样记录会话', async () => {
+    useQuestionBankStore.setState({
+      catalog: { schemaVersion: 1, id: BANK_ID, title: '测试题库', tags: [], questions: [] },
+    });
+    await AsyncStorage.setItem(
+      'facee-mastery-state.v2',
+      JSON.stringify({ marks: { [BANK_ID]: { 'fav-2': 'unknown' } }, markedAt: { [BANK_ID]: { 'fav-2': 1 } } }),
+    );
+    await render(<FavoritesScreen />);
+
+    await fireEvent.press(await screen.findByLabelText('错题（1 题）'));
+    await fireEvent.press(await screen.findByLabelText('开始复习 1 道错题'));
+    expect(usePracticeSessionStore.getState().getSession(BANK_ID)).toEqual(
+      expect.objectContaining({ queue: ['fav-2'], index: 0, mode: 'practice', title: '错题复习' }),
+    );
   });
 });

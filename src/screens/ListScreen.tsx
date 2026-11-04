@@ -1,22 +1,26 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  FlatList,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useRoute, type CompositeNavigationProp, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { CheckCircle2, ChevronRight, FileText, Search, Shuffle, X } from 'lucide-react-native';
-import type { Question, QuestionBankCatalog } from '../question-bank';
+import { ChevronDown, ChevronUp } from 'lucide-react-native';
+import type { Question, QuestionBankCatalog, QuestionFilter, QuestionTag } from '../question-bank';
 import { collectTagSubtreeIds, filterCatalogQuestions, questionBankRepository } from '../question-bank';
 import type { HomeStackParamList, RootStackParamList } from '../navigation/AppNavigator';
-import { DifficultyBadge, EmptyState } from '../components/ui';
+import { EmptyState } from '../components/ui';
 import { SkeletonBlock } from '../components/skeleton';
 import { shuffled } from '../lib/shuffle';
-import { cardChrome, colors, difficultyStyles, pressedScale, radii, spacing, typography } from '../theme';
+import { useMasteryStore } from '../store/masteryStore';
+import { usePracticeSessionStore } from '../store/practiceSessionStore';
+import { colors, difficultyStyles, layout, radii, spacing, typography } from '../theme';
+import {
+  ICON_SIZE,
+  ICON_STROKE,
+  ReadingRow,
+  SectionLabel,
+  TextAction,
+  UnderlineSearchField,
+} from './home/components/reading';
+import { buildQuestionMeta } from './home/components/question-meta';
 
 /** 列表在 HomeStack 内；详情页挂在 RootStack，push 会冒泡到根栈 */
 type Nav = CompositeNavigationProp<
@@ -24,7 +28,25 @@ type Nav = CompositeNavigationProp<
   NativeStackNavigationProp<RootStackParamList>
 >;
 type ListRoute = RouteProp<HomeStackParamList, 'List'>;
-const DIFFICULTY = difficultyStyles;
+type Level = 1 | 2 | 3;
+const LEVELS: Level[] = [1, 2, 3];
+
+type BodyHit = { question: Question; snippet: string | null };
+
+/**
+ * 正文命中只保留通过当前范围（分类 / 标签域）与筛选（难度 / 标签 chips）的题。
+ * 与 listQuestions 用同一套判定（filterCatalogQuestions），只是不带关键词；
+ * 保持正文命中原有的相关度顺序。
+ */
+export function filterBodyHits(hits: BodyHit[], tags: readonly QuestionTag[], filter: QuestionFilter): BodyHit[] {
+  const passing = new Set(
+    filterCatalogQuestions(
+      { schemaVersion: 1, id: '', title: '', tags: [...tags], questions: hits.map((hit) => hit.question) },
+      { ...filter, query: undefined },
+    ).map((question) => question.id),
+  );
+  return hits.filter((hit) => passing.has(hit.question.id));
+}
 
 export function ListScreen() {
   const route = useRoute<ListRoute>();
@@ -33,31 +55,35 @@ export function ListScreen() {
   const categoryId = route.params.categoryId;
   const tagName = route.params.categoryName ?? route.params.tagName ?? '题目';
   const [keyword, setKeyword] = useState('');
-  // §6.3 难度多选（并集）；§6.4 标签 chips 多选（父含子孙）
-  const [difficulties, setDifficulties] = useState<ReadonlySet<1 | 2 | 3>>(new Set());
+  // §6.3 难度多选（并集）；§6.4 标签多选（父含子孙）
+  const [difficulties, setDifficulties] = useState<ReadonlySet<Level>>(new Set());
   const [tagFilter, setTagFilter] = useState<ReadonlySet<string>>(new Set());
   // 「随机刷」：练习队列按当前筛选结果洗牌（点题时构建，保持筛选语义不变）
   const [shuffle, setShuffle] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [items, setItems] = useState<Question[]>([]);
   // §6.2 正文命中：标题/标签即时匹配之外，再用安装期语料搜正文。
   // 注意：正文命中的题**不在** titleMatches 里，元数据必须单独取，不能拿 items 反查。
-  const [bodyOnlyItems, setBodyOnlyItems] = useState<
-    { question: Question; snippet: string | null }[]
-  >([]);
+  const [bodyOnlyItems, setBodyOnlyItems] = useState<BodyHit[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // 原生栈标题：导航层只读 tagName，分类入口会显示成「题目」，这里按实际入口名修正
+  useLayoutEffect(() => {
+    if (typeof nav.setOptions === 'function') nav.setOptions({ title: tagName });
+  }, [nav, tagName]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    const filter: QuestionFilter = {
+      tagId,
+      categoryId,
+      difficulties: [...difficulties],
+      tagIds: [...tagFilter],
+    };
     try {
-      const titleMatches = await questionBankRepository.listQuestions({
-        tagId,
-        categoryId,
-        difficulties: [...difficulties],
-        tagIds: [...tagFilter],
-        query: keyword,
-      });
+      const titleMatches = await questionBankRepository.listQuestions({ ...filter, query: keyword });
       setItems(titleMatches);
 
       const trimmed = keyword.trim();
@@ -67,7 +93,10 @@ export function ListScreen() {
       }
       // 正文命中：只保留「标题没命中」的题，避免同一题出现两次
       const titleIds = new Set(titleMatches.map((question) => question.id));
-      const hits = await questionBankRepository.searchBody(trimmed);
+      const [hits, loadedCatalog] = await Promise.all([
+        questionBankRepository.searchBody(trimmed),
+        questionBankRepository.getCatalog().catch(() => null),
+      ]);
       const resolved = await Promise.all(
         hits
           .filter((hit) => !titleIds.has(hit.id))
@@ -76,9 +105,9 @@ export function ListScreen() {
             return question ? { question, snippet: hit.snippet } : null;
           }),
       );
-      setBodyOnlyItems(
-        resolved.filter((entry): entry is { question: Question; snippet: string | null } => entry !== null),
-      );
+      const bodyHits = resolved.filter((entry): entry is BodyHit => entry !== null);
+      // 修复：正文命中此前只排除标题命中，完全忽略分类 / 标签 / 难度筛选
+      setBodyOnlyItems(filterBodyHits(bodyHits, loadedCatalog?.tags ?? [], filter));
     } catch (loadError) {
       setItems([]);
       setBodyOnlyItems([]);
@@ -93,7 +122,7 @@ export function ListScreen() {
     return () => clearTimeout(timer);
   }, [load]);
 
-  // §6.4 父标签 chips：当前范围（分类/标签域）内实际出现的根标签；标签树抽屉明确不做
+  // §6.4 父标签：当前范围（分类/标签域）内实际出现的根标签；标签树抽屉明确不做
   const [catalog, setCatalog] = useState<QuestionBankCatalog | null>(null);
   useEffect(() => {
     let active = true;
@@ -110,16 +139,13 @@ export function ListScreen() {
     };
   }, []);
 
+  const bankMarks = useMasteryStore((state) => (catalog ? state.marks[catalog.id] : undefined));
+
   const tagChips = useMemo(() => {
     if (!catalog) return [];
     const inScopeIds = new Set(
       filterCatalogQuestions(catalog, { tagId, categoryId }).map((question) => question.id),
     );
-    const presentIds = new Set<string>();
-    for (const question of catalog.questions) {
-      if (!inScopeIds.has(question.id)) continue;
-      for (const tag of question.tags) presentIds.add(tag.id);
-    }
     return catalog.tags
       .filter((tag) => tag.parentId === null)
       .map((tag) => {
@@ -134,7 +160,7 @@ export function ListScreen() {
       .filter((chip) => chip.count > 0);
   }, [catalog, categoryId, tagId]);
 
-  function toggleDifficulty(level: 1 | 2 | 3) {
+  function toggleDifficulty(level: Level) {
     setDifficulties((current) => {
       const next = new Set(current);
       if (next.has(level)) next.delete(level);
@@ -158,241 +184,251 @@ export function ListScreen() {
     setTagFilter(new Set());
   }
 
+  function openQuestion(item: Question) {
+    const ordered = items.map((question) => question.id);
+    const queue = shuffle ? shuffled(ordered) : ordered;
+    const queueIndex = queue.indexOf(item.id);
+    if (catalog) {
+      usePracticeSessionStore.getState().saveSession(catalog.id, {
+        queue,
+        index: queueIndex,
+        mode: 'practice',
+        title: shuffle ? `${tagName} · 随机` : tagName,
+      });
+    }
+    nav.push('Detail', { id: item.id, meta: item, queue, queueIndex, mode: 'practice' });
+  }
+
   const hasFilters = Boolean(keyword || difficulties.size > 0 || tagFilter.size > 0);
+  const hasPanelFilters = difficulties.size > 0 || tagFilter.size > 0 || shuffle;
+
+  // 单行筛选摘要：「难度 · 标签 · 顺序」，点按展开原有筛选项
+  const filterSummary = [
+    difficulties.size > 0
+      ? LEVELS.filter((level) => difficulties.has(level)).map((level) => difficultyStyles[level].label).join('、')
+      : '全部难度',
+    tagFilter.size > 0
+      ? tagChips.filter((chip) => tagFilter.has(chip.id)).map((chip) => chip.name).join('、') || `${tagFilter.size} 个标签`
+      : '全部标签',
+    shuffle ? '随机' : '顺序',
+  ].join(' · ');
+
+  const resultLabel = loading ? '正在查找' : `${items.length} 题`;
+
+  const header = (
+    <View style={styles.toolbar}>
+      <UnderlineSearchField
+        value={keyword}
+        onChangeText={setKeyword}
+        placeholder={`搜索${tagName}题目`}
+        accessibilityLabel="搜索题目"
+      />
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="筛选条件"
+        accessibilityHint={`当前：${filterSummary}，点按${filtersOpen ? '收起' : '展开'}筛选`}
+        accessibilityState={{ expanded: filtersOpen }}
+        onPress={() => setFiltersOpen((open) => !open)}
+        style={({ pressed }) => [styles.summaryRow, pressed && styles.pressed]}
+      >
+        <Text style={[styles.summaryText, hasPanelFilters && styles.summaryTextActive]} numberOfLines={1}>
+          {filterSummary}
+        </Text>
+        {filtersOpen ? (
+          <ChevronUp size={ICON_SIZE - 2} color={colors.textSecondary} strokeWidth={ICON_STROKE} />
+        ) : (
+          <ChevronDown size={ICON_SIZE - 2} color={colors.textSecondary} strokeWidth={ICON_STROKE} />
+        )}
+        <Text style={styles.resultCount}>{resultLabel}</Text>
+      </Pressable>
+
+      {filtersOpen ? (
+        <View style={styles.panel}>
+          <FilterGroup label="难度">
+            {LEVELS.map((level) => (
+              <FilterOption
+                key={level}
+                label={difficultyStyles[level].label}
+                accessibilityLabel={`${difficultyStyles[level].label}难度`}
+                selected={difficulties.has(level)}
+                onPress={() => toggleDifficulty(level)}
+              />
+            ))}
+          </FilterGroup>
+          {tagChips.length > 0 ? (
+            <FilterGroup label="标签">
+              {tagChips.map((chip) => (
+                <FilterOption
+                  key={chip.id}
+                  label={`${chip.name} · ${chip.count}`}
+                  accessibilityLabel={`按标签 ${chip.name} 筛选`}
+                  selected={tagFilter.has(chip.id)}
+                  onPress={() => toggleTag(chip.id)}
+                />
+              ))}
+            </FilterGroup>
+          ) : null}
+          <FilterGroup label="顺序">
+            <FilterOption label="顺序" selected={!shuffle} onPress={() => setShuffle(false)} />
+            <FilterOption label="随机刷" accessibilityLabel="随机刷" selected={shuffle} onPress={() => setShuffle(true)} />
+          </FilterGroup>
+          {hasPanelFilters ? (
+            <View style={styles.panelFooter}>
+              <TextAction
+                label="重置筛选"
+                muted
+                onPress={() => {
+                  setDifficulties(new Set());
+                  setTagFilter(new Set());
+                  setShuffle(false);
+                }}
+              />
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
 
   return (
     <View style={styles.container}>
-      <View style={styles.toolbar}>
-        <View style={styles.searchBox}>
-          <Search size={20} color={colors.textMuted} strokeWidth={1.8} />
-          <TextInput
-            style={styles.input}
-            placeholder={`搜索${tagName}题目`}
-            placeholderTextColor={colors.textSubtle}
-            value={keyword}
-            onChangeText={setKeyword}
-            returnKeyType="search"
-            autoCapitalize="none"
-            accessibilityLabel="搜索题目"
-          />
-          {keyword ? (
-            <Pressable accessibilityRole="button" accessibilityLabel="清除搜索关键词" hitSlop={8} onPress={() => setKeyword('')} style={styles.clearButton}>
-              <X size={18} color={colors.textMuted} strokeWidth={2} />
-            </Pressable>
-          ) : null}
-        </View>
-
-        <View style={styles.filterHeader}>
-          <Text style={styles.filterLabel}>难度</Text>
-          <Text style={styles.resultCount}>{loading ? '正在查找' : `${items.length} 道题`}</Text>
-        </View>
-        <View style={styles.filtersRow}>
-          <View style={styles.diffRow} accessibilityLabel="难度筛选">
-            {[1, 2, 3].map((level) => {
-              const selected = difficulties.has(level as 1 | 2 | 3);
-              const config = DIFFICULTY[level as keyof typeof DIFFICULTY];
-              return (
-                <Pressable
-                  key={level}
-                  accessibilityRole="checkbox"
-                  accessibilityLabel={`${config.label}难度`}
-                  accessibilityState={{ selected }}
-                  onPress={() => toggleDifficulty(level as 1 | 2 | 3)}
-                  style={({ pressed }) => [styles.chip, selected && styles.chipSelected, pressed && styles.pressed]}
-                >
-                  <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{config.label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="随机刷"
-            accessibilityState={{ selected: shuffle }}
-            onPress={() => setShuffle((value) => !value)}
-            style={({ pressed }) => [styles.chip, shuffle && styles.chipSelected, pressed && styles.pressed]}
-          >
-            <Shuffle size={13} color={shuffle ? colors.primary : colors.textMuted} strokeWidth={2} />
-            <Text style={[styles.chipText, shuffle && styles.chipTextSelected]}>随机刷</Text>
-          </Pressable>
-        </View>
-
-        {tagChips.length > 0 ? (
-          <View style={styles.tagChipsRow}>
-            {tagChips.map((chip) => {
-              const selected = tagFilter.has(chip.id);
-              return (
-                <Pressable
-                  key={chip.id}
-                  accessibilityRole="checkbox"
-                  accessibilityLabel={`按标签 ${chip.name} 筛选`}
-                  accessibilityState={{ selected }}
-                  onPress={() => toggleTag(chip.id)}
-                  style={({ pressed }) => [styles.chip, selected && styles.chipSelected, pressed && styles.pressed]}
-                >
-                  <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
-                    {chip.name} · {chip.count}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        ) : null}
-      </View>
-
-      {loading && items.length === 0 ? (
-        <View style={styles.listContent}>
-          {[0, 1, 2, 3].map((row) => (
-            <SkeletonBlock
-              key={row}
-              width="100%"
-              height={76}
-              radius={radii.md}
-              style={{ marginBottom: spacing.md }}
+      {/* 列表始终挂载：输入关键词触发加载时搜索框不能被卸载（会丢焦点） */}
+      <FlatList
+        data={items}
+        ListHeaderComponent={header}
+        ListFooterComponent={
+          bodyOnlyItems.length > 0 ? (
+            <View>
+              <SectionLabel>{`正文命中 ${bodyOnlyItems.length} 题`}</SectionLabel>
+              {bodyOnlyItems.map(({ question, snippet }, index) => (
+                <ReadingRow
+                  key={question.id}
+                  first={index === 0}
+                  title={question.title}
+                  snippet={snippet ? `…${snippet}…` : null}
+                  meta={buildQuestionMeta(question, bankMarks?.[question.id])}
+                  accessibilityLabel={`${question.title}，正文命中`}
+                  onPress={() => nav.push('Detail', { id: question.id, meta: question })}
+                />
+              ))}
+            </View>
+          ) : null
+        }
+        keyExtractor={(item) => item.id}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.listContent}
+        renderItem={({ item, index }) => {
+          const config = difficultyStyles[item.difficulty];
+          const meta = buildQuestionMeta(item, bankMarks?.[item.id]);
+          return (
+            <ReadingRow
+              first={index === 0}
+              title={item.title}
+              meta={item.hasAnswer ? meta : `${meta} · 暂无答案`}
+              accessibilityLabel={`${item.title}，${config.label}${item.hasAnswer ? '，有参考答案' : ''}`}
+              onPress={() => openQuestion(item)}
             />
-          ))}
-        </View>
-      ) : (
-        <FlatList
-          data={items}
-          ListFooterComponent={
-            bodyOnlyItems.length > 0 ? (
-              <View style={styles.bodySection}>
-                <Text style={styles.bodySectionTitle}>正文命中 {bodyOnlyItems.length} 题</Text>
-                {bodyOnlyItems.map(({ question, snippet }) => (
-                  <Pressable
-                    key={question.id}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${question.title}，正文命中`}
-                    onPress={() => nav.push('Detail', { id: question.id, meta: question })}
-                    style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-                  >
-                    <View style={styles.rowBody}>
-                      <Text style={styles.rowTitle} numberOfLines={2}>{question.title}</Text>
-                      {snippet ? <Text style={styles.snippet} numberOfLines={2}>…{snippet}…</Text> : null}
-                      <View style={styles.badges}>
-                        <View style={styles.bodyBadge}>
-                          <FileText size={13} color={colors.textMuted} strokeWidth={2} />
-                          <Text style={styles.bodyBadgeText}>正文命中</Text>
-                        </View>
-                      </View>
-                    </View>
-                    <ChevronRight size={20} color={colors.textSubtle} strokeWidth={1.8} />
-                  </Pressable>
-                ))}
-              </View>
-            ) : null
-          }
-          keyExtractor={(item) => item.id}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => {
-            const config = DIFFICULTY[item.difficulty];
-            return (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`${item.title}，${config.label}${item.hasAnswer ? '，有参考答案' : ''}`}
-                onPress={() => {
-                  const queue = shuffle
-                    ? shuffled(items.map((question) => question.id))
-                    : items.map((question) => question.id);
-                  nav.push('Detail', {
-                    id: item.id,
-                    meta: item,
-                    queue,
-                    queueIndex: queue.indexOf(item.id),
-                    mode: 'practice',
-                  });
-                }}
-                style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-              >
-                <View style={styles.rowBody}>
-                  <Text style={styles.rowTitle} numberOfLines={2}>{item.title}</Text>
-                  <View style={styles.badges}>
-                    <DifficultyBadge difficulty={item.difficulty} />
-                    {item.hasAnswer ? (
-                      <View style={styles.answerBadge}>
-                        <CheckCircle2 size={13} color={colors.textMuted} strokeWidth={2} />
-                        <Text style={styles.answerBadgeText}>有答案</Text>
-                      </View>
-                    ) : null}
-                  </View>
+          );
+        }}
+        ListEmptyComponent={
+          loading ? (
+            <View>
+              {[0, 1, 2, 3, 4].map((row) => (
+                <View key={row} style={styles.skeletonRow}>
+                  <SkeletonBlock width={row % 2 ? '72%' : '88%'} height={16} radius={radii.xs} />
+                  <SkeletonBlock width={120} height={12} radius={radii.xs} style={{ marginTop: spacing.sm }} />
                 </View>
-                <ChevronRight size={20} color={colors.textSubtle} strokeWidth={1.8} />
-              </Pressable>
-            );
-          }}
-          ListEmptyComponent={
+              ))}
+            </View>
+          ) : bodyOnlyItems.length > 0 ? null : (
             <EmptyState
               title={error ? '题目加载失败' : '没有找到匹配题目'}
-              description={error ?? (hasFilters ? '换一个关键词，或清除难度筛选后再试。' : '这个分类暂时还没有题目。')}
+              description={error ?? (hasFilters ? '换一个关键词，或清除筛选后再试。' : '这个分类暂时还没有题目。')}
               actionLabel={error ? '重新加载' : hasFilters ? '清除筛选' : undefined}
               onAction={error ? () => void load() : hasFilters ? clearFilters : undefined}
             />
-          }
-        />
-      )}
+          )
+        }
+      />
     </View>
   );
 }
 
+function FilterGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <View style={styles.group}>
+      <Text style={styles.groupLabel}>{label}</Text>
+      <View style={styles.groupOptions}>{children}</View>
+    </View>
+  );
+}
+
+/** 文字型筛选项：选中 = 主色加粗 + 细下划线；不铺底色块 */
+function FilterOption({
+  label,
+  selected,
+  onPress,
+  accessibilityLabel,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+  accessibilityLabel?: string;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityState={{ selected, checked: selected }}
+      hitSlop={6}
+      onPress={onPress}
+      style={({ pressed }) => [styles.option, selected && styles.optionSelected, pressed && styles.pressed]}
+    >
+      <Text style={[styles.optionText, selected && styles.optionTextSelected]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+const hairline = StyleSheet.hairlineWidth;
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  toolbar: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm, backgroundColor: colors.background },
-  searchBox: {
-    minHeight: 46,
+  toolbar: { paddingTop: spacing.sm, paddingBottom: spacing.md },
+  summaryRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    backgroundColor: colors.surfaceSubtle,
-    borderRadius: radii.pill,
-  },
-  input: { ...typography.body, color: colors.text, flex: 1, paddingVertical: spacing.sm, fontSize: 14 },
-  clearButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
-  bodySection: { marginTop: spacing.lg, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border },
-  bodySectionTitle: { ...typography.label, color: colors.textMuted, marginBottom: spacing.sm },
-  snippet: { ...typography.caption, color: colors.textMuted, marginTop: 4, lineHeight: 18 },
-  bodyBadge: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  bodyBadgeText: { ...typography.caption, color: colors.textMuted, fontWeight: '600' },
-  filterHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: spacing.md },
-  filterLabel: { ...typography.caption, color: colors.textMuted, fontWeight: '600' },
-  resultCount: { ...typography.caption, color: colors.textSubtle },
-  filtersRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: spacing.xs },
-  diffRow: { flexDirection: 'row', gap: spacing.sm },
-  tagChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
-  chip: {
-    minHeight: 32,
-    paddingHorizontal: spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radii.pill,
-    backgroundColor: colors.surfaceSubtle,
-  },
-  chipSelected: { backgroundColor: colors.primarySoft },
-  chipText: { ...typography.caption, color: colors.textSecondary, fontWeight: '600' },
-  chipTextSelected: { color: colors.primary },
-  listContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl, flexGrow: 1, paddingTop: spacing.xs },
-  row: {
-    minHeight: 76,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
+    gap: spacing.xs,
     paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    ...cardChrome,
-    borderRadius: radii.md,
-    marginBottom: spacing.md,
   },
-  rowBody: { flex: 1 },
-  rowTitle: { ...typography.bodyStrong, color: colors.text, fontSize: 15, lineHeight: 21 },
-  badges: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: 6 },
-  answerBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
+  summaryText: { ...typography.caption, color: colors.textMuted, flexShrink: 1 },
+  summaryTextActive: { color: colors.text, fontWeight: '600' },
+  resultCount: { ...typography.caption, color: colors.textSubtle, marginLeft: 'auto', paddingLeft: spacing.md },
+  panel: {
+    paddingBottom: spacing.sm,
+    borderBottomWidth: hairline,
+    borderBottomColor: colors.border,
   },
-  answerBadgeText: { ...typography.caption, color: colors.textMuted, fontWeight: '600', fontSize: 11 },
-  pressed: { ...pressedScale },
+  group: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: spacing.sm },
+  groupLabel: { ...typography.eyebrow, color: colors.textMuted, width: 44, paddingTop: 2 },
+  groupOptions: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', columnGap: spacing.lg, rowGap: spacing.sm },
+  option: { paddingBottom: 2, borderBottomWidth: 1, borderBottomColor: 'transparent' },
+  optionSelected: { borderBottomColor: colors.primary },
+  optionText: { ...typography.label, color: colors.textMuted, fontWeight: '400' },
+  optionTextSelected: { color: colors.primary, fontWeight: '600' },
+  panelFooter: { alignItems: 'flex-end', paddingTop: spacing.xs },
+  listContent: {
+    paddingHorizontal: layout.pagePadding,
+    paddingBottom: spacing.xxxl,
+    flexGrow: 1,
+    width: '100%',
+    maxWidth: layout.readingMaxWidth,
+    alignSelf: 'center',
+  },
+  skeletonRow: {
+    paddingVertical: spacing.lg,
+    borderBottomWidth: hairline,
+    borderBottomColor: colors.border,
+  },
+  pressed: { opacity: 0.6 },
 });

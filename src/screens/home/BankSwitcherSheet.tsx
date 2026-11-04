@@ -1,20 +1,25 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Check, ChevronRight, Database, FolderCog, Plus } from 'lucide-react-native';
+import { Check, ChevronRight } from 'lucide-react-native';
 import { useQuestionBankStore } from '../../question-bank/store';
-import { colors, radii, spacing, typography } from '../../theme';
+import type { InstalledBankSummary } from '../../question-bank/types';
+import { colors, layout, radii, spacing, typography } from '../../theme';
+import { ICON_SIZE, ICON_STROKE } from './components/reading';
 
 /**
- * 首页题库切换底部弹层：列出本机已装题库（打开时刷新），标出使用中的题库；
- * 点其它题库即切换（行内转圈 + 失败提示），末尾「管理题库」进入管理页。
- * 本机没有题库时只给「新建或添加题库」入口。
+ * 首页题库切换底部弹层（极简阅读风）：本机题库按「线上题库 / 本地题库」分两组
+ * （打开时刷新），使用中的题库以主色对勾标出；点其它题库即切换（行内转圈 + 失败提示）。
+ * 线上题库 = 官方下载、只能更新；本地题库 = 自建或复制，可编辑。
+ * 末尾两个入口：「线上题库」进入官方题库目录，「管理题库」进入管理页；
+ * 本机没有题库时第一个入口改为「安装官方题库」。
  */
 export function BankSwitcherSheet({
   visible,
   onClose,
   onSwitched,
   onManage,
+  onOnlineBanks,
   canManage = true,
 }: {
   visible: boolean;
@@ -23,6 +28,8 @@ export function BankSwitcherSheet({
   onSwitched: () => void;
   /** 进入题库管理页 */
   onManage: () => void;
+  /** 进入线上（官方）题库目录 */
+  onOnlineBanks: () => void;
   /** 平台是否支持题库管理（Web 只读，不给入口） */
   canManage?: boolean;
 }) {
@@ -66,10 +73,75 @@ export function BankSwitcherSheet({
     }
   }
 
-  function manage() {
+  function leaveTo(target: () => void) {
     if (switchingId) return;
     onClose();
-    onManage();
+    target();
+  }
+
+  const onlineBanks = banks.filter((bank) => bank.source === 'online');
+  const localBanks = banks.filter((bank) => bank.source !== 'online');
+  const empty = !banksLoading && banks.length === 0;
+
+  function renderBank(bank: InstalledBankSummary) {
+    const switching = switchingId === bank.catalogId;
+    const disabled = busy && !switching;
+    return (
+      <Pressable
+        key={bank.namespace}
+        accessibilityRole="button"
+        accessibilityLabel={bank.active ? `当前题库 ${bank.title}` : `切换到题库 ${bank.title}`}
+        accessibilityState={{ selected: bank.active, disabled: busy, busy: switching }}
+        disabled={busy}
+        onPress={() => void handleSelect(bank.catalogId, bank.active)}
+        style={({ pressed }) => [styles.bankRow, disabled && styles.disabled, pressed && styles.pressed]}
+      >
+        <View style={styles.bankInfo}>
+          <Text style={[styles.bankTitle, bank.active && styles.bankTitleActive]} numberOfLines={1}>
+            {bank.title}
+          </Text>
+          <Text style={styles.bankMeta}>
+            {bank.questionCount} 题{bank.version ? ` · v${bank.version}` : ''}
+          </Text>
+        </View>
+        {switching ? (
+          <ActivityIndicator size="small" color={colors.primary} />
+        ) : bank.active ? (
+          <View style={styles.activeMark}>
+            <Check size={16} color={colors.primary} strokeWidth={2} />
+            <Text style={styles.activeMarkText}>使用中</Text>
+          </View>
+        ) : null}
+      </Pressable>
+    );
+  }
+
+  function renderGroup(label: string, list: InstalledBankSummary[]) {
+    if (list.length === 0) return null;
+    return (
+      <View style={styles.group}>
+        <Text style={styles.groupLabel} accessibilityRole="header">{label}</Text>
+        {list.map(renderBank)}
+      </View>
+    );
+  }
+
+  function renderEntry(label: string, onPress: () => void, hint: string) {
+    const blocked = switchingId !== null;
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityHint={hint}
+        accessibilityState={{ disabled: blocked }}
+        disabled={blocked}
+        onPress={() => leaveTo(onPress)}
+        style={({ pressed }) => [styles.entryRow, blocked && styles.disabled, pressed && styles.pressed]}
+      >
+        <Text style={styles.entryText}>{label}</Text>
+        <ChevronRight size={ICON_SIZE} color={colors.textSecondary} strokeWidth={ICON_STROKE} />
+      </Pressable>
+    );
   }
 
   return (
@@ -80,79 +152,28 @@ export function BankSwitcherSheet({
           <View style={styles.grabber} />
           <Text style={styles.title}>切换题库</Text>
           {error ? (
-            <View style={styles.errorBox} accessibilityRole="alert">
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
+            <Text style={styles.errorText} accessibilityRole="alert">{error}</Text>
           ) : null}
           <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
             {banksLoading && banks.length === 0 ? (
               <Text style={styles.mutedText}>正在读取题库列表…</Text>
             ) : null}
-            {!banksLoading && banks.length === 0 ? (
-              <Text style={styles.mutedText}>本机还没有题库，新建一个本地题库或添加线上题库后即可开始练习。</Text>
+            {empty ? (
+              <Text style={styles.mutedText}>
+                本机还没有题库。安装一个官方线上题库，或新建本地题库后即可开始练习。
+              </Text>
             ) : null}
-            {banks.map((bank) => {
-              const switching = switchingId === bank.catalogId;
-              const disabled = busy && !switching;
-              return (
-                <Pressable
-                  key={bank.namespace}
-                  accessibilityRole="button"
-                  accessibilityLabel={bank.active ? `当前题库 ${bank.title}` : `切换到题库 ${bank.title}`}
-                  accessibilityState={{ selected: bank.active, disabled: busy, busy: switching }}
-                  disabled={busy}
-                  onPress={() => void handleSelect(bank.catalogId, bank.active)}
-                  style={({ pressed }) => [
-                    styles.bankRow,
-                    bank.active && styles.bankRowActive,
-                    disabled && styles.disabled,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <View style={styles.bankIconBox}>
-                    <Database size={16} color={bank.active ? colors.primary : colors.textMuted} strokeWidth={2} />
-                  </View>
-                  <View style={styles.bankInfo}>
-                    <Text style={styles.bankTitle} numberOfLines={1}>{bank.title}</Text>
-                    <Text style={styles.bankMeta}>
-                      {bank.questionCount} 题 · {bank.source === 'local' ? '本地' : '线上'}
-                      {bank.version ? ` · v${bank.version}` : ''}
-                    </Text>
-                  </View>
-                  {switching ? (
-                    <ActivityIndicator size="small" color={colors.primary} />
-                  ) : bank.active ? (
-                    <View style={styles.activeMark}>
-                      <Check size={14} color={colors.primary} strokeWidth={2.4} />
-                      <Text style={styles.activeMarkText}>使用中</Text>
-                    </View>
-                  ) : null}
-                </Pressable>
-              );
-            })}
+            {renderGroup('线上题库', onlineBanks)}
+            {renderGroup('本地题库', localBanks)}
           </ScrollView>
           {switchingId ? (
             <Text style={styles.mutedText} accessibilityLiveRegion="polite">正在切换题库…</Text>
           ) : null}
           {canManage ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={banks.length === 0 && !banksLoading ? '新建或添加题库' : '管理题库'}
-              accessibilityState={{ disabled: switchingId !== null }}
-              disabled={switchingId !== null}
-              onPress={manage}
-              style={({ pressed }) => [styles.manageRow, switchingId !== null && styles.disabled, pressed && styles.pressed]}
-            >
-              {banks.length === 0 && !banksLoading ? (
-                <Plus size={16} color={colors.primary} strokeWidth={2.2} />
-              ) : (
-                <FolderCog size={16} color={colors.primary} strokeWidth={2} />
-              )}
-              <Text style={styles.manageText}>
-                {banks.length === 0 && !banksLoading ? '新建或添加题库' : '管理题库'}
-              </Text>
-              <ChevronRight size={16} color={colors.textMuted} strokeWidth={2} />
-            </Pressable>
+            <View style={styles.entries}>
+              {renderEntry(empty ? '安装官方题库' : '线上题库', onOnlineBanks, '浏览并安装官方线上题库')}
+              {renderEntry('管理题库', onManage, '新建、复制、编辑或删除题库')}
+            </View>
           ) : null}
         </SafeAreaView>
       </View>
@@ -160,15 +181,17 @@ export function BankSwitcherSheet({
   );
 }
 
+const hairline = StyleSheet.hairlineWidth;
+
 const styles = StyleSheet.create({
-  scrim: { flex: 1, backgroundColor: 'rgba(20, 20, 16, 0.45)', justifyContent: 'flex-end' },
+  scrim: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' },
   scrimTouchable: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   sheet: {
-    maxHeight: '75%',
-    backgroundColor: colors.surface,
+    maxHeight: '78%',
+    backgroundColor: colors.background,
     borderTopLeftRadius: radii.lg,
     borderTopRightRadius: radii.lg,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: layout.pagePadding,
     paddingBottom: spacing.md,
   },
   grabber: {
@@ -176,59 +199,44 @@ const styles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: radii.pill,
-    backgroundColor: colors.border,
+    backgroundColor: colors.borderStrong,
     marginTop: spacing.sm,
-    marginBottom: spacing.md,
+    marginBottom: spacing.lg,
   },
-  title: { ...typography.title, color: colors.text, fontSize: 18 },
-  list: { marginTop: spacing.md, flexGrow: 0 },
-  listContent: { paddingBottom: spacing.xs },
-  mutedText: { ...typography.caption, color: colors.textMuted, lineHeight: 18, marginBottom: spacing.sm },
-  errorBox: {
-    marginTop: spacing.md,
-    padding: spacing.sm,
-    borderRadius: radii.sm,
-    backgroundColor: colors.dangerSoft,
-    borderWidth: 1,
-    borderColor: colors.borderWarm,
-  },
-  errorText: { ...typography.caption, color: colors.danger, fontSize: 11 },
+  title: { ...typography.heading, color: colors.text },
+  list: { marginTop: spacing.sm, flexGrow: 0 },
+  listContent: { paddingBottom: spacing.sm },
+  mutedText: { ...typography.caption, color: colors.textMuted, lineHeight: 18, marginTop: spacing.md },
+  errorText: { ...typography.caption, color: colors.danger, marginTop: spacing.sm, lineHeight: 18 },
+  group: { marginTop: spacing.lg },
+  groupLabel: { ...typography.eyebrow, color: colors.textMuted, marginBottom: spacing.xs },
   bankRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    padding: spacing.sm,
-    minHeight: 52,
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: spacing.sm,
-  },
-  bankRowActive: { borderColor: colors.primaryMuted, backgroundColor: colors.primarySoft },
-  bankIconBox: {
-    width: 30,
-    height: 30,
-    borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
-    alignItems: 'center',
-    justifyContent: 'center',
+    gap: spacing.md,
+    paddingVertical: 14,
+    borderBottomWidth: hairline,
+    borderBottomColor: colors.border,
   },
   bankInfo: { flex: 1 },
-  bankTitle: { ...typography.bodyStrong, color: colors.text, fontSize: 14 },
-  bankMeta: { ...typography.caption, color: colors.textMuted, fontSize: 11, marginTop: 2 },
-  activeMark: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  activeMarkText: { ...typography.caption, color: colors.primary, fontWeight: '700', fontSize: 11 },
-  manageRow: {
+  bankTitle: { ...typography.body, color: colors.text, fontWeight: '500' },
+  bankTitleActive: { fontWeight: '600' },
+  bankMeta: { ...typography.caption, color: colors.textMuted, marginTop: 2 },
+  activeMark: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  activeMarkText: { ...typography.caption, color: colors.primary, fontWeight: '600' },
+  entries: {
+    marginTop: spacing.sm,
+    borderTopWidth: hairline,
+    borderTopColor: colors.borderStrong,
+  },
+  entryRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    minHeight: 48,
-    marginTop: spacing.xs,
-    paddingTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
+    minHeight: 52,
+    borderBottomWidth: hairline,
+    borderBottomColor: colors.border,
   },
-  manageText: { ...typography.bodyStrong, color: colors.primary, fontSize: 14, flex: 1 },
+  entryText: { ...typography.bodyStrong, color: colors.primary, flex: 1 },
   disabled: { opacity: 0.4 },
-  pressed: { opacity: 0.75 },
+  pressed: { opacity: 0.6 },
 });
