@@ -9,6 +9,27 @@ import { create } from 'zustand';
  * 「刷过多少道题」，而不是「打开过多少次」。
  */
 
+/** 阅读字号档位：标准 / 大 / 特大（题干与答案 Markdown 的字号、行高倍率） */
+export type ReadingScale = 1 | 1.15 | 1.3;
+
+export const READING_SCALES: readonly ReadingScale[] = [1, 1.15, 1.3];
+
+export const READING_SCALE_LABELS: Record<ReadingScale, string> = {
+  1: '标准',
+  1.15: '大',
+  1.3: '特大',
+};
+
+export function isReadingScale(value: unknown): value is ReadingScale {
+  return value === 1 || value === 1.15 || value === 1.3;
+}
+
+/** 循环到下一档：标准 → 大 → 特大 → 标准 */
+export function nextReadingScale(current: ReadingScale): ReadingScale {
+  const index = READING_SCALES.indexOf(current);
+  return READING_SCALES[(index + 1) % READING_SCALES.length];
+}
+
 interface UserData {
   totalCount: number;
   /** 已计过数的题目 ID，用于去重（题库规模约 2000，体积可忽略） */
@@ -17,12 +38,15 @@ interface UserData {
   lastViewedQuestionId: string | null;
   /** 设置项：进入题目时是否默认展开参考答案 */
   answerExpandedByDefault: boolean;
+  /** 设置项：详情页阅读字号倍率（默认 1 = 标准） */
+  readingScale: ReadingScale;
 }
 
 interface UserActions {
   recordView: (questionId: string) => void;
   setPrompted: () => void;
   setAnswerExpandedByDefault: (value: boolean) => void;
+  setReadingScale: (value: ReadingScale) => void;
   load: () => Promise<void>;
 }
 
@@ -36,6 +60,7 @@ const INITIAL_DATA: Readonly<UserData> = {
   hasPromptedRule: false,
   lastViewedQuestionId: null,
   answerExpandedByDefault: false,
+  readingScale: 1,
 };
 
 let pendingPersist = Promise.resolve();
@@ -65,6 +90,12 @@ export const useUserStore = create<UserState>((set, get) => ({
 
   setAnswerExpandedByDefault: (value) => {
     set({ answerExpandedByDefault: value });
+    queuePersist(get());
+  },
+
+  setReadingScale: (value) => {
+    if (!isReadingScale(value)) return;
+    set({ readingScale: value });
     queuePersist(get());
   },
 
@@ -98,6 +129,8 @@ function parsePersistedData(raw: string): UserData | null {
     lastViewedQuestionId: asNullableString(value.lastViewedQuestionId),
     answerExpandedByDefault:
       typeof value.answerExpandedByDefault === 'boolean' ? value.answerExpandedByDefault : false,
+    // 旧数据无此字段或值非法 ⇒ 标准字号
+    readingScale: isReadingScale(value.readingScale) ? value.readingScale : 1,
   };
 }
 
@@ -116,6 +149,7 @@ function toPersistedData(state: UserState): UserData {
     hasPromptedRule: state.hasPromptedRule,
     lastViewedQuestionId: state.lastViewedQuestionId,
     answerExpandedByDefault: state.answerExpandedByDefault,
+    readingScale: state.readingScale,
   };
 }
 

@@ -57,7 +57,7 @@ export function renderImage(node: any, _children: any, _parent: any, styles: any
 
 export function renderTableHeader(node: any, children: any, _parent: any, styles: any) {
   // th 容器是 View，表头文字的字重只能在 rule 里直接落在 Text 上
-  return <Text key={node.key} style={[styles._VIEW_SAFE_th, markdownStyles.tableHeaderText]}>{children}</Text>;
+  return <Text key={node.key} style={[styles._VIEW_SAFE_th, styles.tableHeaderText ?? markdownStyles.tableHeaderText]}>{children}</Text>;
 }
 
 /** 题目内链（facee://…）进 Detail，外链交给系统浏览器。 */
