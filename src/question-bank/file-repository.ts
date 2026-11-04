@@ -21,7 +21,7 @@ import type {
   RemoteQuestionBankRepository,
 } from './types';
 import { buildSnippet, encodeCorpusLine, searchCorpus } from './search';
-import { shouldUpdateBank } from './update';
+import { packageFingerprint, shouldUpdateBank } from './update';
 import { formatQuestionBankPackageError } from './package-error';
 
 export interface ZipEntryLike {
@@ -47,6 +47,8 @@ const BANKS_NAME = 'banks/';
 const STAGING_NAME = 'staging/';
 const ACTIVE_POINTER_NAME = 'active';
 const REGISTRY_NAME = 'registry.json';
+/** 旧安装补登记完成标记：存在即跳过迁移（启动时不再逐库读 catalog） */
+const LEGACY_MIGRATION_MARKER_NAME = 'legacy-registry-migrated-v1';
 const DOWNLOAD_NAME = 'facee-question-bank-downloads/';
 const SAFE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const SAFE_NAMESPACE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/;
@@ -362,23 +364,42 @@ export class FileSystemQuestionBankRepository
       await this.removeDirectory(extractPath);
 
       const catalog = await this.readCatalogAt(stagingPath);
-      if (options?.reuseCatalogId && !shouldUpdateBank(options.currentVersion, catalog.version)) {
+      const versionInfo = catalog.version ? { version: catalog.version } : {};
+      // force（覆盖本地修改）与 dryRun（只探测）都不走版本短路
+      if (
+        options?.reuseCatalogId && !options.force && !options.dryRun
+        && !shouldUpdateBank(options.currentVersion, catalog.version)
+      ) {
         await this.removeDirectory(stagingPath);
-        return { questionCount: catalog.questions.length, tagCount: catalog.tags.length, unchanged: true };
+        return {
+          questionCount: catalog.questions.length, tagCount: catalog.tags.length, unchanged: true, ...versionInfo,
+        };
       }
       assertArchiveMatchesCatalog(entries, catalog, zipRoot);
       const total = catalog.questions.length + 1;
       notifyProgress(onProgress, { completed: 0, total, label: '正在校验题库' });
       const corpusLines: string[] = [];
-      await this.validateExtractedFiles(stagingPath, catalog, onProgress, total, corpusLines);
+      const fingerprintParts: string[] = [JSON.stringify(catalog)];
+      await this.validateExtractedFiles(stagingPath, catalog, onProgress, total, corpusLines, fingerprintParts);
       validatingPackage = false;
+      const fingerprint = packageFingerprint(fingerprintParts);
+      if (options?.dryRun) {
+        // 只探测：已完整校验，清理暂存后返回版本与指纹，不触碰已安装题库
+        await this.removeDirectory(stagingPath);
+        return {
+          questionCount: catalog.questions.length, tagCount: catalog.tags.length,
+          dryRun: true, fingerprint, ...versionInfo,
+        };
+      }
       await this.writeCorpus(stagingPath, corpusLines);
 
       previousNamespace = await this.readActiveNamespace();
       const previousCatalogId = await this.readCatalogIdAt(previousNamespace);
-      // 下载即本地化：ZIP 落地即成为可编辑的本地题库。catalog.id 重写为
+      // 下载的题库是「线上题库」：只能在线更新，编辑须先复制为本地题库。
+      // 存储上沿用本地源机制（local-sources 记录 sourceUrl），catalog.id 重写为
       // local- 前缀（同 URL 更新时沿用原 id，install 原子替换旧库）；
-      // 图片资产已随解压目录进入 namespace，后续编辑保存由同 id 继承兜底。
+      // 线上/本地之分由源文件的 sourceUrl + locallyModified 决定（见 store.refreshBanks）。
+      // 图片资产已随解压目录进入 namespace。
       const localId = options?.reuseCatalogId ?? makeLocalBankId();
       const localizedCatalog: QuestionBankCatalog = { ...catalog, id: localId };
       await this.fs.writeAsStringAsync(
@@ -394,14 +415,18 @@ export class FileSystemQuestionBankRepository
         contents.push(await this.readQuestionContentAt(token, question.id));
       }
       const localPackage = { catalog: localizedCatalog, contents };
-      await options?.beforeCommit?.(localPackage);
+      await options?.beforeCommit?.(localPackage, { fingerprint });
       committed = true;
       notifyProgress(onProgress, { completed: total, total, label: '题库安装完成' });
       await this.reconcileBanksAfterActivate(localizedCatalog.id, token, previousNamespace, previousCatalogId);
       return {
         questionCount: localizedCatalog.questions.length,
         tagCount: localizedCatalog.tags.length,
-        localSource: { bankId: localId, updatedAt: '', package: localPackage, sourceUrl: url },
+        fingerprint,
+        ...versionInfo,
+        localSource: {
+          bankId: localId, updatedAt: '', package: localPackage, sourceUrl: url, remoteFingerprint: fingerprint,
+        },
       };
     } catch (error) {
       if (activated && !committed) await this.restoreActivation(previousNamespace, token);
@@ -446,7 +471,9 @@ export class FileSystemQuestionBankRepository
           namespace,
           title: catalog.title || catalogId,
           questionCount: catalog.questions.length,
+          // 仓库层只知道 id 前缀；下载的线上题库也是 local- id，store.refreshBanks 按源文件细分
           source: catalogId.startsWith(LOCAL_BANK_ID_PREFIX) ? 'local' : 'online',
+          editable: catalogId.startsWith(LOCAL_BANK_ID_PREFIX),
           active,
           ...(catalog.version ? { version: catalog.version } : {}),
           ...(catalog.updatedAt ? { updatedAt: catalog.updatedAt } : {}),
@@ -458,6 +485,7 @@ export class FileSystemQuestionBankRepository
           title: '（无法读取）',
           questionCount: 0,
           source: 'online',
+          editable: false,
           active,
         });
       }
@@ -555,9 +583,9 @@ export class FileSystemQuestionBankRepository
 
   /** 复制源题库的题目 assets/ 目录到目标题库（尽力而为：缺失或失败逐题跳过）。 */
   async copyBankAssets(sourceCatalogId: string, targetCatalogId: string): Promise<void> {
-    const registry = await this.readRegistry();
-    const sourceNamespace = registry[sourceCatalogId];
-    const targetNamespace = registry[targetCatalogId];
+    // 旧版本（未登记）的题库按 listBanks 兜底解析，与其他方法一致；否则复制旧库会丢图
+    const sourceNamespace = await this.resolveNamespace(sourceCatalogId);
+    const targetNamespace = await this.resolveNamespace(targetCatalogId);
     if (!sourceNamespace || !targetNamespace) return;
     const catalog = await this.readCatalogAt(this.bankPath(sourceNamespace));
     for (const question of catalog.questions) {
@@ -570,6 +598,57 @@ export class FileSystemQuestionBankRepository
       } catch {
         // 资产复制失败只影响该题图片，不阻塞题库复制
       }
+    }
+  }
+
+  /** catalogId → namespace：先查注册表，未登记时按目录扫描兜底；找不到返回 null */
+  private async resolveNamespace(catalogId: string): Promise<string | null> {
+    const registry = await this.readRegistry();
+    if (registry[catalogId]) return registry[catalogId];
+    const match = (await this.listBanks()).find((bank) => bank.catalogId === catalogId);
+    return match?.namespace ?? null;
+  }
+
+  /**
+   * 一次性、幂等的旧安装迁移：v1.2.1 之前没有注册表，旧题库只在被切换/重装时才
+   * 补登记；未登记的库复制时丢图、删除当前库后无法自动切换。这里把 banks/ 下
+   * catalog 可读、且 catalogId 与命名空间都未登记的库补登记。不改 catalog.id
+   * （学习进度按 id 记录）。同一 catalogId 有多个未登记命名空间时只登记激活的
+   * （否则按标题排序第一个），其余保持原样。已全部登记时不写注册表；任何错误都吞掉。
+   * 成功（注册表回读确认）后写完成标记，此后启动直接跳过。返回新登记数。
+   */
+  async migrateLegacyBanks(): Promise<number> {
+    try {
+      const marker = `${this.bankRoot()}${LEGACY_MIGRATION_MARKER_NAME}`;
+      if ((await this.fs.getInfoAsync(marker)).exists) return 0;
+      const registry = await this.readRegistry();
+      const registeredNamespaces = new Set(Object.values(registry));
+      let added = 0;
+      // listBanks 按「激活在前」排序：同 id 多个候选时激活的先登记
+      for (const bank of await this.listBanks()) {
+        if (registeredNamespaces.has(bank.namespace) || registry[bank.catalogId]) continue;
+        // 读不出 catalog 的目录（listBanks 以 namespace 充当 id）不登记
+        try {
+          const catalog = await this.readCatalogAt(this.bankPath(bank.namespace));
+          if (!catalog.id || catalog.id !== bank.catalogId) continue;
+        } catch {
+          continue;
+        }
+        registry[bank.catalogId] = bank.namespace;
+        registeredNamespaces.add(bank.namespace);
+        added += 1;
+      }
+      if (added > 0) {
+        await this.writeRegistry(registry);
+        // writeRegistry 吞错：回读确认写入成功后才落标记，否则下次启动重试
+        const persisted = await this.readRegistry();
+        if (Object.entries(registry).some(([id, ns]) => persisted[id] !== ns)) return added;
+      }
+      await this.ensureRoot();
+      await this.fs.writeAsStringAsync(marker, new Date().toISOString(), { encoding: 'utf8' });
+      return added;
+    } catch {
+      return 0;
     }
   }
 
@@ -752,6 +831,7 @@ export class FileSystemQuestionBankRepository
     onProgress: InstallationProgressListener | undefined,
     total: number,
     corpusLines: string[],
+    fingerprintParts?: string[],
   ): Promise<void> {
     for (let index = 0; index < catalog.questions.length; index += 1) {
       const question = catalog.questions[index];
@@ -768,6 +848,13 @@ export class FileSystemQuestionBankRepository
       corpusLines.push(encodeCorpusLine(question.id, `${questionMd}\n${answerMd ?? ''}`));
       if (question.hasAnswer && answerMd === null) {
         throw new Error(`Missing answer.md for question: ${question.id}`);
+      }
+      if (fingerprintParts) {
+        const followupsPath = `${this.questionDirectory(root, question.id)}followups.md`;
+        const followupsInfo = await this.fs.getInfoAsync(followupsPath);
+        const followupsMd = followupsInfo.exists && !followupsInfo.isDirectory
+          ? await this.readUtf8(followupsPath) : '';
+        fingerprintParts.push(question.id, questionMd, answerMd ?? '', followupsMd);
       }
       await this.validateReferencedAssets(root, question.id, questionMd, answerMd);
       notifyProgress(onProgress, { completed: index + 1, total, label: `正在校验题目 ${index + 1}/${catalog.questions.length}` });

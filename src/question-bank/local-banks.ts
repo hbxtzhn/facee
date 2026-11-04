@@ -20,6 +20,10 @@ export type { LocalBankSource };
  * 约定：本地题库 catalog.id 以 `local-` 前缀开头（file-repository 据此
  * 在 listBanks 里标注来源）；新建本地题库使用分类 `local`（我的题目），复制库保留原分类，
  * 标签按需增删。id 一律由名称哈希生成（规范要求 [a-z0-9][a-z0-9._-]*）。
+ *
+ * 线上题库：从 ZIP 下载的库也以 local- id 存一份源文件（记录 sourceUrl），但它是只读的
+ * 「线上题库」——只能在线更新，编辑须先复制为本地题库（见 isOnlineBankSource）。
+ * 旧模型（≤ v0.1.2）下已编辑过的下载库带 locallyModified，按本地题库对待。
  */
 
 /** 与 file-repository 共享的文件系统注入点（测试用内存桩替换） */
@@ -42,6 +46,15 @@ export interface LocalBankSourceSummary {
   title: string;
   questionCount: number;
   updatedAt: string;
+  /** 下载地址（线上题库 / 旧模型编辑过的下载库）；摘要即带出，调用方无需再整读源文件 */
+  sourceUrl?: string;
+  /** 旧模型下编辑过的下载库 */
+  locallyModified?: boolean;
+}
+
+/** 有下载地址且未在本机编辑过：线上题库（只能在线更新，编辑须先复制） */
+export function isOnlineBankSource(source: { sourceUrl?: string; locallyModified?: boolean }): boolean {
+  return Boolean(source.sourceUrl) && source.locallyModified !== true;
 }
 
 const DEFAULT_CATEGORY_ID = 'local';
@@ -253,6 +266,8 @@ export async function listLocalBankSources(
         title: source.package.catalog.title,
         questionCount: source.package.catalog.questions.length,
         updatedAt: source.updatedAt,
+        ...(source.sourceUrl ? { sourceUrl: source.sourceUrl } : {}),
+        ...(source.locallyModified ? { locallyModified: true } : {}),
       });
     }
   }
@@ -353,5 +368,7 @@ export function parseLocalBankSource(raw: string): LocalBankSource | null {
       ? { sourceUrl: record.sourceUrl.trim() } : {}),
     // 旧文件没有该字段：视为未修改（向后兼容）
     ...(record.locallyModified === true ? { locallyModified: true } : {}),
+    ...(typeof record.remoteFingerprint === 'string' && record.remoteFingerprint
+      ? { remoteFingerprint: record.remoteFingerprint } : {}),
   };
 }
