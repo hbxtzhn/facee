@@ -9,6 +9,7 @@ import {
   removeQuestion,
   upsertQuestion,
   type LocalBankSource,
+  isOnlineBankSource,
 } from '../../question-bank/local-banks';
 import type { GeneratedQuestionDraft } from '../../lib/llm';
 import { AppButton, DifficultyBadge } from '../../components/ui';
@@ -38,6 +39,7 @@ export function BankEditorContent({
 }) {
   const navigation = useNavigation<Nav>();
   const saveLocalBank = useQuestionBankStore((state) => state.saveLocalBank);
+  const copyBank = useQuestionBankStore((state) => state.copyBank);
   const installing = useQuestionBankStore((state) => state.installing);
   const [source, setSource] = useState<LocalBankSource | null>(null);
   const [title, setTitle] = useState('');
@@ -48,7 +50,10 @@ export function BankEditorContent({
   const [leaveIntent, setLeaveIntent] = useState<NavigationAction | null>(null);
   /** 保存成功后待离开：等 dirty / busy 状态提交、拦截解除后再返回 */
   const [leaveAfterSave, setLeaveAfterSave] = useState(false);
-  const busy = saving || installing;
+  const [copying, setCopying] = useState(false);
+  const busy = saving || installing || copying;
+  /** 线上题库只能在线更新：编辑器不提供表单（保存会被 store 拒绝），改为先复制再编辑 */
+  const onlineReadOnly = Boolean(source && isOnlineBankSource(source));
   const [error, setError] = useState<string | null>(null);
   /** undefined = 关闭；null = 新建；对象 = 编辑既有题 */
   const [editingQuestion, setEditingQuestion] = useState<QuestionFormDraft | null | undefined>(undefined);
@@ -139,6 +144,20 @@ export function BankEditorContent({
     setImportVisible(false);
   }
 
+  async function handleCopyAndEdit() {
+    if (busy) return;
+    setCopying(true);
+    setError(null);
+    try {
+      const copyId = await copyBank(bankId);
+      navigation.replace('BankEditor', { bankId: copyId });
+    } catch (copyError) {
+      setError(copyError instanceof Error ? copyError.message : String(copyError));
+    } finally {
+      setCopying(false);
+    }
+  }
+
   async function handleSave() {
     if (!source || source.bankId !== bankId || loading || busy) return;
     setSaving(true);
@@ -185,7 +204,7 @@ export function BankEditorContent({
             onCancel={() => requestLeave('close')}
             onConfirm={() => void handleSave()}
             cancelDisabled={Boolean(busy)}
-            confirmDisabled={Boolean(loading || busy || !source || source.bankId !== bankId)}
+            confirmDisabled={Boolean(loading || busy || !source || source.bankId !== bankId || onlineReadOnly)}
           />
         )
       }
@@ -193,7 +212,20 @@ export function BankEditorContent({
       <SheetError message={error} />
       {loading ? <Text style={styles.loadingText}>正在读取题库…</Text> : null}
 
-      {!loading && source ? (
+      {!loading && source && onlineReadOnly ? (
+        <View style={styles.emptyBlock}>
+          <InlineNote text="这是线上题库，只能在线更新，不能直接修改。复制为本地题库后即可自由编辑，原线上题库保持不变、仍可更新。" />
+          <AppButton
+            label={copying ? '正在复制' : '复制为本地题库并编辑'}
+            loading={copying}
+            disabled={Boolean(busy)}
+            onPress={() => void handleCopyAndEdit()}
+            style={styles.copyButton}
+          />
+        </View>
+      ) : null}
+
+      {!loading && source && !onlineReadOnly ? (
         <>
           <Text style={styles.fieldLabel}>题库名称</Text>
           <TextInput
@@ -313,6 +345,7 @@ export function BankEditorContent({
 }
 
 const styles = StyleSheet.create({
+  copyButton: { marginTop: spacing.md },
   loadingText: { ...typography.caption, color: colors.textMuted, marginTop: spacing.sm },
   leaveText: { ...typography.body, color: colors.text },
   fieldLabel: { ...typography.eyebrow, color: colors.textMuted, marginBottom: spacing.xs },

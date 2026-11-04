@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 /**
  * FavoritesScreen 双段（收藏 | 错题）测试。
@@ -7,13 +7,20 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react-nativ
  */
 
 const mockNavigate = jest.fn();
+/** 聚焦控制：失焦（执行清理）与重新聚焦，用于模拟「离开再回来」 */
+const mockFocus: { blur?: () => void; refocus?: () => void } = {};
 
 jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({ navigate: mockNavigate }),
   // 挂载时触发一次「聚焦」即可；若每次渲染都调用，load() 的新数组会引发无限循环
-  useFocusEffect: (callback: () => () => void) => {
+  useFocusEffect: (callback: () => (() => void) | void) => {
     const { useEffect } = require('react') as typeof import('react');
-    useEffect(() => callback(), []);
+    useEffect(() => {
+      let cleanup = callback();
+      mockFocus.blur = () => { cleanup?.(); cleanup = undefined; };
+      mockFocus.refocus = () => { cleanup = callback(); };
+      return () => cleanup?.();
+    }, []);
   },
 }));
 
@@ -178,5 +185,34 @@ describe('FavoritesScreen 收藏按题库隔离 / 练习会话', () => {
     expect(usePracticeSessionStore.getState().getSession(BANK_ID)).toEqual(
       expect.objectContaining({ queue: ['fav-2'], index: 0, mode: 'practice', title: '错题复习' }),
     );
+  });
+});
+
+describe('FavoritesScreen 聚焦加载竞态', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    resetFavoritesForTests();
+    jest.clearAllMocks();
+    seedStores();
+  });
+
+  it('离开前发起的慢加载晚于新加载完成时，不会清空当前结果', async () => {
+    let resolveSlow: (value: unknown[]) => void = () => undefined;
+    mockRepository.listQuestions
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSlow = resolve; }))
+      .mockResolvedValue([question('fav-1', '收藏题 1'), question('wrong-1', '错题 1'), question('wrong-2', '错题 2')]);
+
+    render(<FavoritesScreen />);
+    // 离开再回来：新一次加载很快完成
+    mockFocus.blur?.();
+    mockFocus.refocus?.();
+    await waitFor(() => expect(screen.getByText('收藏题 1')).toBeTruthy());
+
+    // 旧的慢加载此时才返回（且结果为空）：不得覆盖或清空新结果
+    await act(async () => {
+      resolveSlow([]);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(screen.getByText('收藏题 1')).toBeTruthy();
   });
 });

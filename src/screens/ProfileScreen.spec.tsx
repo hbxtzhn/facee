@@ -54,10 +54,12 @@ describe('ProfileScreen 题库入口', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     await AsyncStorage.clear();
+    mockState.banks = [];
   });
 
   it('本地题库：题库行进管理页，「编辑当前题库」进编辑页', async () => {
     mockState.catalog = bank('local-my', '我的错题集');
+    mockState.banks = [{ catalogId: 'local-my', title: '我的错题集', source: 'local', editable: true }];
     const view = await render(<ProfileScreen />);
 
     await act(async () => { fireEvent.press(view.getByLabelText('管理题库 我的错题集')); });
@@ -67,8 +69,10 @@ describe('ProfileScreen 题库入口', () => {
     expect(mockNav.navigate).toHaveBeenLastCalledWith('BankEditor', { bankId: 'local-my' });
   });
 
-  it('线上题库：题库行同样进管理页，不提供编辑入口', async () => {
-    mockState.catalog = bank('facee-official', 'Java 面试题库');
+  it('线上题库：题库行同样进管理页，不提供编辑入口（即使存储 id 也是 local- 前缀）', async () => {
+    // 下载的线上题库同样使用 local- 存储 id：不能按 id 前缀判断可否编辑
+    mockState.catalog = bank('local-downloaded', 'Java 面试题库');
+    mockState.banks = [{ catalogId: 'local-downloaded', title: 'Java 面试题库', source: 'online', editable: false }];
     const view = await render(<ProfileScreen />);
 
     expect(view.queryByLabelText(/编辑当前题库/)).toBeNull();

@@ -5,6 +5,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import { useQuestionBankStore } from '../question-bank/store';
+import { isBankEditable } from './profile/bank-contract';
 import { getBankReadingProgress } from '../question-bank/catalog';
 import { useUserStore } from '../store/userStore';
 import { AppUpdateCard } from '../components/app-update-card';
@@ -24,6 +25,7 @@ export function ProfileScreen() {
   const navigation = useNavigation<Nav>();
   const user = useUserStore();
   const catalog = useQuestionBankStore((state) => state.catalog);
+  const banks = useQuestionBankStore((state) => state.banks);
   const status = useQuestionBankStore((state) => state.status);
   const initializeQuestionBank = useQuestionBankStore((state) => state.initialize);
 
@@ -47,7 +49,9 @@ export function ProfileScreen() {
   // 地址弹窗打开时自行回填已保存地址并清掉旧错误（见 BankUrlDialog）
   const openUrlDialog = () => setUrlDialogVisible(true);
 
-  const currentBankIsLocal = Boolean(catalog?.id?.startsWith('local-'));
+  // 线上题库同样是 local- 存储 id：可否编辑只看 store 给出的来源语义，不能按 id 前缀判断
+  const currentBankSummary = catalog ? banks.find((bank) => bank.catalogId === catalog.id) : undefined;
+  const currentBankIsLocal = Boolean(currentBankSummary && isBankEditable(currentBankSummary));
   const openBankManager = () => navigation.navigate('BankManager');
   const openCurrentBankEditor = () => {
     if (catalog && currentBankIsLocal) navigation.navigate('BankEditor', { bankId: catalog.id });

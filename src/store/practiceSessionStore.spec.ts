@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   PRACTICE_SESSION_STORAGE_KEY,
   flushPracticeSessionPersist,
+  resetPracticeSessionHydrationForTests,
   resolveSessionQueue,
   usePracticeSessionStore,
 } from './practiceSessionStore';
@@ -17,8 +18,37 @@ async function persisted() {
 
 describe('practiceSessionStore', () => {
   beforeEach(async () => {
+    await flushPracticeSessionPersist();
     await AsyncStorage.clear();
     usePracticeSessionStore.setState({ sessions: {} });
+    resetPracticeSessionHydrationForTests();
+  });
+
+  it('启动后在 load 完成前保存：不会抹掉磁盘上其它题库的会话（重启后仍在）', async () => {
+    await AsyncStorage.setItem(
+      PRACTICE_SESSION_STORAGE_KEY,
+      JSON.stringify({
+        sessions: {
+          'bank-a': { queue: ['a-old'], index: 0, mode: 'practice', updatedAt: 1 },
+          'bank-b': { queue: ['b1', 'b2'], index: 1, mode: 'practice', updatedAt: 1 },
+        },
+      }),
+    );
+    // 新进程：首页的懒 load 还没开始就发起了 A 库练习
+    store().saveSession('bank-a', { queue: ['a-new'], index: 0, mode: 'practice', updatedAt: 5 });
+    const loading = store().load();
+    await loading;
+
+    const saved = await persisted();
+    expect(Object.keys(saved.sessions).sort()).toEqual(['bank-a', 'bank-b']);
+    expect(saved.sessions['bank-a'].queue).toEqual(['a-new']);
+
+    // 模拟重启：清空内存后重新读取
+    usePracticeSessionStore.setState({ sessions: {} });
+    resetPracticeSessionHydrationForTests();
+    await store().load();
+    expect(store().getSession('bank-b')?.queue).toEqual(['b1', 'b2']);
+    expect(store().getSession('bank-a')?.queue).toEqual(['a-new']);
   });
 
   it('saveSession 按题库保存会话并持久化，getSession 读回', async () => {

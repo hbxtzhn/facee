@@ -21,6 +21,7 @@ const mockNav = {
   goBack: jest.fn(() => mockRemove({ type: 'GO_BACK' })),
   popTo: jest.fn((name: string) => mockRemove({ type: 'POP_TO', payload: { name } })),
   dispatch: jest.fn((action: unknown) => mockLeft.push(action)),
+  replace: jest.fn(),
 };
 
 jest.mock('@react-navigation/native', () => {
@@ -41,12 +42,14 @@ jest.mock('@react-navigation/native', () => {
 
 const mockLoad = jest.fn();
 const mockSave = jest.fn();
+const mockCopy = jest.fn();
 jest.mock('../../question-bank/local-banks', () => ({
   ...jest.requireActual('../../question-bank/local-banks'),
   loadLocalBankSource: (...args: unknown[]) => mockLoad(...args),
 }));
 jest.mock('../../question-bank/store', () => ({
-  useQuestionBankStore: (selector: (state: unknown) => unknown) => selector({ saveLocalBank: mockSave }),
+  useQuestionBankStore: (selector: (state: unknown) => unknown) =>
+    selector({ saveLocalBank: mockSave, copyBank: mockCopy }),
 }));
 jest.mock('./QuestionEditModal', () => ({ QuestionEditModal: () => null }));
 jest.mock('./ImportTextModal', () => ({ ImportTextModal: () => null }));
@@ -59,6 +62,7 @@ beforeEach(() => {
   mockLeft.length = 0;
   mockLoad.mockReset();
   mockSave.mockReset().mockResolvedValue(undefined);
+  mockCopy.mockReset();
 });
 
 function loadedBank() {
@@ -141,4 +145,19 @@ it('保存过程中阻止返回和编辑，完成后才离开', async () => {
   expect(mockSave).toHaveBeenCalledTimes(1);
   expect(mockSave.mock.calls[0][0].package.catalog.title).toBe('待保存');
   expect(mockLeft).toEqual([{ type: 'GO_BACK' }]);
+});
+
+it('线上题库不提供编辑表单：只能复制为本地题库，复制后进入副本的编辑页', async () => {
+  mockLoad.mockResolvedValueOnce({ ...loadedBank(), sourceUrl: 'https://example.com/bank.zip', locallyModified: false });
+  mockCopy.mockResolvedValueOnce('local-copy');
+  const view = await render(<BankEditorContent bankId="local-a" onOpenAiSettings={jest.fn()} />);
+
+  expect(view.getByText(/这是线上题库，只能在线更新/)).toBeTruthy();
+  expect(view.queryByLabelText('题库名称')).toBeNull();
+  expect(view.getByLabelText('保存题库').props.accessibilityState.disabled).toBe(true);
+
+  await act(async () => { fireEvent.press(view.getByText('复制为本地题库并编辑')); });
+  expect(mockCopy).toHaveBeenCalledWith('local-a');
+  expect(mockNav.replace).toHaveBeenCalledWith('BankEditor', { bankId: 'local-copy' });
+  expect(mockSave).not.toHaveBeenCalled();
 });

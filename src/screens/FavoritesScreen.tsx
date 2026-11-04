@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, type CompositeNavigationProp } from '@react-navigation/native';
@@ -39,11 +39,17 @@ export function FavoritesScreen() {
   const bankTitle = useQuestionBankStore((state) => state.catalog?.title ?? null);
   const bankMarks = useMasteryStore((state) => (bankId ? state.marks[bankId] : undefined));
 
+  /** 加载代次：离开再回来会发起新加载，较早发起、较晚完成的旧加载不得覆盖新结果 */
+  const loadGeneration = useRef(0);
+
   const load = useCallback(async () => {
+    const generation = ++loadGeneration.current;
+    const isCurrent = () => generation === loadGeneration.current;
     setLoaded(false);
     // 收藏与掌握度都先拉到最新，再一次性派生两个列表
     await Promise.all([loadFavorites(), loadMastery()]);
     const all = await questionBankRepository.listQuestions();
+    if (!isCurrent()) return;
     const byId = new Map(all.map((question) => [question.id, question]));
 
     // 收藏按题库隔离：ids 只含当前激活题库的收藏
@@ -69,9 +75,9 @@ export function FavoritesScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      let active = true;
-      void load().then(() => { if (!active) { setFavoriteItems([]); setWrongItems([]); } });
-      return () => { active = false; };
+      void load();
+      // 失焦时作废进行中的加载：它完成后不再写任何状态（新一次聚焦会重新加载）
+      return () => { loadGeneration.current += 1; };
     }, [load]),
   );
 

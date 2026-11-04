@@ -37,6 +37,11 @@ interface PracticeSessionState {
 export const PRACTICE_SESSION_STORAGE_KEY = 'facee-practice-sessions.v1';
 
 let pendingPersist = Promise.resolve();
+/**
+ * 首次从磁盘读取并合并的进程内承诺。写入必须排在它之后：否则启动后、首页 load 完成前
+ * 的一次 saveSession 会把「只含当前库」的快照写回磁盘，抹掉其它题库的会话。
+ */
+let hydration: Promise<void> | null = null;
 
 export const usePracticeSessionStore = create<PracticeSessionState>((set, get) => ({
   sessions: {},
@@ -46,7 +51,7 @@ export const usePracticeSessionStore = create<PracticeSessionState>((set, get) =
     const session = normalizeSession({ ...input, updatedAt: input.updatedAt ?? Date.now() });
     if (!session) return;
     set({ sessions: { ...get().sessions, [bankId]: session } });
-    queuePersist(get().sessions);
+    queuePersist();
   },
 
   getSession: (bankId) => get().sessions[bankId] ?? null,
@@ -62,24 +67,13 @@ export const usePracticeSessionStore = create<PracticeSessionState>((set, get) =
         [bankId]: { ...current, index: clamped, updatedAt: Date.now() },
       },
     });
-    queuePersist(get().sessions);
+    queuePersist();
   },
 
-  load: async () => {
-    try {
-      const raw = await AsyncStorage.getItem(PRACTICE_SESSION_STORAGE_KEY);
-      if (!raw) return;
-      const persisted = parseSessions(JSON.parse(raw));
-      // 读取期间内存里可能已有更新的会话（首页先 save 后 load 完成），按 updatedAt 取新者
-      const merged = { ...persisted };
-      for (const [bankId, session] of Object.entries(get().sessions)) {
-        const stored = merged[bankId];
-        if (!stored || session.updatedAt >= stored.updatedAt) merged[bankId] = session;
-      }
-      set({ sessions: merged });
-    } catch {
-      // 存储只是缓存：读失败保留内存态
-    }
+  load: () => {
+    const reading = readAndMerge();
+    if (!hydration) hydration = reading;
+    return reading;
   },
 }));
 
@@ -102,12 +96,43 @@ export function resolveSessionQueue(
   return { queue, index: index === -1 ? queue.length - 1 : index };
 }
 
-function queuePersist(sessions: Record<string, PracticeSession>): void {
-  const serialized = JSON.stringify({ sessions });
+/** 从磁盘读出会话并与内存合并：读取期间内存里可能已有更新的会话，按 updatedAt 取新者 */
+async function readAndMerge(): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(PRACTICE_SESSION_STORAGE_KEY);
+    if (!raw) return;
+    const persisted = parseSessions(JSON.parse(raw));
+    const { sessions } = usePracticeSessionStore.getState();
+    const merged = { ...persisted };
+    for (const [bankId, session] of Object.entries(sessions)) {
+      const stored = merged[bankId];
+      if (!stored || session.updatedAt >= stored.updatedAt) merged[bankId] = session;
+    }
+    usePracticeSessionStore.setState({ sessions: merged });
+  } catch {
+    // 存储只是缓存：读失败保留内存态
+  }
+}
+
+/**
+ * 排队落盘：先等首次读取合并完成，再序列化「写入那一刻」的完整会话表，
+ * 而不是调用时的快照——这样磁盘上其它题库的会话不会被未合并的状态覆盖。
+ */
+function queuePersist(): void {
   pendingPersist = pendingPersist
     .catch(() => undefined)
-    .then(() => AsyncStorage.setItem(PRACTICE_SESSION_STORAGE_KEY, serialized))
+    .then(() => hydration ?? usePracticeSessionStore.getState().load())
+    .then(() => AsyncStorage.setItem(
+      PRACTICE_SESSION_STORAGE_KEY,
+      JSON.stringify({ sessions: usePracticeSessionStore.getState().sessions }),
+    ))
     .catch(() => undefined);
+}
+
+/** 测试用：模拟新进程启动（尚未从磁盘读取过） */
+export function resetPracticeSessionHydrationForTests(): void {
+  hydration = null;
+  pendingPersist = Promise.resolve();
 }
 
 /** 测试用：等待排队中的写入落盘 */
