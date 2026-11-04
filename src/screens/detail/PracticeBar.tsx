@@ -1,8 +1,8 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronLeft, ChevronRight, Eye, EyeOff } from 'lucide-react-native';
-import { MasteryChips } from '../../components/mastery-control';
-import { colors, radii, spacing, typography } from '../../theme';
+import { ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { MasteryToggles } from '../../components/mastery-control';
+import { colors, spacing, typography } from '../../theme';
 
 export interface PracticeBarQueue {
   /** 1 起的当前题序号 */
@@ -13,10 +13,11 @@ export interface PracticeBarQueue {
 }
 
 /**
- * 练习模式固定底部操作栏（替代原悬浮可拖动进度按钮）。
- * - 第一行（仅队列模式）：上一题 · 「3 / 20」进度 · 下一题，首/末题对应按钮置灰；
- * - 第二行：掌握度三态（不会/模糊/会了，无题库时隐藏）+ 显示/收起答案；
- * - 底部留出安全区（手势导航条），始终在内容之下、不遮挡正文。
+ * 练习模式固定底栏（极简阅读风）：纸面同色 + 顶部发丝线，无阴影无色块。
+ * 单行布局：掌握度三态文字开关 ·（弹性留白）· 答案开关 · ‹ 3 / 20 ›
+ * - 「显示答案」是全栏唯一的主操作（主色加粗文字）；展开后降级为普通文字「收起答案」；
+ * - 上一题/下一题只是图标 chevron，首/末题置灰；非队列模式不显示翻页组；
+ * - 底部留出安全区（手势导航条）。
  */
 export function PracticeBar({
   bankId,
@@ -36,50 +37,50 @@ export function PracticeBar({
   const insets = useSafeAreaInsets();
   const atFirst = queue ? queue.current <= 1 : true;
   const atLast = queue ? queue.current >= queue.total : true;
-  const AnswerIcon = answerVisible ? EyeOff : Eye;
   const answerLabel = answerVisible ? '收起答案' : '显示答案';
+  const primaryAnswer = answerAvailable && !answerVisible;
 
   return (
-    <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
-      {queue ? (
-        <View style={styles.queueRow}>
-          <NavButton label="上一题" direction="prev" disabled={atFirst} onPress={queue.onPrev} />
-          <Text
-            style={styles.progressText}
-            accessibilityLabel={`第 ${queue.current} 题，共 ${queue.total} 题`}
-          >
-            {queue.current} / {queue.total}
-          </Text>
-          <NavButton label="下一题" direction="next" disabled={atLast} onPress={queue.onNext} />
-        </View>
-      ) : null}
+    <View testID="practice-bar" style={[styles.bar, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+      <View style={styles.row}>
+        {bankId ? <MasteryToggles bankId={bankId} questionId={questionId} compact /> : null}
+        <View style={styles.spacer} />
 
-      <View style={styles.actionRow}>
-        {bankId ? <MasteryChips bankId={bankId} questionId={questionId} compact /> : <View style={styles.spacer} />}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={answerAvailable ? answerLabel : '这道题暂无参考答案'}
           accessibilityState={{ disabled: !answerAvailable, expanded: answerAvailable ? answerVisible : undefined }}
           disabled={!answerAvailable}
+          hitSlop={6}
           onPress={onToggleAnswer}
-          style={({ pressed }) => [
-            styles.answerButton,
-            answerVisible && styles.answerButtonActive,
-            !answerAvailable && styles.disabled,
-            pressed && styles.pressed,
-          ]}
+          style={({ pressed }) => [styles.textButton, pressed && styles.pressed]}
         >
-          <AnswerIcon size={16} color={answerVisible ? colors.primary : colors.white} strokeWidth={2} />
-          <Text style={[styles.answerText, answerVisible && styles.answerTextActive]}>
+          <Text
+            style={[
+              styles.answerText,
+              primaryAnswer && styles.answerTextPrimary,
+              !answerAvailable && styles.textDisabled,
+            ]}
+          >
             {answerAvailable ? answerLabel : '暂无答案'}
           </Text>
         </Pressable>
+
+        {queue ? (
+          <View style={styles.queueGroup}>
+            <ChevronButton label="上一题" direction="prev" disabled={atFirst} onPress={queue.onPrev} />
+            <Text style={styles.progressText} accessibilityLabel={`第 ${queue.current} 题，共 ${queue.total} 题`}>
+              {queue.current} / {queue.total}
+            </Text>
+            <ChevronButton label="下一题" direction="next" disabled={atLast} onPress={queue.onNext} />
+          </View>
+        ) : null}
       </View>
     </View>
   );
 }
 
-function NavButton({
+function ChevronButton({
   label,
   direction,
   disabled,
@@ -91,75 +92,43 @@ function NavButton({
   onPress: () => void;
 }) {
   const Icon = direction === 'prev' ? ChevronLeft : ChevronRight;
-  const icon = <Icon size={16} color={disabled ? colors.textSubtle : colors.textSecondary} strokeWidth={2} />;
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled }}
       disabled={disabled}
-      hitSlop={6}
+      hitSlop={8}
       onPress={onPress}
-      style={({ pressed }) => [styles.navButton, disabled && styles.disabled, pressed && styles.pressed]}
+      style={({ pressed }) => [styles.chevron, pressed && styles.pressed]}
     >
-      {direction === 'prev' ? icon : null}
-      <Text style={[styles.navText, disabled && styles.navTextDisabled]}>{label}</Text>
-      {direction === 'next' ? icon : null}
+      <Icon size={18} color={disabled ? colors.textSubtle : colors.textSecondary} strokeWidth={1.6} />
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   bar: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.background,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    gap: spacing.sm,
+    borderTopColor: colors.borderStrong,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
   },
-  queueRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  navButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    minHeight: 36,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radii.pill,
-    backgroundColor: colors.surfaceSubtle,
-  },
-  navText: { ...typography.label, color: colors.textSecondary },
-  navTextDisabled: { color: colors.textSubtle },
+  row: { flexDirection: 'row', alignItems: 'center', minHeight: 48 },
+  spacer: { flex: 1, minWidth: spacing.sm },
+  textButton: { minHeight: 40, justifyContent: 'center', paddingHorizontal: spacing.xs },
+  answerText: { ...typography.body, color: colors.textSecondary },
+  answerTextPrimary: { color: colors.primary, fontWeight: '600' },
+  textDisabled: { color: colors.textSubtle },
+  queueGroup: { flexDirection: 'row', alignItems: 'center', marginLeft: spacing.md },
+  chevron: { width: 32, height: 40, alignItems: 'center', justifyContent: 'center' },
   progressText: {
-    ...typography.label,
+    ...typography.caption,
     color: colors.textMuted,
     fontVariant: ['tabular-nums'],
+    minWidth: 40,
+    textAlign: 'center',
   },
-  actionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  spacer: { flex: 1 },
-  answerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    minHeight: 36,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.pill,
-    backgroundColor: colors.primary,
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  answerButtonActive: { backgroundColor: colors.surface },
-  answerText: { ...typography.label, color: colors.white },
-  answerTextActive: { color: colors.primary },
-  disabled: { opacity: 0.4 },
-  pressed: { opacity: 0.75 },
+  pressed: { opacity: 0.6 },
 });

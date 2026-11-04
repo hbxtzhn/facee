@@ -1,5 +1,5 @@
 import { Image } from 'react-native';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 /**
  * DetailScreen 组件测试。
@@ -33,8 +33,12 @@ const mockRouteParams: {
   queueIndex?: number;
 } = { id: 'jvm-memory-01' };
 
+// 头部「Aa」经 navigation.setOptions({ headerRight }) 注入：记录调用以便渲染断言
+const mockSetOptions = jest.fn();
+
 jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({
+    setOptions: mockSetOptions,
     push: jest.fn(),
     replace: jest.fn(),
     goBack: jest.fn(),
@@ -45,6 +49,9 @@ jest.mock('@react-navigation/native', () => ({
   useRoute: () => ({ params: mockRouteParams }),
   useFocusEffect: () => undefined,
 }));
+
+// 练习会话同步：另一位同事的 store 尚未合入，这里只断言调用口径
+jest.mock('./detail/session-sync', () => ({ syncPracticeIndex: jest.fn() }));
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
@@ -62,6 +69,26 @@ import { useFavoritesStore } from '../store/favoritesStore';
 import { useQuestionBankStore } from '../question-bank/store';
 // eslint-disable-next-line import/first
 import type { QuestionBankCatalog } from '../question-bank/types';
+// eslint-disable-next-line import/first
+import { syncPracticeIndex } from './detail/session-sync';
+// eslint-disable-next-line import/first
+import { StyleSheet } from 'react-native';
+// eslint-disable-next-line import/first
+import type { ReactElement } from 'react';
+
+const mockSyncPracticeIndex = syncPracticeIndex as jest.MockedFunction<typeof syncPracticeIndex>;
+const DAY = 24 * 60 * 60 * 1000;
+
+function fontOf(text: string): { fontSize?: number; lineHeight?: number; fontWeight?: string } {
+  return StyleSheet.flatten(screen.getByText(text).props.style) ?? {};
+}
+
+/** 取最近一次 setOptions 注入的 headerRight 元素 */
+function latestHeaderRight(): ReactElement {
+  const calls = mockSetOptions.mock.calls.filter(([options]) => options?.headerRight);
+  const options = calls[calls.length - 1][0] as { headerRight: () => ReactElement };
+  return options.headerRight();
+}
 
 type RepoMock = { getQuestion: jest.Mock; getContent: jest.Mock };
 const mockRepository = jest.requireMock('../question-bank/client')
@@ -234,7 +261,7 @@ function catalogFor(id: string): QuestionBankCatalog {
 describe('DetailScreen 掌握度打标', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    useMasteryStore.setState({ marks: {} });
+    useMasteryStore.setState({ marks: {}, markedAt: {}, knownStreaks: {} });
     useQuestionBankStore.setState({ catalog: null });
     useUserStore.setState({ answerExpandedByDefault: false });
     mockRouteParams.id = 'jvm-memory-01';
@@ -330,7 +357,7 @@ describe('DetailScreen 队列分页 + 底部操作栏', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    useMasteryStore.setState({ marks: {} });
+    useMasteryStore.setState({ marks: {}, markedAt: {}, knownStreaks: {} });
     useQuestionBankStore.setState({ catalog: catalogFor('bank-a') });
     useUserStore.setState({ answerExpandedByDefault: false, lastViewedQuestionId: null });
     mockRouteParams.id = 'q1';
@@ -466,5 +493,158 @@ describe('DetailScreen 队列分页 + 底部操作栏', () => {
     const buttons = await screen.findAllByLabelText('收藏这道题');
     await fireEvent.press(buttons[0]);
     await waitFor(() => expect(useFavoritesStore.getState().ids).toEqual(['q1']));
+  });
+});
+
+describe('DetailScreen 阅读字号（Aa）与阅读版式', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    delete mockRouteParams.mode;
+    delete mockRouteParams.queue;
+    delete mockRouteParams.queueIndex;
+    mockRouteParams.id = 'jvm-memory-01';
+    useUserStore.setState({ answerExpandedByDefault: true, readingScale: 1 });
+    useQuestionBankStore.setState({ catalog: null });
+    mockRepository.getQuestion.mockResolvedValue(meta);
+    mockRepository.getContent.mockResolvedValue({
+      id: meta.id,
+      questionMd: '# 标题\n\n题干。',
+      answerMd: '参考答案正文。',
+      followupsMd: null,
+      assetBaseUri: undefined,
+    });
+  });
+
+  it('头部注入 Aa 开关，点按循环 标准 → 大 → 特大 → 标准', async () => {
+    await render(<DetailScreen />);
+    await waitFor(() => expect(screen.getByText('题干。')).toBeTruthy());
+    expect(mockSetOptions).toHaveBeenCalledWith(expect.objectContaining({ headerRight: expect.any(Function) }));
+
+    await render(latestHeaderRight());
+    const button = () => screen.getByTestId('reading-scale-button');
+    expect(screen.getByLabelText('阅读字号：标准')).toBeTruthy();
+
+    await fireEvent.press(button());
+    expect(useUserStore.getState().readingScale).toBe(1.15);
+    expect(screen.getByLabelText('阅读字号：大')).toBeTruthy();
+
+    await fireEvent.press(button());
+    expect(useUserStore.getState().readingScale).toBe(1.3);
+    expect(screen.getByLabelText('阅读字号：特大')).toBeTruthy();
+
+    await fireEvent.press(button());
+    expect(useUserStore.getState().readingScale).toBe(1);
+  });
+
+  it('题干与答案 Markdown 的字号、行高随档位放大', async () => {
+    await render(<DetailScreen />);
+    await waitFor(() => expect(screen.getByText('参考答案正文。')).toBeTruthy());
+    expect(fontOf('题干。')).toMatchObject({ fontSize: 17, lineHeight: 30 });
+    expect(fontOf('参考答案正文。')).toMatchObject({ fontSize: 17, lineHeight: 30 });
+
+    await act(() => useUserStore.getState().setReadingScale(1.3));
+    await waitFor(() => expect(fontOf('题干。')).toMatchObject({ fontSize: 22, lineHeight: 39 }));
+    expect(fontOf('参考答案正文。')).toMatchObject({ fontSize: 22, lineHeight: 39 });
+  });
+
+  it('一行弱化元信息（难度 · 标签）+ 参考答案眉题 + 限宽版心', async () => {
+    await render(<DetailScreen />);
+    await waitFor(() => expect(screen.getByText('参考答案正文。')).toBeTruthy());
+    expect(screen.getByText('中等 · JVM')).toBeTruthy();
+    expect(screen.getByText('参考答案')).toBeTruthy();
+    expect(StyleSheet.flatten(screen.getByTestId('reading-column').props.style)).toMatchObject({
+      maxWidth: 680,
+      paddingHorizontal: 20,
+    });
+  });
+});
+
+describe('DetailScreen 练习底栏状态 + 会话同步', () => {
+  const QUEUE = ['q1', 'q2', 'q3'];
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useMasteryStore.setState({ marks: {}, markedAt: {}, knownStreaks: {} });
+    useQuestionBankStore.setState({ catalog: catalogFor('bank-a') });
+    useUserStore.setState({ answerExpandedByDefault: false, readingScale: 1 });
+    mockRouteParams.id = 'q1';
+    mockRouteParams.mode = 'practice';
+    mockRouteParams.queue = QUEUE;
+    mockRouteParams.queueIndex = 0;
+    mockRepository.getQuestion.mockImplementation(async (id: string) => ({ ...meta, id, title: `标题 ${id}` }));
+    mockRepository.getContent.mockImplementation(async (id: string) => ({
+      id,
+      questionMd: `# 标题 ${id}\n\n题干 ${id}。`,
+      answerMd: `答案 ${id}。`,
+      followupsMd: null,
+      assetBaseUri: undefined,
+    }));
+  });
+
+  afterAll(() => {
+    mockRouteParams.id = 'jvm-memory-01';
+    delete mockRouteParams.mode;
+    delete mockRouteParams.queue;
+    delete mockRouteParams.queueIndex;
+  });
+
+  it('翻页（按钮与原生滑动）都以当前题库 id 同步会话下标', async () => {
+    await render(<DetailScreen />);
+    await waitFor(() => expect(screen.getByText('题干 q1。')).toBeTruthy());
+    expect(mockSyncPracticeIndex).toHaveBeenLastCalledWith('bank-a', 0);
+
+    await fireEvent.press(screen.getByLabelText('下一题'));
+    expect(mockSyncPracticeIndex).toHaveBeenLastCalledWith('bank-a', 1);
+
+    await fireEvent(screen.getByTestId('question-pager'), 'pageSelected', { nativeEvent: { position: 2 } });
+    expect(mockSyncPracticeIndex).toHaveBeenLastCalledWith('bank-a', 2);
+  });
+
+  it('单题练习（无队列）不同步会话下标，也不显示翻页组', async () => {
+    delete mockRouteParams.queue;
+    delete mockRouteParams.queueIndex;
+    await render(<DetailScreen />);
+    await waitFor(() => expect(screen.getByText('题干 q1。')).toBeTruthy());
+    expect(mockSyncPracticeIndex).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('下一题')).toBeNull();
+  });
+
+  it('「显示答案」是唯一主操作（加粗主色），展开后降级为普通「收起答案」', async () => {
+    await render(<DetailScreen />);
+    await waitFor(() => expect(screen.getByText('题干 q1。')).toBeTruthy());
+    expect(fontOf('显示答案')).toMatchObject({ fontWeight: '600' });
+
+    await fireEvent.press(screen.getByLabelText('显示答案'));
+    expect(fontOf('收起答案').fontWeight).not.toBe('600');
+  });
+
+  it('掌握度三态文字开关：选中态加粗强调，再点清除', async () => {
+    await render(<DetailScreen />);
+    await waitFor(() => expect(screen.getByText('题干 q1。')).toBeTruthy());
+
+    expect(screen.getByLabelText('标记这道题为会了').props.accessibilityState).toMatchObject({ selected: false });
+    await fireEvent.press(screen.getByLabelText('标记这道题为会了'));
+    expect(screen.getByLabelText('标记这道题为会了').props.accessibilityState).toMatchObject({ selected: true });
+    expect(fontOf('会了')).toMatchObject({ fontWeight: '600' });
+    expect(fontOf('模糊').fontWeight).not.toBe('600');
+
+    await fireEvent.press(screen.getByLabelText('标记这道题为会了'));
+    expect(useMasteryStore.getState().getMark('bank-a', 'q1')).toBeNull();
+  });
+
+  it('复习到期的题：上次标记不算选中，再点「会了」= 确认复习（连续次数 +1），不误清除', async () => {
+    useMasteryStore.setState({
+      marks: { 'bank-a': { q1: 'known' } },
+      markedAt: { 'bank-a': { q1: Date.now() - 8 * DAY } },
+      knownStreaks: { 'bank-a': { q1: 1 } },
+    });
+    await render(<DetailScreen />);
+    await waitFor(() => expect(screen.getByText('题干 q1。')).toBeTruthy());
+
+    expect(screen.getByLabelText('标记这道题为会了').props.accessibilityState).toMatchObject({ selected: false });
+    await fireEvent.press(screen.getByLabelText('标记这道题为会了'));
+    expect(useMasteryStore.getState().getMark('bank-a', 'q1')).toBe('known');
+    expect(useMasteryStore.getState().knownStreaks['bank-a']?.q1).toBe(2);
+    expect(screen.getByLabelText('标记这道题为会了').props.accessibilityState).toMatchObject({ selected: true });
   });
 });

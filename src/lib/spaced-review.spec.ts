@@ -1,9 +1,12 @@
 import { describe, it, expect } from '@jest/globals';
 import {
+  KNOWN_INTERVAL_LADDER_MS,
   REVIEW_INTERVAL_MS,
   computeDueQuestionIds,
   isReviewDue,
   mergeBankReviewRecords,
+  nextKnownStreak,
+  reviewIntervalMs,
 } from './spaced-review';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -75,11 +78,71 @@ describe('间隔复习口径（spaced-review）', () => {
     );
     expect(merged).toEqual({
       q1: { mastery: 'fuzzy', markedAt: NOW - DAY },
-      q2: { mastery: 'known', markedAt: NOW - 8 * DAY },
+      // 未传连续次数表 ⇒ known 按首档 1 计
+      q2: { mastery: 'known', markedAt: NOW - 8 * DAY, knownStreak: 1 },
     });
   });
 
   it('mergeBankReviewRecords：没打过标的库返回空档案', () => {
     expect(mergeBankReviewRecords('none', { 'bank-a': { q1: 'known' } }, {})).toEqual({});
+  });
+
+  it('mergeBankReviewRecords 带上连续「会了」次数，非 known 不带', () => {
+    const merged = mergeBankReviewRecords(
+      'bank-a',
+      { 'bank-a': { q1: 'known', q2: 'fuzzy' } },
+      { 'bank-a': { q1: NOW - 20 * DAY, q2: NOW - DAY } },
+      { 'bank-a': { q1: 3, q2: 5 } },
+    );
+    expect(merged).toEqual({
+      q1: { mastery: 'known', markedAt: NOW - 20 * DAY, knownStreak: 3 },
+      q2: { mastery: 'fuzzy', markedAt: NOW - DAY },
+    });
+    // 连续 3 次 ⇒ 30 天间隔，20 天前打标尚未到期
+    expect(computeDueQuestionIds(merged, NOW)).toEqual([]);
+  });
+});
+
+describe('扩张间隔（连续「会了」）', () => {
+  it('不会 1 天 / 模糊 3 天，与连续次数无关', () => {
+    expect(reviewIntervalMs('unknown', 4)).toBe(1 * DAY);
+    expect(reviewIntervalMs('fuzzy', 4)).toBe(3 * DAY);
+  });
+
+  it('会了：7 → 14 → 30 → 60 天，之后封顶 60 天', () => {
+    expect(reviewIntervalMs('known', 1)).toBe(7 * DAY);
+    expect(reviewIntervalMs('known', 2)).toBe(14 * DAY);
+    expect(reviewIntervalMs('known', 3)).toBe(30 * DAY);
+    expect(reviewIntervalMs('known', 4)).toBe(60 * DAY);
+    expect(reviewIntervalMs('known', 9)).toBe(60 * DAY);
+    expect(KNOWN_INTERVAL_LADDER_MS.map((ms) => ms / DAY)).toEqual([7, 14, 30, 60]);
+  });
+
+  it('缺失 / 非法连续次数按 1 计（旧数据保持原 7 天排期）', () => {
+    expect(reviewIntervalMs('known')).toBe(7 * DAY);
+    expect(reviewIntervalMs('known', 0)).toBe(7 * DAY);
+    expect(reviewIntervalMs('known', 1.5)).toBe(7 * DAY);
+    expect(isReviewDue(record('known', 7), NOW)).toBe(true);
+  });
+
+  it('到期判定使用扩张后的间隔', () => {
+    const at = (days: number, knownStreak: number) => ({ mastery: 'known' as const, markedAt: NOW - days * DAY, knownStreak });
+    expect(isReviewDue(at(10, 2), NOW)).toBe(false);
+    expect(isReviewDue(at(14, 2), NOW)).toBe(true);
+    expect(isReviewDue(at(59, 4), NOW)).toBe(false);
+    expect(isReviewDue(at(60, 7), NOW)).toBe(true);
+  });
+
+  it('nextKnownStreak：不会/模糊清零，首次会了为 1，到期复习 +1，未到期重复确认不变', () => {
+    const known = (days: number, knownStreak?: number) => ({ mastery: 'known' as const, markedAt: NOW - days * DAY, knownStreak });
+    expect(nextKnownStreak(known(30, 3), 'unknown', NOW)).toBe(0);
+    expect(nextKnownStreak(known(30, 3), 'fuzzy', NOW)).toBe(0);
+    expect(nextKnownStreak(null, 'known', NOW)).toBe(1);
+    expect(nextKnownStreak(record('fuzzy', 5), 'known', NOW)).toBe(1);
+    expect(nextKnownStreak(known(7, 1), 'known', NOW)).toBe(2);
+    expect(nextKnownStreak(known(14, 2), 'known', NOW)).toBe(3);
+    expect(nextKnownStreak(known(3, 2), 'known', NOW)).toBe(2);
+    // 旧数据无连续次数：到期确认后进入第 2 档
+    expect(nextKnownStreak(known(8), 'known', NOW)).toBe(2);
   });
 });

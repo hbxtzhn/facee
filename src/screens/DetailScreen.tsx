@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -14,6 +14,8 @@ import { colors } from '../theme';
 import { PracticeBar } from './detail/PracticeBar';
 import { QuestionPage } from './detail/QuestionPage';
 import { QuestionPager } from './detail/QuestionPager';
+import { ReadingScaleButton } from './detail/ReadingScaleButton';
+import { syncPracticeIndex } from './detail/session-sync';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Detail'>;
 type DetailRoute = RouteProp<RootStackParamList, 'Detail'>;
@@ -24,6 +26,7 @@ type DetailRoute = RouteProp<RootStackParamList, 'Detail'>;
  * - 练习/复习模式（或带队列）：原生分页左右滑切题（只渲染当前 ±1 页），
  *   底部固定操作栏承载答案开关、掌握度与上一题/下一题。
  * 返回完全交给原生栈的系统返回手势/返回键，不再自绘边缘手势。
+ * 头部右侧「Aa」切换阅读字号（userStore.readingScale）；队列模式翻页同步练习会话下标。
  */
 export function DetailScreen() {
   const route = useRoute<DetailRoute>();
@@ -60,6 +63,17 @@ export function DetailScreen() {
   useEffect(() => {
     void loadFavorites();
   }, [loadFavorites]);
+
+  // 头部右侧阅读字号开关（Aa）
+  useLayoutEffect(() => {
+    nav.setOptions({ headerRight: () => <ReadingScaleButton /> });
+  }, [nav]);
+
+  // 队列模式：当前页（含起始页）变化时同步练习会话进度，供「继续练习」恢复到这一题
+  useEffect(() => {
+    if (!queueMode || !bankId) return;
+    syncPracticeIndex(bankId, pageIndex);
+  }, [queueMode, bankId, pageIndex]);
 
   const isAnswerVisible = useCallback(
     (questionId: string) => answerOverrides[questionId] ?? answerExpandedByDefault,
