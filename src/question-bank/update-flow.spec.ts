@@ -89,6 +89,32 @@ beforeEach(() => {
 afterAll(() => { global.fetch = originalFetch; });
 
 describe('线上题库（下载后只读，只能在线更新）', () => {
+  it('旧版本（≤ v0.1.2）真实写出的已编辑下载库：缺 locallyModified ⇒ 按已修改处理，更新前先询问', async () => {
+    const bankId = await download(RELEASE_URL);
+    const sourcePath = `${ROOT}local-sources/${bankId}.json`;
+    // 复刻旧版编辑器保存后的源文件：保留 sourceUrl，改了一道题的答案，但从不写 locallyModified
+    const current = JSON.parse(await memoryFs.readAsStringAsync(sourcePath)) as Record<string, unknown>;
+    const { locallyModified: _flag, remoteFingerprint: _fp, ...legacy } = current;
+    const legacyPackage = legacy.package as QuestionBankPackage;
+    legacy.package = {
+      ...legacyPackage,
+      contents: legacyPackage.contents.map((content, index) =>
+        index === 0 ? { ...content, answerMd: '旧版里本地改过的答案' } : content),
+    };
+    await memoryFs.writeAsStringAsync(sourcePath, JSON.stringify(legacy));
+
+    await useQuestionBankStore.getState().refreshBanks();
+    expect(useQuestionBankStore.getState().banks.find((item) => item.catalogId === bankId))
+      .toMatchObject({ source: 'local', editable: true, locallyModified: true });
+
+    setRemote(remotePackage('2.0.0', ' 新版'));
+    await expect(useQuestionBankStore.getState().updateBank(bankId))
+      .resolves.toMatchObject({ updated: false, needsConfirmation: true });
+    // 询问期间什么都没动：本地修改仍在
+    const after = await loadLocalBankSource(bankId);
+    expect(after?.package.contents[0].answerMd).toBe('旧版里本地改过的答案');
+  });
+
   it('下载的题库显示为 online、不可编辑；保存被拒绝，复制后才可编辑', async () => {
     const bankId = await download(RELEASE_URL);
     const store = useQuestionBankStore.getState();
@@ -104,7 +130,7 @@ describe('线上题库（下载后只读，只能在线更新）', () => {
     const { sourceUrl: _url, ...stripped } = source;
     await expect(useQuestionBankStore.getState().saveLocalBank(stripped))
       .rejects.toThrow(ONLINE_BANK_NOT_EDITABLE_MESSAGE);
-    expect((await loadLocalBankSource(bankId))?.locallyModified).toBeUndefined();
+    expect((await loadLocalBankSource(bankId))?.locallyModified).toBe(false);
 
     const copyId = await useQuestionBankStore.getState().copyBank(bankId);
     expect(useQuestionBankStore.getState().banks.find((item) => item.catalogId === copyId))

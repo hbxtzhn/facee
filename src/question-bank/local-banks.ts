@@ -24,6 +24,8 @@ export type { LocalBankSource };
  * 线上题库：从 ZIP 下载的库也以 local- id 存一份源文件（记录 sourceUrl），但它是只读的
  * 「线上题库」——只能在线更新，编辑须先复制为本地题库（见 isOnlineBankSource）。
  * 旧模型（≤ v0.1.2）下已编辑过的下载库带 locallyModified，按本地题库对待。
+ * 旧版本保存下载库时从不写 locallyModified，无法区分「改过」与「没改过」：
+ * 带下载地址却缺这个字段的源一律保守视为已修改（更新前先询问），新代码保存时总会显式写入布尔值。
  */
 
 /** 与 file-repository 共享的文件系统注入点（测试用内存桩替换） */
@@ -300,7 +302,12 @@ export async function saveLocalBankSource(
   if (source.package.catalog.id !== source.bankId) {
     throw new Error('本地题库 id 与 catalog.id 不一致');
   }
-  const persisted: LocalBankSource = { ...source, updatedAt: new Date().toISOString() };
+  const persisted: LocalBankSource = {
+    ...source,
+    updatedAt: new Date().toISOString(),
+    // 有下载地址时总是显式落盘该标记：缺字段 = 旧版本写的源（见 parseLocalBankSource）
+    ...(source.sourceUrl ? { locallyModified: source.locallyModified === true } : {}),
+  };
   await fs.makeDirectoryAsync(localSourcesRoot(fs), { intermediates: true });
   const path = sourcePath(source.bankId, fs);
   const temporary = `${path}.part`;
@@ -366,8 +373,10 @@ export function parseLocalBankSource(raw: string): LocalBankSource | null {
     package: bankPackage as unknown as QuestionBankPackage,
     ...(typeof record.sourceUrl === 'string' && record.sourceUrl.trim()
       ? { sourceUrl: record.sourceUrl.trim() } : {}),
-    // 旧文件没有该字段：视为未修改（向后兼容）
-    ...(record.locallyModified === true ? { locallyModified: true } : {}),
+    // 显式布尔值原样保留；带下载地址却缺该字段 = 旧版本写的源，可能编辑过 ⇒ 保守视为已修改
+    ...(typeof record.sourceUrl === 'string' && record.sourceUrl.trim()
+      ? { locallyModified: typeof record.locallyModified === 'boolean' ? record.locallyModified : true }
+      : record.locallyModified === true ? { locallyModified: true } : {}),
     ...(typeof record.remoteFingerprint === 'string' && record.remoteFingerprint
       ? { remoteFingerprint: record.remoteFingerprint } : {}),
   };

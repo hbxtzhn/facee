@@ -335,9 +335,11 @@ export const useQuestionBankStore = create<QuestionBankState>((set, get) => {
       installError: null,
       installProgress: { completed: 0, total: 1, label: '正在检查题库版本' },
     });
-    // keepCopy 的副本在「线上没变化」或更新失败时删掉：原库完好，副本只是多余的重复
+    // 线上内容是否已写入原库：一旦写入，原库的本地修改只剩副本这一份，绝不能再删
+    let committed = false;
+    // keepCopy 的副本在「线上没变化」或更新在提交前失败时删掉：原库完好，副本只是多余的重复
     const discardCopy = async () => {
-      if (!copiedBankId) return;
+      if (!copiedBankId || committed) return;
       const copyId = copiedBankId;
       copiedBankId = undefined;
       try {
@@ -357,11 +359,15 @@ export const useQuestionBankStore = create<QuestionBankState>((set, get) => {
         reuseCatalogId: catalogId, currentVersion,
         ...(force ? { force: true } : {}),
         // 新下载内容即线上原样：复位已修改标记，记下内容指纹供版本缺失时比较
-        beforeCommit: (bank: QuestionBankPackage, meta?: BankCommitMeta) => saveLocalBankSource({
-          bankId: catalogId, updatedAt: '', package: bank, sourceUrl,
-          locallyModified: false,
-          ...(meta?.fingerprint ? { remoteFingerprint: meta.fingerprint } : {}),
-        }),
+        beforeCommit: async (bank: QuestionBankPackage, meta?: BankCommitMeta) => {
+          await saveLocalBankSource({
+            bankId: catalogId, updatedAt: '', package: bank, sourceUrl,
+            locallyModified: false,
+            ...(meta?.fingerprint ? { remoteFingerprint: meta.fingerprint } : {}),
+          });
+          // 源文件已换成线上内容：此后仓库收尾（清理旧目录等）即使失败，原库也回不去了
+          committed = true;
+        },
       });
       let result: InstallResult;
       if (!source.locallyModified) {
@@ -404,6 +410,7 @@ export const useQuestionBankStore = create<QuestionBankState>((set, get) => {
         }
         return { added: 0, removed: 0, updated: false };
       }
+      committed = true;
       const copied = copiedBankId ? { copiedBankId } : {};
       await restoreActiveBank();
       await reloadCatalog(set);

@@ -399,7 +399,7 @@ describe('local-banks 源文件 CRUD', () => {
     expect(await listLocalBankSources(fs as never)).toHaveLength(0);
   });
 
-  it('locallyModified 落盘往返保留；旧文件没有该字段时视为未修改', async () => {
+  it('locallyModified 落盘往返保留；旧版本写的下载库源缺该字段时保守视为已修改', async () => {
     const bank = createLocalBankPackage('下载库');
     const sourceUrl = 'https://example.com/bank.zip';
     await saveLocalBankSource({ bankId: bank.catalog.id, updatedAt: '', package: bank, sourceUrl,
@@ -413,11 +413,22 @@ describe('local-banks 源文件 CRUD', () => {
     );
     const legacy = await loadLocalBankSource(bank.catalog.id, fs as never);
     expect(legacy?.sourceUrl).toBe(sourceUrl);
-    expect(legacy?.locallyModified).toBeUndefined();
+    // 旧版本从不写该字段，可能编辑过：更新前必须先询问，不能静默覆盖
+    expect(legacy?.locallyModified).toBe(true);
 
     await saveLocalBankSource({ bankId: bank.catalog.id, updatedAt: '', package: bank, sourceUrl,
       locallyModified: false }, fs as never);
-    expect((await loadLocalBankSource(bank.catalog.id, fs as never))?.locallyModified).toBeFalsy();
+    expect((await loadLocalBankSource(bank.catalog.id, fs as never))?.locallyModified).toBe(false);
+
+    // 新代码保存时即使调用方没传，也显式落盘 false，不会被误判为旧数据
+    await saveLocalBankSource({ bankId: bank.catalog.id, updatedAt: '', package: bank, sourceUrl }, fs as never);
+    expect((await loadLocalBankSource(bank.catalog.id, fs as never))?.locallyModified).toBe(false);
+  });
+
+  it('没有下载地址的源（自建 / 复制）不带 locallyModified', async () => {
+    const bank = createLocalBankPackage('自建库');
+    await saveLocalBankSource({ bankId: bank.catalog.id, updatedAt: '', package: bank }, fs as never);
+    expect((await loadLocalBankSource(bank.catalog.id, fs as never))?.locallyModified).toBeUndefined();
   });
 
   it('备份解析（parseLocalBankSource）保留已修改标记', () => {

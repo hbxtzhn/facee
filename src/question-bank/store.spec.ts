@@ -535,6 +535,38 @@ describe('question-bank store 下载库本地修改保护', () => {
     expect(useQuestionBankStore.getState().installError).toContain('HTTP 500');
   });
 
+  it('keepCopy 更新已提交后切回原激活库失败：保留副本（本地修改的唯一备份）并报错', async () => {
+    seedModifiedSource();
+    exportPackageMock.mockResolvedValue(editedPackage);
+    mockRemoteResult({ questionCount: 6, tagCount: 4, localSource: {
+      bankId: 'local-a', updatedAt: '', package: TEST_QUESTION_BANK, sourceUrl,
+    } });
+    useQuestionBankStore.setState({ catalog: { ...TEST_QUESTION_BANK.catalog, id: 'local-other' } });
+    // 提交成功后第一次切回原激活库失败（指针写入的瞬时错误），重试成功
+    switchBankMock.mockRejectedValueOnce(new Error('active pointer write failed'));
+
+    await expect(useQuestionBankStore.getState().updateBank('local-a', { onLocalEdits: 'keepCopy' }))
+      .rejects.toThrow('active pointer write failed');
+    expect(deleteBankMock).not.toHaveBeenCalled();
+    expect(useQuestionBankStore.getState().installError).toContain('active pointer write failed');
+  });
+
+  it('keepCopy 仓库在提交（写源）之后的收尾失败：同样保留副本', async () => {
+    seedModifiedSource();
+    exportPackageMock.mockResolvedValue(editedPackage);
+    installFromUrlMock
+      .mockResolvedValueOnce({ questionCount: 6, tagCount: 4, dryRun: true, fingerprint: 'fp1-new' })
+      .mockImplementationOnce(async (_url, _progress, options) => {
+        await options?.beforeCommit?.(TEST_QUESTION_BANK);
+        throw new Error('reconcile failed');
+      });
+    useQuestionBankStore.setState({ catalog: { ...TEST_QUESTION_BANK.catalog, id: 'local-a' } });
+
+    await expect(useQuestionBankStore.getState().updateBank('local-a', { onLocalEdits: 'keepCopy' }))
+      .rejects.toThrow('reconcile failed');
+    expect(deleteBankMock).not.toHaveBeenCalled();
+  });
+
   it('installConfigured 在另一操作进行中时返回 false 而不是 reject', async () => {
     useQuestionBankStore.setState({ installing: true, sourceUrl });
     await expect(useQuestionBankStore.getState().installConfigured()).resolves.toBe(false);
