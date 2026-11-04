@@ -278,11 +278,62 @@ describe('FileSystemQuestionBankRepository installation safety', () => {
 
     await expect(repository.installFromUrl('https://example.com/bank.zip', undefined, {
       reuseCatalogId: 'local-existing', currentVersion,
-    })).resolves.toEqual({ questionCount: 6, tagCount: 4, unchanged: true });
+    })).resolves.toEqual({ questionCount: 6, tagCount: 4, unchanged: true, version: '1.2.0' });
     expect(await repository.getCatalog()).toEqual(local.catalog);
     expect(await repository.listBanks()).toHaveLength(1);
     expect(await fileSystem.readDirectoryAsync('file:///cache/facee-question-bank-downloads/')).toEqual([]);
     expect(await fileSystem.readDirectoryAsync('file:///documents/facee-question-bank/staging/')).toEqual([]);
+  });
+
+  it('force 跳过版本短路：同版本也重装（覆盖本地修改）', async () => {
+    const fileSystem = new MemoryFileSystem();
+    const archive = createZipArchive(fileSystem);
+    const unzip = archive.unzip;
+    archive.unzip = async (source, target) => {
+      await unzip(source, target);
+      await fileSystem.writeAsStringAsync(`${target}catalog.json`, JSON.stringify({
+        ...TEST_QUESTION_BANK.catalog, version: '1.2.0',
+      }));
+      return target;
+    };
+    const repository = new FileSystemQuestionBankRepository({ fileSystem: fileSystem as never, zipArchive: archive });
+    await repository.install({
+      ...TEST_QUESTION_BANK,
+      catalog: { ...TEST_QUESTION_BANK.catalog, id: 'local-existing', version: '1.2.0', title: '本机已编辑内容' },
+    });
+    const beforeCommit = jest.fn(async (_bank: unknown, _meta?: unknown) => undefined);
+    const result = await repository.installFromUrl('https://example.com/bank.zip', undefined, {
+      reuseCatalogId: 'local-existing', currentVersion: '1.2.0', force: true, beforeCommit,
+    });
+    expect(result.unchanged).toBeUndefined();
+    expect(result.fingerprint).toMatch(/^fp1-/);
+    expect(beforeCommit).toHaveBeenCalledWith(expect.anything(), { fingerprint: result.fingerprint });
+    expect((await repository.getCatalog())?.title).toBe(TEST_QUESTION_BANK.catalog.title);
+    expect((await repository.getCatalog())?.id).toBe('local-existing');
+    expect(await repository.listBanks()).toHaveLength(1);
+  });
+
+  it('dryRun 只下载校验并返回版本与指纹：不激活、不提交、清理暂存；同内容指纹稳定', async () => {
+    const fileSystem = new MemoryFileSystem();
+    const repository = new FileSystemQuestionBankRepository({
+      fileSystem: fileSystem as never, zipArchive: createZipArchive(fileSystem),
+    });
+    const local = { ...TEST_QUESTION_BANK, catalog: { ...TEST_QUESTION_BANK.catalog, id: 'local-existing' } };
+    await repository.install(local);
+    const beforeCommit = jest.fn(async (_bank: unknown, _meta?: unknown) => undefined);
+    const first = await repository.installFromUrl('https://example.com/bank.zip', undefined, {
+      reuseCatalogId: 'local-existing', dryRun: true, beforeCommit,
+    });
+    expect(first).toMatchObject({ dryRun: true, questionCount: 6, tagCount: 4 });
+    expect(first.fingerprint).toMatch(/^fp1-/);
+    expect(first.localSource).toBeUndefined();
+    expect(beforeCommit).not.toHaveBeenCalled();
+    expect(await repository.getCatalog()).toEqual(local.catalog);
+    expect(await repository.listBanks()).toHaveLength(1);
+    expect(await fileSystem.readDirectoryAsync('file:///cache/facee-question-bank-downloads/')).toEqual([]);
+    expect(await fileSystem.readDirectoryAsync('file:///documents/facee-question-bank/staging/')).toEqual([]);
+    const second = await repository.installFromUrl('https://example.com/bank.zip', undefined, { dryRun: true });
+    expect(second.fingerprint).toBe(first.fingerprint);
   });
 
   it('新版ZIP替换同一题库并保存新版本', async () => {
@@ -372,7 +423,7 @@ describe('FileSystemQuestionBankRepository installation safety', () => {
     expect((await repository.getContent('fixture-java-001'))?.questionMd).toBe(originalQuestion?.questionMd);
   });
 
-  it('installFromUrl 下载即本地化：id 重写为 local-，返回可落盘的题库源', async () => {
+  it('installFromUrl 下载线上题库：存储 id 重写为 local-，返回带 sourceUrl 的可落盘题库源', async () => {
     const fileSystem = new MemoryFileSystem();
     const repository = new FileSystemQuestionBankRepository({
       fileSystem: fileSystem as never,

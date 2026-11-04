@@ -80,7 +80,7 @@ describe('configured question-bank installer', () => {
     expect(saveLocalBankSource).not.toHaveBeenCalled();
   });
 
-  it('下载即本地化：installFromUrl 返回的题库源会被落盘', async () => {
+  it('下载的线上题库源（含 sourceUrl 与内容指纹）会被落盘', async () => {
     process.env.EXPO_PUBLIC_QUESTION_BANK_URL = 'https://example.com/question-bank.zip';
     const localSource = {
       bankId: 'local-new',
@@ -89,7 +89,7 @@ describe('configured question-bank installer', () => {
       sourceUrl: 'https://example.com/question-bank.zip',
     };
     const installFromUrl = jest.fn(async (_url: string, _progress?: unknown, options?: RemoteBankInstallOptions) => {
-      await options?.beforeCommit?.(localSource.package);
+      await options?.beforeCommit?.(localSource.package, { fingerprint: 'fp1-x' });
       return { questionCount: 6, tagCount: 4, localSource };
     });
     const remoteRepository: RemoteQuestionBankRepository = {
@@ -98,21 +98,15 @@ describe('configured question-bank installer', () => {
     };
 
     await installConfiguredQuestionBank(remoteRepository);
-    expect(saveLocalBankSource).toHaveBeenCalledWith(localSource);
+    expect(saveLocalBankSource).toHaveBeenCalledWith({ ...localSource, remoteFingerprint: 'fp1-x' });
   });
 
   it('同 URL 重复下载视为更新：沿用原 catalog.id', async () => {
     const url = 'https://example.com/question-bank.zip';
     process.env.EXPO_PUBLIC_QUESTION_BANK_URL = url;
     (listLocalBankSources as jest.Mock).mockResolvedValue([
-      { bankId: 'local-old', title: '旧库', questionCount: 6, updatedAt: '' },
+      { bankId: 'local-old', title: '旧库', questionCount: 6, updatedAt: '', sourceUrl: url },
     ]);
-    (loadLocalBankSource as jest.Mock).mockResolvedValue({
-      bankId: 'local-old',
-      updatedAt: '',
-      package: TEST_QUESTION_BANK,
-      sourceUrl: url,
-    });
     const installFromUrl = jest.fn(async (_url: string, _progress?: unknown, options?: RemoteBankInstallOptions) => {
       const bank = { ...TEST_QUESTION_BANK, catalog: { ...TEST_QUESTION_BANK.catalog, id: 'local-old' } };
       await options?.beforeCommit?.(bank);

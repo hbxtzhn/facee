@@ -2,8 +2,8 @@ import { asRemoteQuestionBankRepository } from './client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   listLocalBankSources,
-  loadLocalBankSource,
   saveLocalBankSource,
+  type LocalBankSourceSummary,
 } from './local-banks';
 import type {
   InstallationProgressListener,
@@ -58,30 +58,38 @@ export async function installConfiguredQuestionBank(
   if (!remote) {
     throw new Error('当前平台暂不支持安装线上 ZIP 题库');
   }
-  // 下载即本地化。同 URL 已装过本地库 → 视为更新：沿用原 catalog.id，
-  // install 原子替换旧库；首次下载生成新 local- id。
+  // 下载的是线上题库（只能在线更新，编辑须先复制）。同 URL 已装过的线上题库 → 视为更新：
+  // 沿用原 catalog.id，install 原子替换旧库；首次下载生成新 local- 存储 id。
   const reuseCatalogId = await findLocalBankIdBySourceUrl(url);
   return remote.installFromUrl(url, onProgress, {
     ...(reuseCatalogId ? { reuseCatalogId } : {}),
-    beforeCommit: (bank) => saveLocalBankSource({
+    beforeCommit: (bank, meta) => saveLocalBankSource({
       bankId: bank.catalog.id, updatedAt: '', package: bank, sourceUrl: url,
+      ...(meta?.fingerprint ? { remoteFingerprint: meta.fingerprint } : {}),
     }),
   });
 }
 
 /**
- * 找出由同一 URL 下载过、且未被用户修改的本地题库 id（更新语义）；没有则 null。
- * 用户改过的库不复用：否则整包替换会静默丢掉修改——此时按新题库安装，旧库原样保留。
+ * 找出由同一 URL 下载、且未在本机修改过的题库 id（更新语义）；没有则 null。
+ * 旧模型下改过的库不复用：否则整包替换会静默丢掉修改——此时按新题库安装，旧库原样保留。
+ * 摘要已带 sourceUrl/locallyModified，不再逐个整读源文件。
  */
 async function findLocalBankIdBySourceUrl(url: string): Promise<string | null> {
-  const summaries = await listLocalBankSources();
-  for (const summary of summaries) {
-    try {
-      const source = await loadLocalBankSource(summary.bankId);
-      if (source?.sourceUrl === url && !source.locallyModified) return source.bankId;
-    } catch {
-      // 单个源读取失败不影响查找
-    }
-  }
-  return null;
+  const match = findSourceSummaryByUrl(await listLocalBankSources(), url);
+  return match && !match.locallyModified ? match.bankId : null;
+}
+
+/**
+ * 在本地源摘要中按下载地址查找（地址两端空白忽略）；同地址多个时优先未修改的那个
+ * ——它就是重新添加该地址时会被原地更新的题库。
+ */
+export function findSourceSummaryByUrl(
+  summaries: readonly LocalBankSourceSummary[],
+  url: string,
+): LocalBankSourceSummary | null {
+  const target = url.trim();
+  if (!target) return null;
+  const matches = summaries.filter((summary) => summary.sourceUrl?.trim() === target);
+  return matches.find((summary) => !summary.locallyModified) ?? matches[0] ?? null;
 }

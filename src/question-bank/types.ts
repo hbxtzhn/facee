@@ -80,10 +80,15 @@ export interface LocalBankSource {
   bankId: string;
   updatedAt: string;
   package: QuestionBankPackage;
-  /** 若该库来自线上 ZIP 下载，记录下载地址：同地址重复下载按"更新原库"处理 */
+  /**
+   * 若该库来自线上 ZIP 下载，记录下载地址：同地址重复下载按"更新原库"处理。
+   * 有 sourceUrl 且未 locallyModified 的库是「线上题库」：只能在线更新，不能直接编辑。
+   */
   sourceUrl?: string;
   /** 下载库被用户编辑保存过：在线更新会整包覆盖，需先确认；重新下载/更新提交后复位 */
   locallyModified?: boolean;
+  /** 上次下载的线上包内容指纹（packageFingerprint）；版本缺失时用于判断线上是否有变化 */
+  remoteFingerprint?: string;
 }
 
 export interface QuestionFilter {
@@ -105,14 +110,26 @@ export interface InstallationProgress {
 
 export type InstallationProgressListener = (progress: InstallationProgress) => void;
 
+export interface BankCommitMeta {
+  /** installFromUrl 专属：线上包（改写存储 id 之前）的内容指纹 */
+  fingerprint?: string;
+}
+
 export interface BankInstallOptions {
   /** 新包激活后、旧包清理前保存编辑源；失败时恢复旧安装。 */
-  beforeCommit?: (bank: QuestionBankPackage) => Promise<void>;
+  beforeCommit?: (bank: QuestionBankPackage, meta?: BankCommitMeta) => Promise<void>;
 }
 
 export interface RemoteBankInstallOptions extends BankInstallOptions {
   reuseCatalogId?: string;
   currentVersion?: string;
+  /** 跳过「包内版本未更新则不替换」的短路，强制重装（覆盖本地修改、恢复线上原样） */
+  force?: boolean;
+  /**
+   * 只下载并完整校验，读出包内版本与内容指纹后清理，不激活、不调用 beforeCommit。
+   * 用于版本未知时先判断线上是否真有变化，再决定是否询问用户。
+   */
+  dryRun?: boolean;
 }
 
 export interface InstallResult {
@@ -120,8 +137,14 @@ export interface InstallResult {
   tagCount: number;
   /** 在线更新时包内版本相同或更低：不替换本地内容。 */
   unchanged?: boolean;
-  /** installFromUrl 专属：下载即本地化产出的题库源（调用方负责落盘 local-sources） */
+  /** installFromUrl 专属：下载产出的线上题库源（调用方负责落盘 local-sources，记录 sourceUrl） */
   localSource?: LocalBankSource;
+  /** installFromUrl 专属：下载包的 bank.version（可能缺省） */
+  version?: string;
+  /** installFromUrl 专属：下载包的内容指纹（完整校验过才有） */
+  fingerprint?: string;
+  /** dryRun 的结果：未做任何安装改动 */
+  dryRun?: boolean;
 }
 
 /** 已安装题库的摘要（listBanks 返回） */
@@ -132,7 +155,17 @@ export interface InstalledBankSummary {
   namespace: string;
   title: string;
   questionCount: number;
+  /**
+   * 来源分类：'online' = 线上题库（下载且未在本机编辑过，或旧版本安装的非 local- 库），
+   * 只能在线更新，编辑须先复制；'local' = 本地题库（自建/复制/导入，或旧模型下编辑过的下载库）。
+   * 仓库层 listBanks 只按 id 前缀粗分，store.refreshBanks 按本地源文件细分。
+   */
   source: 'local' | 'online';
+  /**
+   * 是否可直接编辑（仅 source === 'local' 时为 true）。仓库层与 store 总会填写；
+   * 类型上保持可选，兼容既有构造摘要的调用方（缺省按 source === 'local' 理解）。
+   */
+  editable?: boolean;
   /** 是否为当前激活（active 指针指向）的题库 */
   active: boolean;
   /** 题库规范 bank.version；旧格式库可能没有 */
@@ -141,7 +174,7 @@ export interface InstalledBankSummary {
   updatedAt?: string;
   /** 线上下载来源地址；存在即可在管理弹窗里在线更新（来自本地源文件） */
   sourceUrl?: string;
-  /** 下载库在本机被编辑过（来自本地源文件）；在线更新前需要用户确认 */
+  /** 下载库在旧模型下被编辑过（来自本地源文件）：显示为本地题库，在线更新前需要用户确认 */
   locallyModified?: boolean;
 }
 
@@ -189,6 +222,11 @@ export interface QuestionBankRepository {
   stageLocalBankAssets(targetAssetsRoot: string): Promise<number>;
   /** 从备份源 id 读取图片并回填到目标题库；冲突导入时两者不同。 */
   restoreBankAssets(assetsRoot: string, sourceCatalogId: string, targetCatalogId: string): Promise<void>;
+  /**
+   * 一次性、幂等的旧安装迁移：把 banks/ 下未登记的命名空间补登记进注册表
+   * （不改 catalog.id——学习进度按 id 记录）。返回新登记数；尽力而为不抛错。
+   */
+  migrateLegacyBanks?(): Promise<number>;
 }
 
 export interface RemoteQuestionBankRepository extends QuestionBankRepository {

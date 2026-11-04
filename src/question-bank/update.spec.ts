@@ -54,17 +54,40 @@ it.each([
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
-it('查询失败时报告错误，不能误报已是最新版本', async () => {
-  fetchMock.mockResolvedValue({ ok: false, status: 403 });
-  await expect(resolveBankUpdate(sourceUrl)).rejects.toThrow('检查题库版本失败（HTTP 403）');
+const fallbackUrl = 'https://github.com/hbxtzhn/facee-bank/releases/latest/download/bank-300.zip';
+
+it.each([
+  ['403 限流', () => fetchMock.mockResolvedValue({ ok: false, status: 403 })],
+  ['网络不可达', () => fetchMock.mockRejectedValue(new TypeError('Network request failed'))],
+  ['响应不是 JSON', () => fetchMock.mockResolvedValue({ ok: true, json: async () => { throw new SyntaxError('bad'); } })],
+])('版本接口失败（%s）时降级到 latest/download 同名资产，不给版本、不报错', async (_name, arrange) => {
+  arrange();
+  await expect(resolveBankUpdate(sourceUrl)).resolves.toEqual({ url: fallbackUrl });
 });
 
-it('有多个ZIP且无原文件名时不随意替换为其他题库', async () => {
+it('版本接口超时时同样降级', async () => {
+  jest.useFakeTimers();
+  try {
+    fetchMock.mockImplementation(() => new Promise(() => undefined));
+    const pending = resolveBankUpdate(sourceUrl);
+    await jest.advanceTimersByTimeAsync(30_000);
+    await expect(pending).resolves.toEqual({ url: fallbackUrl });
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+it('latest/download 链接降级后保持原地址', async () => {
+  fetchMock.mockResolvedValue({ ok: false, status: 403 });
+  await expect(resolveBankUpdate(fallbackUrl)).resolves.toEqual({ url: fallbackUrl });
+});
+
+it('有多个ZIP且无原文件名时不随意替换为其他题库：降级为同名资产，由下载结果决定', async () => {
   fetchMock.mockResolvedValue({ ok: true, json: async () => ({
     tag_name: 'v1.3.0', assets: [
       { name: 'a.zip', browser_download_url: 'https://github.com/a.zip' },
       { name: 'b.zip', browser_download_url: 'https://github.com/b.zip' },
     ],
   }) });
-  await expect(resolveBankUpdate(sourceUrl)).rejects.toThrow('没有找到对应的 ZIP 文件');
+  await expect(resolveBankUpdate(sourceUrl)).resolves.toEqual({ url: fallbackUrl });
 });

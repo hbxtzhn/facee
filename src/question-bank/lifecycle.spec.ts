@@ -56,7 +56,8 @@ it('保存非当前题库后，界面当前题库应与底层保持一致', asyn
   });
   (questionBankRepository.getCatalog as jest.Mock).mockImplementation(async () => diskCatalog);
   (questionBankRepository.switchBank as jest.Mock).mockImplementation(async () => { diskCatalog = currentCatalog; });
-  await useQuestionBankStore.getState().saveLocalBank(editedSource);
+  // 线上题库不能直接保存：用旧模型下已编辑过（locallyModified）的下载库验证激活题库恢复
+  await useQuestionBankStore.getState().saveLocalBank({ ...editedSource, locallyModified: true });
   expect(useQuestionBankStore.getState().catalog?.id).toBe(diskCatalog.id);
 });
 
