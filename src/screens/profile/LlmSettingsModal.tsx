@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { ListRestart } from 'lucide-react-native';
 import { useLlmConfigStore } from '../../store/llm-config-store';
 import { fetchModelIds, LLM_PRESETS } from '../../lib/llm';
-import { colors, radii, spacing, typography } from '../../theme';
+import { colors, spacing, typography } from '../../theme';
 import { FieldLabel, ModalSheet, SheetActions, SheetError } from './ModalSheet';
 
 /** 模型候选列表最多展示的个数（超出时提示可直接手填） */
@@ -180,7 +179,6 @@ export function LlmSettingsModal({ visible, onClose }: { visible: boolean; onClo
             pressed && styles.pressed,
           ]}
         >
-          <ListRestart size={14} color={colors.primary} strokeWidth={2} />
           <Text style={styles.fetchModelsText}>{fetchingModels ? '获取中' : '拉列表'}</Text>
         </Pressable>
       </View>
@@ -218,60 +216,45 @@ export function LlmSettingsModal({ visible, onClose }: { visible: boolean; onClo
   );
 }
 
+// 极简阅读风：选项是纯文字，选中只加粗 + 墨色下划线；输入框是发丝下划线
 const styles = StyleSheet.create({
-  presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  presetRow: { flexDirection: 'row', flexWrap: 'wrap', columnGap: spacing.lg },
   presetChip: {
-    minHeight: 34,
-    paddingHorizontal: spacing.md,
-    alignItems: 'center',
+    minHeight: 44,
     justifyContent: 'center',
-    borderRadius: radii.pill,
-    backgroundColor: colors.surfaceSubtle,
-    borderWidth: 1,
-    borderColor: 'transparent',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
   },
-  presetChipSelected: {
-    backgroundColor: colors.primarySoft,
-    borderColor: colors.primaryMuted,
-  },
-  presetText: { ...typography.caption, color: colors.textSecondary, fontWeight: '600' },
-  presetTextSelected: { color: colors.primary, fontWeight: '700' },
-  modelRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
+  presetChipSelected: { borderBottomColor: colors.primary },
+  presetText: { ...typography.body, color: colors.textMuted },
+  presetTextSelected: { color: colors.text, fontWeight: '600' },
+  modelRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-end' },
   modelInput: { flex: 1 },
   fetchModelsButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
     minHeight: 44,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.sm,
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: colors.primaryMuted,
+    minWidth: 44,
+    paddingHorizontal: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   fetchModelsButtonDisabled: { opacity: 0.4 },
-  fetchModelsText: { ...typography.caption, color: colors.primary, fontWeight: '700' },
-  modelOptionsBox: {
-    marginTop: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
-  },
-  modelOptionsHint: { ...typography.caption, color: colors.textMuted, fontSize: 11, marginBottom: spacing.xs },
+  fetchModelsText: { ...typography.label, fontSize: 14, color: colors.primary },
+  modelOptionsBox: { marginTop: spacing.md },
+  modelOptionsHint: { ...typography.caption, color: colors.textMuted, marginBottom: spacing.xs },
   insecureWarning: {
     ...typography.caption,
     color: colors.danger,
     marginTop: spacing.xs,
+    lineHeight: 18,
   },
   input: {
     ...typography.body,
     color: colors.text,
     minHeight: 44,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
-    borderWidth: 1,
-    borderColor: colors.border,
+    paddingHorizontal: 0,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderStrong,
   },
-  pressed: { opacity: 0.75 },
+  pressed: { opacity: 0.6 },
 });

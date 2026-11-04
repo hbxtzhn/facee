@@ -7,6 +7,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  */
 
 const mockNav = { navigate: jest.fn(), push: jest.fn(), goBack: jest.fn() };
+const mockUser = {
+  load: jest.fn(),
+  totalCount: 12,
+  viewedQuestionIds: [] as string[],
+  answerExpandedByDefault: false,
+  setAnswerExpandedByDefault: jest.fn(),
+};
+jest.mock('../store/userStore', () => ({ useUserStore: () => mockUser }));
 jest.mock('@react-navigation/native', () => ({
   useNavigation: () => mockNav,
 }));
@@ -22,6 +30,7 @@ const mockState = {
   setSourceUrl: jest.fn(),
   clearInstallError: jest.fn(),
   installConfigured: jest.fn(),
+  banks: [] as unknown[],
 };
 jest.mock('../question-bank/store', () => ({
   useQuestionBankStore: Object.assign(
@@ -37,8 +46,8 @@ jest.mock('./profile/BackupModal', () => ({ BackupModal: () => null }));
 // eslint-disable-next-line import/first
 import { ProfileScreen } from './ProfileScreen';
 
-function bank(id: string, title: string) {
-  return { id, title, questions: [], tags: [] };
+function bank(id: string, title: string, questionIds: string[] = []) {
+  return { id, title, questions: questionIds.map((qid) => ({ id: qid })), tags: [] };
 }
 
 describe('ProfileScreen 题库入口', () => {
@@ -73,5 +82,28 @@ describe('ProfileScreen 题库入口', () => {
     const view = await render(<ProfileScreen />);
     await act(async () => { fireEvent.press(view.getByLabelText('新建或管理题库')); });
     expect(mockNav.navigate).toHaveBeenCalledWith('BankManager');
+  });
+
+  it('顶部一行统计：已刷题数与当前题库进度', async () => {
+    mockState.catalog = bank('facee-official', 'Java 面试题库', ['q1', 'q2', 'q3', 'q4']);
+    mockUser.viewedQuestionIds = ['q1'];
+    const view = await render(<ProfileScreen />);
+    expect(view.getByText('已刷 12 题 · 当前题库进度 25%')).toBeTruthy();
+    mockUser.viewedQuestionIds = [];
+  });
+
+  it('分区：题库 / 刷题 / AI / 关于，各入口可用', async () => {
+    mockState.catalog = bank('facee-official', 'Java 面试题库');
+    const view = await render(<ProfileScreen />);
+    for (const title of ['题库', '刷题', 'AI', '关于']) expect(view.getByText(title)).toBeTruthy();
+
+    await act(async () => { fireEvent.press(view.getByLabelText('线上题库')); });
+    expect(mockNav.navigate).toHaveBeenLastCalledWith('OnlineBanks');
+
+    expect(view.getByLabelText('备份与恢复')).toBeTruthy();
+    expect(view.getByLabelText('AI 设置')).toBeTruthy();
+
+    await act(async () => { fireEvent(view.getByLabelText('进入题目时默认展开答案'), 'valueChange', true); });
+    expect(mockUser.setAnswerExpandedByDefault).toHaveBeenCalledWith(true);
   });
 });

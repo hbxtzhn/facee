@@ -1,9 +1,8 @@
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Linking, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as IntentLauncher from 'expo-intent-launcher';
 import Constants from 'expo-constants';
-import { Download, RefreshCw, Rocket } from 'lucide-react-native';
 import {
   type AppRelease,
   UPDATE_RELEASES_API,
@@ -17,11 +16,11 @@ import {
 } from '../lib/app-update';
 import { withNetworkTimeout } from '../lib/network';
 import { computeFileSha256Hex } from '../lib/apk-verify';
-import { AppButton, Surface } from './ui';
+import { AppButton } from './ui';
 import { colors, spacing, typography } from '../theme';
 
 /**
- * 应用内更新卡片：检查 → 下载 → 拉起系统安装器。
+ * 应用内更新（「我的 · 关于」分区内的纯列表行）：检查 → 下载 → 拉起系统安装器。
  *
  * Android 限制（务必知悉）：
  *   - 不能静默安装，最后一步必须由用户点系统确认框
@@ -127,23 +126,33 @@ export function AppUpdateCard() {
     }
   }, [release]);
 
+  const hasRelease = phase === 'available' || phase === 'downloading' || phase === 'ready';
+
   return (
-    <Surface style={styles.card}>
-      <View style={styles.heading}>
-        <View style={styles.icon}><Rocket size={21} color={colors.primary} strokeWidth={1.8} /></View>
+    <View>
+      {/* 版本行：当前版本 + 右侧文字操作；不再用卡片与图标块 */}
+      <View style={styles.row}>
         <View style={styles.copy}>
-          <Text style={styles.label}>应用更新</Text>
           <Text style={styles.value}>当前版本 {CURRENT_VERSION}</Text>
+          {phase === 'upToDate' ? <Text style={styles.hint}>已是最新版本。</Text> : null}
+          {phase === 'checking' ? <Text style={styles.hint}>正在检查更新…</Text> : null}
         </View>
+        {phase === 'checking' ? (
+          <ActivityIndicator color={colors.textSecondary} />
+        ) : hasRelease ? null : (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="检查更新"
+            accessibilityHint="从 GitHub 查询最新版本"
+            onPress={() => void check()}
+            style={({ pressed }) => [styles.textAction, pressed && styles.pressed]}
+          >
+            <Text style={styles.textActionLabel}>检查更新</Text>
+          </Pressable>
+        )}
       </View>
 
-      {phase === 'checking' ? (
-        <View style={styles.row}><ActivityIndicator color={colors.primary} /><Text style={styles.hint}>正在检查更新…</Text></View>
-      ) : null}
-
-      {phase === 'upToDate' ? <Text style={styles.hint}>已是最新版本。</Text> : null}
-
-      {phase === 'available' || phase === 'downloading' || phase === 'ready' ? (
+      {hasRelease ? (
         <View style={styles.releaseBox}>
           <Text style={styles.releaseTitle}>发现新版本 {release?.version}</Text>
           <Text style={styles.releaseMeta}>
@@ -154,62 +163,61 @@ export function AppUpdateCard() {
           <Text style={styles.notice}>
             安装前会从发布页下载 SHA256SUMS 校验安装包；安装时系统会弹出确认框（Android 不允许应用静默安装）。首次使用需在系统设置里允许 FaceE 安装应用。
           </Text>
-        </View>
-      ) : null}
-
-      {phase === 'downloading' ? (
-        <View style={styles.row}><ActivityIndicator color={colors.primary} /><Text style={styles.hint}>正在下载安装包…</Text></View>
-      ) : null}
-
-      {installing ? <Text style={styles.hint}>已拉起系统安装器，请在弹窗中确认安装。</Text> : null}
-
-      {message ? <Text style={styles.error}>{message}</Text> : null}
-
-      <View style={styles.actions}>
-        {phase === 'available' || phase === 'downloading' || phase === 'ready' ? (
+          {phase === 'downloading' ? <Text style={styles.notice}>正在下载安装包…</Text> : null}
+          {installing ? <Text style={styles.notice}>已拉起系统安装器，请在弹窗中确认安装。</Text> : null}
           <AppButton
             label={installing ? '重新拉起安装器' : '下载并安装'}
-            icon={Download}
             loading={phase === 'downloading'}
             onPress={() => void downloadAndInstall()}
             accessibilityHint="下载新版安装包并打开系统安装界面"
             style={styles.button}
           />
-        ) : (
-          <AppButton
-            label={phase === 'checking' ? '检查中…' : '检查更新'}
-            icon={RefreshCw}
-            loading={phase === 'checking'}
-            onPress={() => void check()}
-            accessibilityHint="从 GitHub 查询最新版本"
-            style={styles.button}
-          />
-        )}
-      </View>
+        </View>
+      ) : null}
 
-      <Text style={styles.link} onPress={() => void Linking.openURL(UPDATE_RELEASES_PAGE)}>
-        在浏览器中打开发布页
-      </Text>
-    </Surface>
+      {message ? (
+        <Text style={styles.error} accessibilityRole="alert">{message}</Text>
+      ) : null}
+
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel="在浏览器中打开发布页"
+        onPress={() => void Linking.openURL(UPDATE_RELEASES_PAGE)}
+        style={({ pressed }) => [styles.row, styles.linkRow, pressed && styles.pressed]}
+      >
+        <Text style={styles.link}>在浏览器中打开发布页</Text>
+      </Pressable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { padding: spacing.lg },
-  heading: { flexDirection: 'row', alignItems: 'center' },
-  icon: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
-  copy: { flex: 1, marginLeft: spacing.md },
-  label: { ...typography.caption, color: colors.textMuted },
-  value: { ...typography.bodyStrong, color: colors.text },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.lg },
-  hint: { ...typography.caption, color: colors.textMuted, marginTop: spacing.lg },
-  releaseBox: { marginTop: spacing.lg, padding: spacing.md, borderRadius: 8, backgroundColor: colors.surfaceMuted },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    minHeight: 52,
+    paddingVertical: spacing.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  linkRow: { minHeight: 44 },
+  copy: { flex: 1 },
+  value: { ...typography.body, color: colors.text },
+  hint: { ...typography.caption, color: colors.textMuted, marginTop: 2 },
+  textAction: { minHeight: 44, minWidth: 44, justifyContent: 'center', paddingHorizontal: spacing.xs },
+  textActionLabel: { ...typography.label, fontSize: 14, color: colors.primary },
+  releaseBox: {
+    paddingVertical: spacing.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
   releaseTitle: { ...typography.bodyStrong, color: colors.text },
   releaseMeta: { ...typography.caption, color: colors.textMuted, marginTop: 2 },
-  notes: { ...typography.caption, color: colors.text, marginTop: spacing.sm },
-  notice: { ...typography.caption, color: colors.textMuted, marginTop: spacing.sm },
-  error: { ...typography.caption, color: colors.danger, marginTop: spacing.md },
-  actions: { marginTop: spacing.lg },
-  button: {},
-  link: { ...typography.caption, color: colors.primary, marginTop: spacing.md, textAlign: 'center' },
+  notes: { ...typography.body, fontSize: 14, lineHeight: 22, color: colors.textSecondary, marginTop: spacing.sm },
+  notice: { ...typography.caption, color: colors.textMuted, marginTop: spacing.sm, lineHeight: 18 },
+  error: { ...typography.caption, color: colors.danger, marginTop: spacing.md, lineHeight: 18 },
+  button: { marginTop: spacing.lg, alignSelf: 'flex-start', minWidth: 140 },
+  link: { ...typography.body, color: colors.textSecondary },
+  pressed: { opacity: 0.6 },
 });

@@ -215,7 +215,7 @@ export function QuestionEditModal({
               pressed && styles.pressed,
             ]}
           >
-            <Sparkles size={14} color={colors.primary} strokeWidth={2} />
+            <Sparkles size={18} color={colors.textSecondary} strokeWidth={1.6} />
             <Text style={styles.aiEntryText}>AI 改写此题</Text>
           </Pressable>
         ) : null}
@@ -368,7 +368,7 @@ function VersionCard({
     >
       <View style={styles.versionHeading}>
         {selected ? (
-          <CheckCircle2 size={15} color={colors.primary} strokeWidth={2.2} />
+          <CheckCircle2 size={16} color={colors.primary} strokeWidth={1.8} />
         ) : (
           <View style={styles.versionCircle} />
         )}
@@ -380,91 +380,74 @@ function VersionCard({
   );
 }
 
+// 极简阅读风：AI 改写入口是文字按钮，候选版本是纯列表，难度是带下划线的文字选项
 const styles = StyleSheet.create({
   aiSection: { marginTop: spacing.sm },
   aiEntryButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    minHeight: 40,
-    borderRadius: radii.sm,
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: colors.primaryMuted,
+    gap: spacing.sm,
+    minHeight: 44,
   },
   aiEntryDisabled: { opacity: 0.4 },
-  aiEntryText: { ...typography.caption, color: colors.primary, fontWeight: '700' },
+  aiEntryText: { ...typography.label, fontSize: 14, color: colors.primary },
   aiBox: {
-    padding: spacing.sm,
-    borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
+    paddingVertical: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
   },
-  aiBoxLabel: { ...typography.caption, color: colors.textMuted, fontSize: 11, lineHeight: 16, marginBottom: spacing.xs },
+  aiBoxLabel: { ...typography.caption, color: colors.textMuted, lineHeight: 18, marginBottom: spacing.xs },
   aiInstructionInput: {
     minHeight: 56,
-    backgroundColor: colors.surface,
     textAlignVertical: 'top',
-    paddingTop: spacing.xs,
   },
   aiButtonRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
   aiGenerateButton: { flex: 1 },
   aiCancelButton: { minWidth: 72 },
   versionCard: {
-    padding: spacing.sm,
-    borderRadius: radii.sm,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: spacing.sm,
+    paddingVertical: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
-  versionCardSelected: { borderColor: colors.primaryMuted },
-  versionCardAccent: { backgroundColor: colors.primarySoft },
-  versionHeading: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
+  versionCardSelected: {},
+  versionCardAccent: {},
+  versionHeading: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: 4 },
   versionCircle: {
-    width: 15,
-    height: 15,
+    width: 16,
+    height: 16,
     borderRadius: radii.pill,
     borderWidth: 1.5,
     borderColor: colors.borderStrong,
   },
-  versionLabel: { ...typography.caption, color: colors.textMuted, fontWeight: '700' },
+  versionLabel: { ...typography.caption, color: colors.textMuted, fontWeight: '600' },
   versionLabelSelected: { color: colors.primary },
-  versionTitle: { ...typography.bodyStrong, color: colors.text, fontSize: 13, lineHeight: 18 },
-  versionBody: { ...typography.caption, color: colors.textSecondary, fontSize: 11, lineHeight: 16, marginTop: 3 },
-  input: {    ...typography.body,
+  versionTitle: { ...typography.body, color: colors.text, lineHeight: 22 },
+  versionBody: { ...typography.caption, color: colors.textSecondary, lineHeight: 18, marginTop: 3 },
+  input: {
+    ...typography.body,
     color: colors.text,
     minHeight: 44,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
-    borderWidth: 1,
-    borderColor: colors.border,
+    paddingHorizontal: 0,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderStrong,
   },
   multiline: {
     minHeight: 96,
     textAlignVertical: 'top',
-    paddingTop: spacing.sm,
-    lineHeight: 20,
+    lineHeight: 22,
   },
   answerArea: { minHeight: 128 },
-  difficultyRow: { flexDirection: 'row', gap: spacing.sm },
+  difficultyRow: { flexDirection: 'row', gap: spacing.lg },
   difficultyChip: {
-    flex: 1,
-    minHeight: 38,
-    alignItems: 'center',
+    minHeight: 44,
     justifyContent: 'center',
-    borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
-    borderWidth: 1,
-    borderColor: 'transparent',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
   },
-  difficultyChipSelected: {
-    backgroundColor: colors.primarySoft,
-    borderColor: colors.primaryMuted,
-  },
-  difficultyText: { ...typography.caption, color: colors.textSecondary, fontWeight: '600' },
-  difficultyTextSelected: { color: colors.primary, fontWeight: '700' },
-  pressed: { opacity: 0.75 },
+  difficultyChipSelected: { borderBottomColor: colors.primary },
+  difficultyText: { ...typography.body, color: colors.textMuted },
+  difficultyTextSelected: { color: colors.text, fontWeight: '600' },
+  pressed: { opacity: 0.6 },
 });

@@ -3,7 +3,6 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { usePreventRemove, useNavigation, type NavigationAction } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
-import { FilePlus2, Pencil, TextSelect, Trash2 } from 'lucide-react-native';
 import { useQuestionBankStore } from '../../question-bank/store';
 import {
   loadLocalBankSource,
@@ -13,13 +12,14 @@ import {
 } from '../../question-bank/local-banks';
 import type { GeneratedQuestionDraft } from '../../lib/llm';
 import { AppButton, DifficultyBadge } from '../../components/ui';
-import { colors, radii, spacing, typography } from '../../theme';
+import { colors, spacing, typography } from '../../theme';
 import { ModalSheet, SheetActions, SheetError } from './ModalSheet';
 import {
   QuestionEditModal,
   type QuestionFormDraft,
 } from './QuestionEditModal';
 import { ImportTextModal } from './ImportTextModal';
+import { InlineNote, TextAction, listStyles } from './components/list';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -202,26 +202,19 @@ export function BankEditorContent({
             editable={!busy}
             placeholder="我的题库"
             placeholderTextColor={colors.textSubtle}
-            style={styles.input}
+            style={listStyles.input}
             accessibilityLabel="题库名称"
           />
 
           <View style={styles.toolRow}>
-            <AppButton
+            <TextAction
               label="新增题目"
+              tone="primary"
               disabled={Boolean(busy)}
-              icon={FilePlus2}
               onPress={() => setEditingQuestion(null)}
-              style={styles.toolButton}
+              style={styles.leadingAction}
             />
-            <AppButton
-              label="AI 导入"
-              disabled={Boolean(busy)}
-              icon={TextSelect}
-              variant="secondary"
-              onPress={() => setImportVisible(true)}
-              style={styles.toolButton}
-            />
+            <TextAction label="AI 导入" disabled={Boolean(busy)} onPress={() => setImportVisible(true)} />
           </View>
 
           <View style={styles.listHeader}>
@@ -230,9 +223,9 @@ export function BankEditorContent({
           </View>
 
           {questions.length === 0 ? (
-            <Text style={styles.emptyText}>
-              还没有题目：手动「新增题目」，或通过「AI 导入」从文本/图片抽取题目。
-            </Text>
+            <View style={styles.emptyBlock}>
+              <InlineNote text="还没有题目：手动「新增题目」，或通过「AI 导入」从文本/图片抽取题目。" />
+            </View>
           ) : null}
 
           {/* 回到（或打开）题库管理页：栈内 popTo，同样经过未保存守卫 */}
@@ -260,8 +253,8 @@ export function BankEditorContent({
                     </Text>
                   </View>
                 </View>
-                <Pressable
-                  accessibilityRole="button"
+                <TextAction
+                  label="编辑"
                   accessibilityLabel={`编辑题目 ${question.title}`}
                   disabled={Boolean(busy)}
                   onPress={() => {
@@ -275,33 +268,26 @@ export function BankEditorContent({
                       answerMd: content?.answerMd ?? null,
                     });
                   }}
-                  style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
-                >
-                  <Pencil size={15} color={colors.textSecondary} strokeWidth={2} />
-                </Pressable>
+                />
                 {confirmingDelete ? (
-                  <Pressable
-                    accessibilityRole="button"
+                  <TextAction
+                    label="确认删除"
                     accessibilityLabel={`确认删除题目 ${question.title}`}
+                    tone="danger"
                     disabled={Boolean(busy)}
                     onPress={() => {
                       mutatePackage((bank) => removeQuestion(bank, question.id));
                       setConfirmingDeleteId(null);
                     }}
-                    style={({ pressed }) => [styles.deleteConfirmButton, pressed && styles.pressed]}
-                  >
-                    <Text style={styles.deleteConfirmText}>确认</Text>
-                  </Pressable>
+                  />
                 ) : (
-                  <Pressable
-                    accessibilityRole="button"
+                  <TextAction
+                    label="删除"
                     accessibilityLabel={`删除题目 ${question.title}`}
+                    tone="muted"
                     disabled={Boolean(busy)}
                     onPress={() => setConfirmingDeleteId(question.id)}
-                    style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
-                  >
-                    <Trash2 size={15} color={colors.danger} strokeWidth={2} />
-                  </Pressable>
+                  />
                 )}
               </View>
             );
@@ -328,71 +314,40 @@ export function BankEditorContent({
 
 const styles = StyleSheet.create({
   loadingText: { ...typography.caption, color: colors.textMuted, marginTop: spacing.sm },
-  leaveText: { ...typography.caption, color: colors.textSecondary, fontWeight: '600' },
-  fieldLabel: { ...typography.caption, color: colors.textMuted, fontWeight: '600', marginBottom: spacing.xs },
-  input: {
-    ...typography.body,
-    color: colors.text,
-    minHeight: 44,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  toolRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
-  toolButton: { flex: 1 },
+  leaveText: { ...typography.body, color: colors.text },
+  fieldLabel: { ...typography.eyebrow, color: colors.textMuted, marginBottom: spacing.xs },
+  toolRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.md },
+  leadingAction: { paddingLeft: 0 },
   listHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'baseline',
     justifyContent: 'space-between',
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
-    paddingTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
+    marginTop: spacing.xl,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
-  listTitle: { ...typography.bodyStrong, color: colors.text, fontSize: 13 },
+  listTitle: { ...typography.eyebrow, color: colors.textMuted },
   listCount: { ...typography.caption, color: colors.textMuted },
-  emptyText: { ...typography.caption, color: colors.textMuted, lineHeight: 18, marginBottom: spacing.sm },
+  emptyBlock: { paddingVertical: spacing.lg },
   managerLink: {
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.xs,
+    minHeight: 44,
+    justifyContent: 'center',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
-  managerLinkText: { ...typography.caption, color: colors.primary, fontWeight: '600' },
+  managerLinkText: { ...typography.body, color: colors.textSecondary },
   questionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: spacing.sm,
+    gap: spacing.xs,
+    paddingVertical: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
   questionMain: { flex: 1 },
-  questionTitle: { ...typography.bodyStrong, color: colors.text, fontSize: 13, lineHeight: 18 },
-  questionMetaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: 3 },
-  questionMeta: { ...typography.caption, color: colors.textMuted, fontSize: 11 },
-  iconButton: {
-    width: 30,
-    height: 30,
-    borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  deleteConfirmButton: {
-    paddingHorizontal: 8,
-    minHeight: 30,
-    borderRadius: radii.sm,
-    backgroundColor: colors.dangerSoft,
-    borderWidth: 1,
-    borderColor: colors.borderWarm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  deleteConfirmText: { ...typography.caption, color: colors.danger, fontSize: 11, fontWeight: '700' },
-  pressed: { opacity: 0.75 },
+  questionTitle: { ...typography.body, color: colors.text, lineHeight: 22 },
+  questionMetaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: 2 },
+  questionMeta: { ...typography.caption, color: colors.textMuted },
+  pressed: { opacity: 0.6 },
 });
