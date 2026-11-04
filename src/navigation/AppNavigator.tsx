@@ -11,6 +11,7 @@ import { FavoritesScreen } from '../screens/FavoritesScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { BankManagerScreen } from '../screens/BankManagerScreen';
 import { BankEditorScreen } from '../screens/BankEditorScreen';
+import { OnlineBanksScreen } from '../screens/OnlineBanksScreen';
 import { colors, navigationTheme, typography } from '../theme';
 import type { Question } from '../question-bank';
 
@@ -26,10 +27,12 @@ export type DetailParams = {
 export type RootStackParamList = {
   Tabs: undefined;
   Detail: DetailParams;
-  /** 题库管理：切换 / 复制 / 删除 / 在线更新 / 新建本地题库 */
+  /** 题库管理：线上 / 本地两组，切换 / 复制 / 删除 / 在线更新 / 新建本地题库 */
   BankManager: undefined;
   /** 本地题库编辑：bankId 为 local- 前缀的题库 id */
   BankEditor: { bankId: string };
+  /** 线上题库：官方题库一键安装 / 更新、按网址添加、已装线上题库检查更新 */
+  OnlineBanks: undefined;
 };
 
 /** 详情页只注册在 RootStack：从首页/列表 push 会冒泡到根栈，刷题时盖住底部标签栏 */
@@ -173,6 +176,11 @@ export function AppNavigator() {
           name="BankManager"
           component={BankManagerScreen}
           options={{ title: '管理题库', headerBackTitle: '返回' }}
+        />
+        <RootStack.Screen
+          name="OnlineBanks"
+          component={OnlineBanksScreen}
+          options={{ title: '线上题库', headerBackTitle: '返回' }}
         />
         <RootStack.Screen
           name="BankEditor"

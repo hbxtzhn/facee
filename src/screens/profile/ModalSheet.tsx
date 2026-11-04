@@ -3,13 +3,13 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { usePreventRemove } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppButton } from '../../components/ui';
-import { colors, radii, spacing, typography } from '../../theme';
+import { colors, layout, radii, spacing, typography } from '../../theme';
 
 /** 弹窗骨架的呈现方式：modal = 居中卡片弹窗；screen = 作为栈页面正文（标题交给导航栏） */
 export type SheetPresentation = 'modal' | 'screen';
 
 /**
- * Profile 弹窗统一骨架：与「增加题库」弹窗同风格（居中卡片 + 蒙层），
+ * Profile 弹窗统一骨架（极简阅读风）：纸面底 + 发丝描边的居中弹窗，无阴影，
  * 但内容区可滚动、高度自适应到 86%，承载编辑器/导入等更大的表单。
  * presentation="screen" 时同一份内容直接铺满栈页面，忙碌（dismissDisabled）时拦截返回键/手势。
  */
@@ -89,7 +89,7 @@ export function FieldLabel({ text }: { text: string }) {
   return <Text style={styles.fieldLabel}>{text}</Text>;
 }
 
-/** 弹窗底部标准双按钮（取消 + 主操作）；cancelLabel 传空串时只显示主操作 */
+/** 弹窗底部标准操作：取消为文字按钮，主操作为唯一实心按钮；cancelLabel 传空串时只显示主操作 */
 export function SheetActions({
   cancelLabel = '取消',
   confirmLabel,
@@ -110,7 +110,7 @@ export function SheetActions({
   return (
     <View style={styles.actionsRow}>
       {cancelLabel ? (
-        <AppButton label={cancelLabel} variant="ghost" onPress={onCancel} disabled={cancelDisabled} style={styles.actionButton} />
+        <AppButton label={cancelLabel} variant="ghost" onPress={onCancel} disabled={cancelDisabled} style={styles.cancelButton} />
       ) : null}
       <AppButton
         label={confirmLabel}
@@ -123,7 +123,7 @@ export function SheetActions({
   );
 }
 
-/** 错误提示块（dangerSoft 底），message 为空时不渲染 */
+/** 错误提示：危险色文字 + 左侧细竖线，不铺色块；message 为空时不渲染 */
 export function SheetError({ message }: { message: string | null }) {
   if (!message) return null;
   return (
@@ -136,52 +136,55 @@ export function SheetError({ message }: { message: string | null }) {
 const styles = StyleSheet.create({
   scrim: {
     flex: 1,
-    backgroundColor: 'rgba(20, 20, 16, 0.45)',
+    backgroundColor: colors.overlay,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: spacing.lg,
+    padding: layout.pagePadding,
   },
   scrimTouchable: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   card: {
     width: '100%',
-    maxWidth: 420,
+    maxWidth: 440,
     maxHeight: '86%',
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.lg,
+    backgroundColor: colors.background,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderStrong,
+    paddingHorizontal: layout.pagePadding,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.lg,
   },
-  title: { ...typography.title, color: colors.text, fontSize: 18 },
-  hint: { ...typography.caption, color: colors.textMuted, marginTop: spacing.xs, lineHeight: 16 },
+  title: { ...typography.heading, color: colors.text },
+  hint: { ...typography.caption, color: colors.textMuted, marginTop: spacing.xs, lineHeight: 18 },
   body: { marginTop: spacing.md },
   bodyContent: { paddingBottom: spacing.xs },
   footer: {
     marginTop: spacing.md,
     paddingTop: spacing.md,
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
   },
   screen: { flex: 1, backgroundColor: colors.background },
   screenBody: { flex: 1 },
-  screenBodyContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.lg },
-  screenHint: { marginTop: 0, marginBottom: spacing.md },
+  screenBodyContent: { paddingHorizontal: layout.pagePadding, paddingTop: spacing.md, paddingBottom: spacing.xxl },
+  screenHint: { marginTop: 0, marginBottom: spacing.sm },
   screenFooter: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: layout.pagePadding,
     paddingVertical: spacing.md,
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
+    backgroundColor: colors.background,
   },
-  actionsRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
+  actionsRow: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: spacing.sm },
+  cancelButton: { minWidth: 64 },
   actionButton: { minWidth: 104 },
-  fieldLabel: { ...typography.caption, color: colors.textMuted, fontWeight: '600', marginTop: spacing.md, marginBottom: spacing.xs },
+  fieldLabel: { ...typography.eyebrow, color: colors.textMuted, marginTop: spacing.lg, marginBottom: spacing.xs },
   errorBox: {
     marginTop: spacing.md,
-    padding: spacing.sm,
-    borderRadius: radii.sm,
-    backgroundColor: colors.dangerSoft,
-    borderWidth: 1,
-    borderColor: colors.borderWarm,
+    paddingLeft: spacing.md,
+    paddingVertical: spacing.xs,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.danger,
   },
-  errorText: { ...typography.caption, color: colors.danger, fontSize: 11 },
+  errorText: { ...typography.caption, color: colors.danger, lineHeight: 18 },
 });

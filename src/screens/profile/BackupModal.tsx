@@ -1,12 +1,11 @@
 import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
-import { Database, FileUp } from 'lucide-react-native';
 import { useQuestionBankStore } from '../../question-bank/store';
-import { AppButton } from '../../components/ui';
-import { colors, spacing, typography } from '../../theme';
+import { colors, spacing } from '../../theme';
 import { ModalSheet, SheetError } from './ModalSheet';
+import { InlineNote, ListRow, TextAction } from './components/list';
 
 /**
  * 备份与恢复弹窗（v1：只备题库本体）。导出 = 本地源 + 图片资产打 ZIP 走系统
@@ -77,38 +76,36 @@ export function BackupModal({ visible, onClose }: { visible: boolean; onClose: (
     >
       <SheetError message={error} />
       {notice ? (
-        <View style={styles.noticeBox}>
-          <Text style={styles.noticeText}>{notice}</Text>
+        <View style={styles.notice}>
+          <InlineNote text={notice} tone="default" live />
         </View>
       ) : null}
-      <View style={styles.actionBlock}>
-        <View style={styles.actionCopy}>
-          <Database size={16} color={colors.primary} strokeWidth={2} />
-          <Text style={styles.actionTitle}>导出备份</Text>
-        </View>
-        <Text style={styles.actionHint}>把全部本地题库打包成 ZIP，分享到任意位置保存。</Text>
-        <AppButton
-          label={busy === 'export' ? '正在打包' : '导出备份'}
-          icon={FileUp}
-          onPress={() => void handleExport()}
-          loading={busy === 'export'}
-          disabled={busy !== null || installing}
-          style={styles.actionButton}
+      <View style={styles.list}>
+        <ListRow
+          title="导出备份"
+          subtitle="把全部本地题库打包成 ZIP，分享到任意位置保存。"
+          right={
+            <TextAction
+              label={busy === 'export' ? '正在打包' : '导出'}
+              accessibilityLabel="导出备份"
+              tone="primary"
+              onPress={() => void handleExport()}
+              disabled={busy !== null || installing}
+            />
+          }
         />
-      </View>
-      <View style={[styles.actionBlock, styles.importBlock]}>
-        <View style={styles.actionCopy}>
-          <Database size={16} color={colors.primary} strokeWidth={2} />
-          <Text style={styles.actionTitle}>从备份导入</Text>
-        </View>
-        <Text style={styles.actionHint}>选择之前导出的备份 ZIP，题库会作为新库加入。</Text>
-        <AppButton
-          label={busy === 'import' ? '正在导入' : '选择备份文件'}
-          onPress={() => void handleImport()}
-          loading={busy === 'import'}
-          disabled={busy !== null || installing}
-          variant="secondary"
-          style={styles.actionButton}
+        <ListRow
+          title="从备份导入"
+          subtitle="选择之前导出的备份 ZIP，题库会作为新库加入。"
+          right={
+            <TextAction
+              label={busy === 'import' ? '正在导入' : '选择文件'}
+              accessibilityLabel="选择备份文件"
+              tone="primary"
+              onPress={() => void handleImport()}
+              disabled={busy !== null || installing}
+            />
+          }
         />
       </View>
     </ModalSheet>
@@ -116,19 +113,10 @@ export function BackupModal({ visible, onClose }: { visible: boolean; onClose: (
 }
 
 const styles = StyleSheet.create({
-  noticeBox: {
+  notice: { marginTop: spacing.md },
+  list: {
     marginTop: spacing.md,
-    padding: spacing.sm,
-    borderRadius: 8,
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: colors.primaryMuted,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
   },
-  noticeText: { ...typography.caption, color: colors.primary, fontSize: 11, lineHeight: 16 },
-  actionBlock: { marginTop: spacing.md },
-  importBlock: { paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
-  actionCopy: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  actionTitle: { ...typography.bodyStrong, color: colors.text, fontSize: 13 },
-  actionHint: { ...typography.caption, color: colors.textMuted, fontSize: 11, lineHeight: 16, marginTop: 4, marginBottom: spacing.sm },
-  actionButton: { width: '100%' },
 });
