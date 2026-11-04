@@ -232,8 +232,7 @@ export function HomeScreen() {
   }, [catalog, masteryMarks]);
 
   function openOnlineBanks() {
-    // TODO(merge): OnlineBanks 路由由另一位同事加入 RootStack，合并后去掉 as never
-    nav.navigate('OnlineBanks' as never);
+    nav.navigate('OnlineBanks');
   }
 
   // 有分类就用分类（§5.1）；旧格式题库没有分类，回退到标签领域，行为不回归。
