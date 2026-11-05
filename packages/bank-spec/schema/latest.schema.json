@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/HBxtzhn/facee/packages/bank-spec/schema/latest.schema.json",
+  "title": "FaceE 题库 latest.json 更新清单（规范 v2 §3.3）",
+  "description": "与 src/bank/types.ts 的 Manifest 一致。未列出的字段一律允许（App 忽略未知字段）。",
+  "type": "object",
+  "required": ["bankId", "schemaVersion", "version", "publishedAt", "bundle", "questions"],
+  "properties": {
+    "bankId": { "type": "string", "pattern": "^[a-z0-9.-]+\\/[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$" },
+    "schemaVersion": { "const": 2 },
+    "version": { "type": "string", "minLength": 5 },
+    "publishedAt": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$" },
+    "minAppVersion": { "type": "string", "minLength": 5 },
+    "bundle": { "$ref": "#/$defs/ArtifactRef" },
+    "assets": { "$ref": "#/$defs/ArtifactRef" },
+    "questions": {
+      "type": "object",
+      "propertyNames": { "type": "string", "pattern": "^q_[0-9A-HJKMNP-TV-Z]{26}$" },
+      "additionalProperties": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+    },
+    "changes": { "type": "string" }
+  },
+  "$defs": {
+    "ArtifactRef": {
+      "type": "object",
+      "required": ["url", "sha256", "size"],
+      "properties": {
+        "url": { "type": "string", "minLength": 1 },
+        "mirrors": { "type": "array", "items": { "type": "string" } },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "size": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}
