@@ -163,7 +163,10 @@ export interface Question {
   /** `YYYY-MM-DD` */
   reviewedAt?: string;
   estimatedMinutes?: number;
-  /** `sha256:<hex>`：该题规范化 JSON（不含本字段）与引用资源哈希的摘要 */
+  /**
+   * `sha256:<hex>`：该题规范化 JSON（不含本字段）的 SHA-256，规则见规范 §3.2。
+   * 资源以 `asset:<sha256>.<ext>` 出现在 Markdown 字段中，因此图片变化也会改变它。
+   */
   contentHash: string;
 }
 
