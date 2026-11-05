@@ -1,0 +1,2 @@
+# 示例构建产物作为 App 测试夹具提交（根 .gitignore 忽略了 dist/）
+!dist/
