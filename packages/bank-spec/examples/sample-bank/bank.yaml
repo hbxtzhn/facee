@@ -1,0 +1,65 @@
+# FaceE 示例题库（规范 v2 编写格式）
+# 构建：node packages/bank-spec/cli.mjs build --bank packages/bank-spec/examples/sample-bank --out packages/bank-spec/examples/dist --pretty --published-at 2026-11-05T00:00:00Z
+schemaVersion: 2
+bank:
+  id: github.com/hbxtzhn/facee-sample-bank
+  name: FaceE 示例题库
+  version: 2.0.0
+  description: 规范 v2 的示例与 App 测试夹具，覆盖全部题型与字段
+  locale: zh-CN
+  license: CC-BY-4.0
+  homepage: https://github.com/HBxtzhn/facee
+  feedbackUrl: https://github.com/HBxtzhn/facee/issues/new?title=%E9%A2%98%E7%9B%AE%E7%BA%A0%E9%94%99&body=question%3D{questionId}
+  update:
+    manifest: https://github.com/HBxtzhn/facee-sample-bank/releases/latest/download/latest.json
+
+categories:
+  - { id: redis, name: Redis, order: 10, description: 缓存与内存数据结构 }
+  - { id: mysql, name: MySQL, order: 20 }
+  - { id: java-concurrency, name: Java 并发, order: 30 }
+  - { id: network, name: 网络与 HTTP, order: 40 }
+
+# 标签层级：storage > redis / mysql；concurrency > lock / thread-pool；network > http / tls
+tags:
+  - { id: storage, name: 存储, parent: null }
+  - { id: redis, name: Redis, parent: storage }
+  - { id: mysql, name: MySQL, parent: storage }
+  - { id: memory, name: 内存, parent: redis }
+  - { id: index, name: 索引, parent: mysql }
+  - { id: transaction, name: 事务, parent: mysql }
+  - { id: cache, name: 缓存, parent: null }
+  - { id: concurrency, name: 并发, parent: null }
+  - { id: lock, name: 锁, parent: concurrency }
+  - { id: thread-pool, name: 线程池, parent: concurrency }
+  - { id: network, name: 网络, parent: null }
+  - { id: http, name: HTTP, parent: network }
+  - { id: tls, name: TLS, parent: network }
+  - { id: performance, name: 性能, parent: null }
+  - { id: system-design, name: 系统设计, parent: null }
+  - { id: troubleshooting, name: 故障排查, parent: null }
+
+collections:
+  - id: redis-sprint
+    name: Redis 3 天冲刺
+    description: 高频核心题，按依赖顺序排列
+    questions:
+      - q_01M6B1YQ006MV342WKV7JTR8H1 # 过期删除
+      - q_01M6B20HK0ZNWA1FJ4RESDFN8M # 内存淘汰
+      - q_01M6B22C60ED5XXJXQWP3KD9RG # 穿透 / 击穿 / 雪崩
+      - q_01M6B261C0ZAPARVE2GQ1GDDW8 # 分布式限流
+  - id: backend-basics
+    name: 后端基础必刷
+    questions:
+      - q_01M6B27VZ068DC8PEV0GWCQG5K
+      - q_01M6B29PJ0B0Z5A1V1E5PP94J6
+      - q_01M6B2F6B0M7TZ6C70HX4YY892
+      - q_01M6B2MP40WM52PJV40MZJ9T5J
+
+lifecycle:
+  removed: []
+  merged: {}
+
+# 只进 latest.json，不进 bundle
+release:
+  changes: 首个 v2 示例题库：14 题，覆盖 Redis、MySQL、Java 并发与网络，含选择题、图片与专题。
+  minAppVersion: 0.2.0
