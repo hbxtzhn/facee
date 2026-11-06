@@ -1,66 +1,82 @@
-export type AnswerSection = { title: string; body: string };
+import { suggestMasteryFromCoverage, type KeyPoint, type Mastery, type Question, type QuestionType } from '../bank';
 
-/** 去掉题面/答案开头的 `# 标题` 行（与题目大标题重复时），避免正文重复渲染标题 */
-export function stripLeadingHeading(markdown: string, expectedTitle?: string): string {
-  const normalized = markdown.replace(/\r\n/g, '\n');
-  const match = normalized.match(/^#\s+(.+)\n+/);
-  if (!match || (expectedTitle && match[1].trim() !== expectedTitle.trim())) return normalized;
-  return normalized.slice(match[0].length).trimStart();
+/**
+ * 详情页的纯函数（不依赖 React / store，便于单测）：元信息行、要点覆盖率与建议打标、
+ * 选择题判分、纠错链接。
+ */
+
+export const DIFFICULTY_LABELS: Record<Question['difficulty'], string> = {
+  easy: '简单',
+  medium: '中等',
+  hard: '困难',
+};
+
+export const TYPE_LABELS: Record<QuestionType, string> = {
+  concept: '概念',
+  scenario: '场景',
+  coding: '编码',
+  design: '设计',
+  behavioral: '行为',
+  choice: '选择题',
+};
+
+/** 要点权重的弱化标注：3 = 核心，2 = 重要，1（加分项）不标 */
+export function keyPointWeightLabel(weight: KeyPoint['weight']): string | null {
+  if (weight === 3) return '核心';
+  if (weight === 2) return '重要';
+  return null;
 }
 
-// 分离正文中的元信息引用块（例如：来源: JavaGuide...）以防干扰沉浸式做题
-export function partitionSourceMeta(markdown: string): { body: string; sourceMeta: string | null } {
-  const normalized = markdown.replace(/\r\n/g, '\n').trim();
-  const lines = normalized.split('\n');
-
-  // 匹配开头的 > 引用块（如 > 来源：JavaGuide...）
-  if (lines.length > 0 && lines[0].trim().startsWith('>')) {
-    let endIdx = 0;
-    while (endIdx < lines.length && (lines[endIdx].trim().startsWith('>') || lines[endIdx].trim() === '')) {
-      endIdx++;
-    }
-    const metaBlock = lines.slice(0, endIdx).join('\n').trim();
-    // 判断是否包含典型的来源/规范元数据
-    if (/来源|版权|license|Apache|JavaGuide/i.test(metaBlock)) {
-      const restBody = lines.slice(endIdx).join('\n').trim();
-      return { body: restBody, sourceMeta: metaBlock };
-    }
-  }
-
-  return { body: normalized, sourceMeta: null };
+/** 一行弱化元信息：分类 · 难度 · 类型 · 适用版本 */
+export function buildMetaLine(question: Pick<Question, 'difficulty' | 'type' | 'appliesTo'>, categoryName: string | null): string {
+  return [
+    categoryName,
+    DIFFICULTY_LABELS[question.difficulty],
+    TYPE_LABELS[question.type],
+    ...(question.appliesTo ?? []),
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(' · ');
 }
 
-/** Separates the answer from the optional interviewer follow-up section. */
-export function splitAnswerSections(markdown: string): { main: string; followUps: AnswerSection[] } {
-  const normalized = markdown.replace(/\r\n/g, '\n').trim();
-  const lines = normalized.split('\n');
-  const markerIndex = lines.findIndex((line) => /^#{1,6}\s*面试官追问\s*$/.test(line.trim()));
-  if (markerIndex < 0) return { main: normalized, followUps: [] };
-
-  const main = lines.slice(0, markerIndex).join('\n').trim();
-  const followUpLines = lines.slice(markerIndex + 1);
-  const followUps: AnswerSection[] = [];
-  let currentTitle = '追问';
-  let currentBody: string[] = [];
-
-  const pushCurrent = () => {
-    const body = currentBody.join('\n').trim();
-    if (body) followUps.push({ title: currentTitle, body });
-  };
-
-  for (const line of followUpLines) {
-    const trimmed = line.trim();
-    const boldTitle = trimmed.match(/^\*\*(追问\s*\d+\s*[:：].+?)\*\*\s*$/);
-    const headingTitle = trimmed.match(/^#{1,6}\s+(.+)$/);
-    const sectionTitle = boldTitle?.[1] ?? headingTitle?.[1];
-    if (sectionTitle) {
-      pushCurrent();
-      currentTitle = sectionTitle.replace(/\*\*/g, '').trim();
-      currentBody = [];
-    } else {
-      currentBody.push(line);
-    }
+/** 按权重计算要点覆盖率（0–1）；与数据层口径一致，用于提交前的即时预览 */
+export function weightedCoverage(keyPoints: readonly KeyPoint[], covered: Record<string, boolean>): number {
+  let total = 0;
+  let hit = 0;
+  for (const kp of keyPoints) {
+    total += kp.weight;
+    if (covered[kp.id]) hit += kp.weight;
   }
-  pushCurrent();
-  return { main, followUps };
+  return total > 0 ? hit / total : 0;
+}
+
+/**
+ * 由要点覆盖率给出建议打标（阈值沿用数据层 suggestMasteryFromCoverage）：
+ * ≥ 80 % 会了，40 %–80 % 模糊，< 40 % 不会。只是建议，必须由用户在三态开关上确认。
+ */
+export function suggestFromCoverage(coverage: number): Mastery {
+  return suggestMasteryFromCoverage(coverage);
+}
+
+/** 选择题判分：所选集合与正确集合完全一致才算对（支持多选） */
+export function isChoiceCorrect(selected: readonly string[], correct: readonly string[]): boolean {
+  if (selected.length !== correct.length) return false;
+  const expected = new Set(correct);
+  return selected.every((id) => expected.has(id));
+}
+
+/** 选择题的建议打标：答对 → 会了，答错 → 不会 */
+export function suggestFromChoice(correct: boolean): Mastery {
+  return correct ? 'known' : 'unknown';
+}
+
+/** 纠错链接：替换 `{questionId}` 占位符（URL 编码）；只接受 http(s) */
+export function buildFeedbackUrl(feedbackUrl: string | null | undefined, questionId: string): string | null {
+  if (!feedbackUrl || !/^https?:\/\//i.test(feedbackUrl)) return null;
+  return feedbackUrl.split('{questionId}').join(encodeURIComponent(questionId));
+}
+
+/** 百分比文案（四舍五入到整数） */
+export function formatPercent(ratio: number): string {
+  return `${Math.round(Math.max(0, Math.min(1, ratio)) * 100)}%`;
 }

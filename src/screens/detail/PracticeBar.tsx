@@ -1,7 +1,8 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft, ChevronRight } from 'lucide-react-native';
-import { MasteryToggles } from '../../components/mastery-control';
+import type { Mastery } from '../../bank';
+import { MasteryToggles, type MasteryState } from '../../components/mastery-control';
 import { colors, spacing, typography } from '../../theme';
 
 export interface PracticeBarQueue {
@@ -17,18 +18,22 @@ export interface PracticeBarQueue {
  * 单行布局：掌握度三态文字开关 ·（弹性留白）· 答案开关 · ‹ 3 / 20 ›
  * - 「显示答案」是全栏唯一的主操作（主色加粗文字）；展开后降级为普通文字「收起答案」；
  * - 上一题/下一题只是图标 chevron，首/末题置灰；非队列模式不显示翻页组；
- * - 底部留出安全区（手势导航条）。
+ * - 底部留出安全区（手势导航条）；
+ * - 掌握度来自当前题的 QuestionDetail.learning；mastery 为 undefined（题目尚未加载）时不显示三态开关；
+ *   suggested 是要点自评 / 选择题给出的建议档位（虚线提示，需用户点按确认）。
  */
 export function PracticeBar({
-  bankId,
-  questionId,
+  mastery,
+  suggested = null,
+  onSelectMastery,
   answerVisible,
   answerAvailable,
   onToggleAnswer,
   queue,
 }: {
-  bankId: string | null;
-  questionId: string;
+  mastery: MasteryState | undefined;
+  suggested?: Mastery | null;
+  onSelectMastery: (value: Mastery | null) => void;
   answerVisible: boolean;
   answerAvailable: boolean;
   onToggleAnswer: () => void;
@@ -43,7 +48,7 @@ export function PracticeBar({
   return (
     <View testID="practice-bar" style={[styles.bar, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
       <View style={styles.row}>
-        {bankId ? <MasteryToggles bankId={bankId} questionId={questionId} compact /> : null}
+        {mastery ? <MasteryToggles state={mastery} suggested={suggested} onSelect={onSelectMastery} compact /> : null}
         <View style={styles.spacer} />
 
         <Pressable
