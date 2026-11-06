@@ -37,6 +37,8 @@ export function ReadingRow({
   accessibilityLabel,
   accessibilityHint,
   titleLines = 2,
+  snippetLines = 2,
+  badge,
   emphasis = false,
   first = false,
 }: {
@@ -50,6 +52,10 @@ export function ReadingRow({
   accessibilityLabel: string;
   accessibilityHint?: string;
   titleLines?: number;
+  /** 补充说明的最大行数（列表的一句话预览用 1 行） */
+  snippetLines?: number;
+  /** 元信息前的主色短标记（如「内容已更新」「已不在题库中」） */
+  badge?: string | null;
   /** 强调行（如「继续上次练习」）：标题用主色 */
   emphasis?: boolean;
   /** 首行额外画一条顶部发丝线，与上方眉题拉开 */
@@ -68,13 +74,14 @@ export function ReadingRow({
           {title}
         </Text>
         {snippet ? (
-          <Text style={styles.rowSnippet} numberOfLines={2}>
+          <Text style={styles.rowSnippet} numberOfLines={snippetLines}>
             {snippet}
           </Text>
         ) : null}
-        {meta ? (
+        {meta || badge ? (
           <Text style={styles.rowMeta} numberOfLines={1}>
-            {meta}
+            {badge ? <Text style={styles.rowBadge}>{meta ? `${badge} · ` : badge}</Text> : null}
+            {meta ?? null}
           </Text>
         ) : null}
       </View>
@@ -129,7 +136,9 @@ export function UnderlineSearchField({
   placeholder,
   accessibilityLabel,
   style,
+  autoFocus = false,
 }: {
+  autoFocus?: boolean;
   value: string;
   onChangeText: (value: string) => void;
   placeholder: string;
@@ -145,6 +154,7 @@ export function UnderlineSearchField({
         placeholderTextColor={colors.textSubtle}
         value={value}
         onChangeText={onChangeText}
+        autoFocus={autoFocus}
         returnKeyType="search"
         autoCapitalize="none"
         accessibilityLabel={accessibilityLabel}
@@ -218,6 +228,7 @@ const styles = StyleSheet.create({
   rowTitleEmphasis: { color: colors.primary, fontWeight: '600' },
   rowSnippet: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.xs, lineHeight: 18 },
   rowMeta: { ...typography.caption, color: colors.textMuted, marginTop: spacing.xs },
+  rowBadge: { color: colors.primary, fontWeight: '600' },
   rowTrailing: { ...typography.caption, color: colors.textMuted, fontVariant: ['tabular-nums'] },
   tabsRow: {
     flexDirection: 'row',

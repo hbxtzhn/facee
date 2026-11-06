@@ -12,6 +12,9 @@ import { ProfileScreen } from '../screens/ProfileScreen';
 import { BankManagerScreen } from '../screens/BankManagerScreen';
 import { BankEditorScreen } from '../screens/BankEditorScreen';
 import { OnlineBanksScreen } from '../screens/OnlineBanksScreen';
+import { SectionsScreen } from '../screens/sections/SectionsScreen';
+import { SectionScreen } from '../screens/sections/SectionScreen';
+import { listTitle } from '../screens/home/components/list-title';
 import { colors, navigationTheme, typography } from '../theme';
 import type { Question } from '../question-bank';
 
@@ -39,14 +42,27 @@ export type RootStackParamList = {
 export type HomeStackParamList = {
   Home: undefined;
   List: ListParams;
+  /** 自定义分区管理（issue #3）：新建 / 重命名 / 排序 / 删除分区 */
+  Sections: undefined;
+  /** 单个分区：浏览其中的分类，添加 / 排序 / 移除分类 */
+  Section: { sectionId: string; sectionName?: string };
 };
 
-/** 列表页入口：来自分类（§5.1）或来自标签领域（向后兼容）。 */
+/**
+ * 列表页入口（互斥，按下列顺序取第一个）：分类 / 标签（含子孙）/ 专题 / 自定义分区 / 「内容已更新」；
+ * 都不给 = 整个当前题库。`search: true` 为首页全局搜索入口（自动聚焦搜索框，未输入时不列题）。
+ */
 export type ListParams = {
-  tagId?: string;
-  tagName?: string;
   categoryId?: string;
   categoryName?: string;
+  tagId?: string;
+  tagName?: string;
+  collectionId?: string;
+  collectionName?: string;
+  sectionId?: string;
+  sectionName?: string;
+  updatedOnly?: boolean;
+  search?: boolean;
 };
 
 export type MainTabParamList = {
@@ -79,7 +95,13 @@ function HomeStack() {
       <HomeStackNavigator.Screen
         name="List"
         component={ListScreen}
-        options={({ route }) => ({ title: route.params.tagName ?? '题目' })}
+        options={({ route }) => ({ title: listTitle(route.params) })}
+      />
+      <HomeStackNavigator.Screen name="Sections" component={SectionsScreen} options={{ title: '我的分区' }} />
+      <HomeStackNavigator.Screen
+        name="Section"
+        component={SectionScreen}
+        options={({ route }) => ({ title: route.params.sectionName ?? '分区' })}
       />
     </HomeStackNavigator.Navigator>
   );

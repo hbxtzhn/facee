@@ -1,21 +1,18 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, type CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Bookmark, RotateCcw, Search } from 'lucide-react-native';
-import { questionBankRepository, type Question } from '../question-bank';
-import { useFavoritesStore } from '../store/favoritesStore';
-import { useMasteryStore } from '../store/masteryStore';
-import { usePracticeSessionStore } from '../store/practiceSessionStore';
-import { useQuestionBankStore } from '../question-bank/store';
+import { useBankStore, type QuestionListItem } from '../bank';
 import type { MainTabParamList, RootStackParamList } from '../navigation/AppNavigator';
 import { EmptyState } from '../components/ui';
 import { SkeletonBlock } from '../components/skeleton';
 import { colors, layout, radii, spacing, typography } from '../theme';
 import { ReadingRow, TextAction, TextTabs, UnderlineSearchField } from './home/components/reading';
-import { buildQuestionMeta } from './home/components/question-meta';
+import { buildQuestionMeta, summaryPreview } from './home/components/question-meta';
+import { BankGateEmpty, useBankGateState, useEnsureBankInitialized } from './home/components/bank-gate';
 
 type Nav = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'Favorites'>,
@@ -24,66 +21,60 @@ type Nav = CompositeNavigationProp<
 
 type Segment = 'favorites' | 'wrong';
 
-const DIFFICULTY_LABEL: Record<number, string> = { 1: '简单', 2: '中等', 3: '困难' };
-
+/**
+ * 收藏 | 错题（当前题库，换库自动跟随）：
+ * 收藏 = 数据层 favoritesOnly；错题 = 标成「不会 / 模糊」的题（mastery 筛选，派生，不存第二份真相）。
+ */
 export function FavoritesScreen() {
-  const loadFavorites = useFavoritesStore((state) => state.load);
-  const loadMastery = useMasteryStore((state) => state.load);
   const nav = useNavigation<Nav>();
+  useEnsureBankInitialized();
+  const gate = useBankGateState();
+  const bankName = useBankStore((state) => state.activeBank?.name ?? null);
+  const activeBankId = useBankStore((state) => state.activeBankId);
+  const contentVersion = useBankStore((state) => state.contentVersion);
+  const learningVersion = useBankStore((state) => state.learningVersion);
   const [segment, setSegment] = useState<Segment>('favorites');
-  const [favoriteItems, setFavoriteItems] = useState<Question[]>([]);
-  const [wrongItems, setWrongItems] = useState<Question[]>([]);
-  const [orphanMarks, setOrphanMarks] = useState(0);
+  const [favoriteItems, setFavoriteItems] = useState<QuestionListItem[]>([]);
+  const [wrongItems, setWrongItems] = useState<QuestionListItem[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const bankId = useQuestionBankStore((state) => state.catalog?.id ?? null);
-  const bankTitle = useQuestionBankStore((state) => state.catalog?.title ?? null);
-  const bankMarks = useMasteryStore((state) => (bankId ? state.marks[bankId] : undefined));
+  const [error, setError] = useState<string | null>(null);
 
-  /** 加载代次：离开再回来会发起新加载，较早发起、较晚完成的旧加载不得覆盖新结果 */
+  /** 加载代次：较早发起、较晚完成的旧加载不得覆盖新结果 */
   const loadGeneration = useRef(0);
 
   const load = useCallback(async () => {
     const generation = ++loadGeneration.current;
-    const isCurrent = () => generation === loadGeneration.current;
-    setLoaded(false);
-    // 收藏与掌握度都先拉到最新，再一次性派生两个列表
-    await Promise.all([loadFavorites(), loadMastery()]);
-    const all = await questionBankRepository.listQuestions();
-    if (!isCurrent()) return;
-    const byId = new Map(all.map((question) => [question.id, question]));
-
-    // 收藏按题库隔离：ids 只含当前激活题库的收藏
-    const favoriteIds = useFavoritesStore.getState().ids;
-    setFavoriteItems(
-      favoriteIds.map((id) => byId.get(id)).filter((question): question is Question => Boolean(question)),
-    );
-
-    // 错题本 = 当前题库里标成「不会 / 模糊」的题（派生，不存第二份真相）。
-    // 旧题库遗留的标记（当前库不存在该题）静默过滤，但给一句提示。
-    const activeBankId = useQuestionBankStore.getState().catalog?.id ?? null;
-    const marks = activeBankId ? useMasteryStore.getState().marks[activeBankId] ?? {} : {};
-    const wrongIds = Object.entries(marks)
-      .filter(([, mastery]) => mastery === 'unknown' || mastery === 'fuzzy')
-      .map(([id]) => id);
-    const resolved = wrongIds
-      .map((id) => byId.get(id))
-      .filter((question): question is Question => Boolean(question));
-    setWrongItems(resolved);
-    setOrphanMarks(wrongIds.length - resolved.length);
+    const store = useBankStore.getState();
+    if (store.status !== 'ready' || !store.activeBankId) {
+      setFavoriteItems([]);
+      setWrongItems([]);
+      setLoaded(true);
+      return;
+    }
+    const [favorites, wrong] = await Promise.all([
+      store.listQuestions({ favoritesOnly: true }),
+      store.listQuestions({ mastery: ['unknown', 'fuzzy'] }),
+    ]);
+    if (generation !== loadGeneration.current) return;
+    setFavoriteItems(favorites.ok ? favorites.value : []);
+    setWrongItems(wrong.ok ? wrong.value : []);
+    setError(!favorites.ok ? favorites.error.message : !wrong.ok ? wrong.error.message : null);
     setLoaded(true);
-  }, [loadFavorites, loadMastery]);
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load, gate, activeBankId, contentVersion, learningVersion]);
 
   useFocusEffect(
     useCallback(() => {
       void load();
-      // 失焦时作废进行中的加载：它完成后不再写任何状态（新一次聚焦会重新加载）
-      return () => { loadGeneration.current += 1; };
     }, [load]),
   );
 
   const items = segment === 'favorites' ? favoriteItems : wrongItems;
 
-  // 列表内关键词过滤（纯内存，§6.5 回显由输入框本身 + 一键清除承担）
+  // 列表内关键词过滤（纯内存；整库搜索在首页）
   const [query, setQuery] = useState('');
   const visibleItems = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
@@ -92,29 +83,31 @@ export function FavoritesScreen() {
   }, [items, query]);
 
   /** 以练习模式进入一组题，并记为当前题库的练习会话（首页「继续上次练习」据此恢复） */
-  function startQueue(list: Question[], startIndex: number, title: string) {
+  async function startQueue(list: QuestionListItem[], startIndex: number, title: string) {
     if (list.length === 0) return;
-    const queue = list.map((question) => question.id);
-    const activeBankId = useQuestionBankStore.getState().catalog?.id;
-    if (activeBankId) {
-      usePracticeSessionStore.getState().saveSession(activeBankId, {
-        queue,
-        index: startIndex,
-        mode: 'practice',
-        title,
-      });
-    }
-    nav.navigate('Detail', {
-      id: queue[startIndex],
-      queue,
-      queueIndex: startIndex,
-      mode: 'practice',
-      meta: list[startIndex],
-    });
+    const queue = list.map((item) => item.id);
+    await useBankStore.getState().saveSession({ queue, index: startIndex, mode: 'practice', title });
+    nav.navigate('Detail', { id: queue[startIndex], queue, queueIndex: startIndex, mode: 'practice' });
   }
 
-  function startWrongReview() {
-    startQueue(wrongItems, 0, '错题复习');
+  if (gate !== 'ready') {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <View style={styles.header}>
+          <Text style={styles.eyebrow}>复习</Text>
+          <Text style={styles.title} accessibilityRole="header">收藏</Text>
+        </View>
+        <View style={styles.listContent}>
+          {gate === 'loading' ? null : (
+            <BankGateEmpty
+              state={gate}
+              onOnlineBanks={() => nav.navigate('OnlineBanks')}
+              onCreateLocal={() => nav.navigate('BankManager')}
+            />
+          )}
+        </View>
+      </SafeAreaView>
+    );
   }
 
   const segmentTitle = segment === 'favorites' ? '收藏' : '错题本';
@@ -128,20 +121,20 @@ export function FavoritesScreen() {
       <TextAction
         label="开始复习"
         accessibilityLabel={`开始复习 ${wrongItems.length} 道错题`}
-        onPress={startWrongReview}
+        onPress={() => void startQueue(wrongItems, 0, '错题复习')}
       />
     ) : segment === 'favorites' && favoriteItems.length > 1 ? (
       <TextAction
         label="依次练习"
         accessibilityLabel={`依次练习 ${favoriteItems.length} 道收藏`}
-        onPress={() => startQueue(favoriteItems, 0, '收藏')}
+        onPress={() => void startQueue(favoriteItems, 0, '收藏')}
       />
     ) : null;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.eyebrow}>{bankTitle ? `复习 · ${bankTitle}` : '复习'}</Text>
+        <Text style={styles.eyebrow}>{bankName ? `复习 · ${bankName}` : '复习'}</Text>
         <Text style={styles.title} accessibilityRole="header">{segmentTitle}</Text>
         <Text style={styles.subtitle}>{subtitle}</Text>
 
@@ -190,20 +183,17 @@ export function FavoritesScreen() {
             <ReadingRow
               first={index === 0}
               title={item.title}
-              meta={buildQuestionMeta(item, bankMarks?.[item.id])}
-              accessibilityLabel={`${item.title}，${DIFFICULTY_LABEL[item.difficulty] ?? '未知难度'}`}
+              snippet={summaryPreview(item.summary)}
+              snippetLines={1}
+              badge={item.contentUpdated ? '内容已更新' : null}
+              meta={buildQuestionMeta(item)}
+              accessibilityLabel={`${item.title}，${buildQuestionMeta(item)}`}
               onPress={() =>
-                startQueue(visibleItems, index, segment === 'favorites' ? '收藏' : '错题复习')
+                void startQueue(visibleItems, index, segment === 'favorites' ? '收藏' : '错题复习')
               }
             />
           )}
-          ListHeaderComponent={
-            segment === 'wrong' && orphanMarks > 0 && !query ? (
-              <Text style={styles.orphanHint}>
-                另有 {orphanMarks} 条标记来自已卸载的旧题库，未计入下方列表。
-              </Text>
-            ) : null
-          }
+          ListHeaderComponent={error ? <Text style={styles.errorHint} accessibilityRole="alert">{error}</Text> : null}
           ListEmptyComponent={
             items.length > 0 && visibleItems.length === 0 ? (
               <EmptyState
@@ -216,7 +206,7 @@ export function FavoritesScreen() {
             ) : segment === 'favorites' ? (
               <EmptyState
                 title="还没有收藏题目"
-                description="刷题时遇到好题或难题，点右上角「收藏」即可在这里复习。收藏按题库分别保存。"
+                description="刷题时遇到好题或难题，点「收藏」即可在这里复习。收藏按题库分别保存，换库自动切换。"
                 actionLabel="去题库逛逛"
                 onAction={() => nav.navigate('HomeTab')}
                 icon={Bookmark}
@@ -253,9 +243,9 @@ const styles = StyleSheet.create({
   subtitle: { ...typography.caption, color: colors.textMuted, marginTop: spacing.xs, lineHeight: 18 },
   tabs: { marginTop: spacing.xl },
   search: { marginTop: spacing.sm },
-  orphanHint: {
+  errorHint: {
     ...typography.caption,
-    color: colors.textSubtle,
+    color: colors.danger,
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
   },
