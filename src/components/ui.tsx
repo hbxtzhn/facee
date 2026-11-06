@@ -13,12 +13,10 @@ import { ArrowRight, Inbox } from 'lucide-react-native';
 import {
   cardChrome,
   colors,
-  difficultyStyles,
   radii,
   spacing,
   typography,
 } from '../theme';
-import type { Difficulty } from '../question-bank/types';
 
 interface AppButtonProps {
   label: string;
@@ -178,19 +176,6 @@ export function Surface({
   return <View style={[styles.surface, style]}>{children}</View>;
 }
 
-/**
- * 难度标签（唯一实现）：11px/600、软底色、无描边。
- * List/Favorites/Detail 三处此前各写一份且样式漂移，统一从这里引用。
- */
-export function DifficultyBadge({ difficulty }: { difficulty: Difficulty }) {
-  const config = difficultyStyles[difficulty];
-  return (
-    <View style={[styles.difficultyBadge, { backgroundColor: config.background }]}>
-      <Text style={[styles.difficultyBadgeText, { color: config.text }]}>{config.label}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   button: {
     minHeight: 44,
@@ -283,17 +268,5 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 14,
     lineHeight: 20,
-  },
-  // 无底色的纯文字难度：去掉水平内边距，与相邻元信息左对齐
-  difficultyBadge: {
-    paddingHorizontal: 0,
-    paddingVertical: 2,
-    borderRadius: 6,
-    alignSelf: 'flex-start',
-  },
-  difficultyBadgeText: {
-    ...typography.caption,
-    fontWeight: '600',
-    fontSize: 11,
   },
 });

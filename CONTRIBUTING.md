@@ -74,7 +74,7 @@ cd android && ./gradlew assembleRelease
 
 ## 测试约定
 
-- 纯逻辑（`src/lib/`、`src/question-bank/` 的纯函数）必须有单测；
+- 纯逻辑（`src/lib/`、`src/bank/` 的纯函数与数据层）必须有单测；数据层测试用 `node:sqlite` 跑真实 SQL（见 `src/bank/README.md`）；
   UI 改动至少补「渲染 + 关键交互」的冒烟（参考 `src/screens/**/*.spec.tsx`）
 - 遵循 RTL v14 的异步约定：`render` 后 `await act(async () => {})` 再断言；
   触发 onChangeText / press 后用 `await act(async () => { … })` 包裹

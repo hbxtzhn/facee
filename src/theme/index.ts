@@ -42,13 +42,6 @@ export const colors = {
   code: '#2B58DB',
 } as const;
 
-export const difficultyStyles = {
-  // 极简阅读风：只用低饱和文字色区分，不铺底色块
-  1: { label: '简单', text: '#4F7A55', background: 'transparent' },
-  2: { label: '中等', text: '#9A6B2F', background: 'transparent' },
-  3: { label: '困难', text: '#A24A43', background: 'transparent' },
-} as const;
-
 export const spacing = {
   xs: 4,
   sm: 8,

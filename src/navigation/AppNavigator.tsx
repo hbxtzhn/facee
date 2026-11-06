@@ -16,12 +16,10 @@ import { SectionsScreen } from '../screens/sections/SectionsScreen';
 import { SectionScreen } from '../screens/sections/SectionScreen';
 import { listTitle } from '../screens/home/components/list-title';
 import { colors, navigationTheme, typography } from '../theme';
-import type { Question } from '../question-bank';
 
 /** 详情页参数：browse 浏览 / practice 练习队列 / review 间隔复习队列（复用练习链路） */
 export type DetailParams = {
   id: string;
-  meta?: Question;
   queue?: string[];
   queueIndex?: number;
   mode?: 'browse' | 'practice' | 'review';
