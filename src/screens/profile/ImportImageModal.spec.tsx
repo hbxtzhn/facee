@@ -12,7 +12,10 @@ import { ImportTextModal } from './ImportTextModal';
 import { useLlmConfigStore } from '../../store/llm-config-store';
 
 const IMAGE = { uri: 'file:///test.png', mimeType: 'image/png', base64: 'iVBORw0KGgo=' };
-const DRAFTS = ['图中第一题', '图中第二题'].map(title => ({ title, questionMd: '题干', answerMd: null, difficulty: 1, tags: [] }));
+const DRAFTS = ['图中第一题', '图中第二题'].map(title => ({
+  title, type: 'concept', difficulty: 'easy', prompt: null, summary: '结论', detail: null, pitfalls: [], followups: [], notes: [],
+  keyPoints: [{ text: '一', weight: 1 }, { text: '二', weight: 1 }, { text: '三', weight: 1 }],
+}));
 const props = { visible: true, onClose: jest.fn(), onConfirm: jest.fn(), onOpenAiSettings: jest.fn() };
 
 beforeEach(async () => {
@@ -43,7 +46,8 @@ it('相册单张选择只显示预览，用户发送后才生成草稿，并只�
   await act(async () => { fireEvent.press(view.getByText('图中第二题')); });
   await act(async () => { fireEvent.press(view.getByText('导入 1 题')); });
   expect(props.onConfirm).toHaveBeenCalledTimes(1);
-  expect(props.onConfirm.mock.calls[0][0]).toEqual([expect.objectContaining({ title: '图中第一题' })]);
+  expect(props.onConfirm.mock.calls[0][0]).toEqual([{ ...DRAFTS[0] }]);
+  expect(props.onConfirm.mock.calls[0][0][0]).not.toHaveProperty('key');
 });
 
 it('图片文件选择使用图片类型过滤且不自动上传', async () => {
@@ -115,4 +119,15 @@ it('关闭并重开后，旧选择器返回不能恢复旧图或触发网络', a
   expect(mockReadImage).not.toHaveBeenCalled();
   expect(mockExtract).not.toHaveBeenCalled();
   expect(view.queryByLabelText('所选图片预览')).toBeNull();
+});
+
+it('预览显示 v2 摘要：题型 / 难度 / 要点数、一句话与自动修正说明', async () => {
+  mockExtract.mockResolvedValue([{ ...DRAFTS[0], notes: ['要点超过 5 条，只保留前 5 条'] }]);
+  const view = await openImageMode();
+  await act(async () => { fireEvent.press(view.getByText('选择图片文件')); });
+  await act(async () => { fireEvent.press(view.getByText('发送图片并抽取')); });
+  await waitFor(() => expect(view.getByText('图中第一题')).toBeTruthy());
+  expect(view.getByText(/概念 · 简单 · 要点 3 条/)).toBeTruthy();
+  expect(view.getByText('结论')).toBeTruthy();
+  expect(view.getByText('已自动修正：要点超过 5 条，只保留前 5 条')).toBeTruthy();
 });

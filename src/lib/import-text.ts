@@ -81,3 +81,24 @@ async function defaultRead(path: string): Promise<string> {
   const FileSystem = require('expo-file-system/legacy') as typeof import('expo-file-system/legacy');
   return FileSystem.readAsStringAsync(path, { encoding: 'utf8' });
 }
+
+/**
+ * 规范字数（docs/题库规范-v2-草案.md §2.1）：非 ASCII 字符每个计 1，ASCII 字符每个计 0.5，合计向上取整。
+ */
+export function countSpecChars(text: string): number {
+  let half = 0;
+  for (const char of text) half += char.charCodeAt(0) < 0x80 ? 1 : 2;
+  return Math.ceil(half / 2);
+}
+
+/** 按规范字数截断到 limit 以内 */
+export function clipSpecChars(text: string, limit: number): string {
+  let half = 0;
+  let out = '';
+  for (const char of text) {
+    half += char.charCodeAt(0) < 0x80 ? 1 : 2;
+    if (Math.ceil(half / 2) > limit) return out;
+    out += char;
+  }
+  return out;
+}

@@ -1,183 +1,121 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
 /**
- * 线上题库页：官方题库安装 / 更新、按网址添加（重复地址 = 更新；已修改旧库先问）、
- * 已装线上题库逐个检查更新；安装失败不留未处理的拒绝。
+ * 线上题库页（真实 useBankStore + Node SQLite 运行时）：
+ * 官方题库 404 给出明确说明、按 latest.json 地址添加、检查更新先展示新增 / 修改 / 删除与说明，
+ * 用户确认后才更新；独占操作进行中显示进度并拦截返回；Web 显示不支持。
  */
 
 const mockPrevent = jest.fn();
 jest.mock('@react-navigation/native', () => ({
   usePreventRemove: (prevent: boolean) => mockPrevent(prevent),
 }));
-
-const mockActions = {
-  refreshBanks: jest.fn(),
-  updateBank: jest.fn(),
-  setSourceUrl: jest.fn(),
-  installConfigured: jest.fn(),
-  findBankBySourceUrl: jest.fn(),
-  clearInstallError: jest.fn(),
-};
-const mockState = {
-  banks: [] as unknown[],
-  installing: false,
-  installProgress: null as null | { label: string; completed: number; total: number },
-  installError: null as string | null,
-  sourceUrl: '',
-};
-jest.mock('../question-bank/store', () => ({
-  useQuestionBankStore: Object.assign(
-    (selector: (state: unknown) => unknown) => selector({ ...mockState, ...mockActions }),
-    { getState: () => ({ ...mockState, ...mockActions }) },
-  ),
-}));
+jest.mock('expo-file-system/legacy', () => jest.requireActual('./profile/bank-test-utils').mockLegacyFs());
 
 // eslint-disable-next-line import/first
 import { OnlineBanksScreen } from './OnlineBanksScreen';
+// eslint-disable-next-line import/first
+import { useBankStore } from '../bank';
+// eslint-disable-next-line import/first
+import { finalize, QID } from '../bank/__fixtures__/sample-bank';
+// eslint-disable-next-line import/first
+import type { TestRuntime } from '../bank/__fixtures__/node-runtime';
+// eslint-disable-next-line import/first
+import {
+  SAMPLE_ASSETS,
+  SAMPLE_BANK_ID,
+  installSampleRemote,
+  publish,
+  sampleBundle,
+  setupBankStore,
+  teardownBankStore,
+} from './profile/bank-test-utils';
 
-const OFFICIAL = 'https://github.com/HBxtzhn/facee-bank/releases/latest/download/question-bank.zip';
-const URL = 'https://example.com/bank.zip';
-
-type View = Awaited<ReturnType<typeof render>>;
-async function submitUrl(view: View, url: string) {
-  await act(async () => { fireEvent.changeText(view.getByLabelText('题库 ZIP 地址'), url); });
-  await act(async () => { fireEvent.press(view.getByLabelText('按网址下载题库')); });
-}
+let t: TestRuntime;
+beforeEach(async () => {
+  mockPrevent.mockClear();
+  t = await setupBankStore();
+});
+afterEach(async () => {
+  await teardownBankStore(t);
+});
 
 describe('OnlineBanksScreen 线上题库页', () => {
-  beforeEach(async () => {
-    await AsyncStorage.clear();
-    jest.clearAllMocks();
-    mockState.banks = [];
-    mockState.installing = false;
-    mockState.installError = null;
-    mockActions.refreshBanks.mockResolvedValue(undefined);
-    mockActions.findBankBySourceUrl.mockResolvedValue(null);
-    mockActions.installConfigured.mockResolvedValue(true);
-  });
-
-  it('未安装官方题库：一键安装走 setSourceUrl + installConfigured', async () => {
+  it('官方题库尚未发布（清单 404）时给出明确说明', async () => {
     const view = await render(<OnlineBanksScreen />);
-    expect(mockActions.refreshBanks).toHaveBeenCalled();
     expect(view.getByText('FaceE 官方题库')).toBeTruthy();
     await act(async () => { fireEvent.press(view.getByLabelText('安装官方题库')); });
-    expect(mockActions.findBankBySourceUrl).toHaveBeenCalledWith(OFFICIAL);
-    expect(mockActions.setSourceUrl).toHaveBeenCalledWith(OFFICIAL);
-    expect(mockActions.installConfigured).toHaveBeenCalledTimes(1);
-    expect(view.getByText('题库已下载并启用，可以离线刷题了。')).toBeTruthy();
+    expect(view.getByText(/官方题库还没有发布 v2 版本（清单地址返回 404）/)).toBeTruthy();
+    expect(useBankStore.getState().banks).toHaveLength(0);
   });
 
-  it('已安装官方题库：显示已安装状态，按钮变为检查更新且走 updateBank', async () => {
-    mockState.banks = [{ catalogId: 'facee-official', namespace: 'ns', title: 'FaceE 官方', questionCount: 120,
-      source: 'online', active: true, version: '2.0.0', sourceUrl: OFFICIAL }];
-    mockActions.findBankBySourceUrl.mockResolvedValue({ bankId: 'facee-official', title: 'FaceE 官方', locallyModified: false });
-    mockActions.updateBank.mockResolvedValue({ added: 0, removed: 0, updated: false });
+  it('按 latest.json 地址添加：安装后出现在已安装列表并设为当前', async () => {
+    const url = publish(t, sampleBundle(), { assets: SAMPLE_ASSETS });
     const view = await render(<OnlineBanksScreen />);
-    expect(view.getByText(/已安装 · 120 题 · v2.0.0/)).toBeTruthy();
-    await act(async () => { fireEvent.press(view.getByLabelText('检查官方题库更新')); });
-    expect(mockActions.updateBank).toHaveBeenCalledWith('facee-official', undefined);
-    expect(mockActions.installConfigured).not.toHaveBeenCalled();
-    expect(view.getAllByText('「FaceE 官方」已是最新版本。').length).toBeGreaterThan(0);
+    expect(view.getByText('还没有线上题库。安装官方题库，或在上方粘贴地址。')).toBeTruthy();
+    await act(async () => { fireEvent.changeText(view.getByLabelText('题库清单地址'), url); });
+    await act(async () => { fireEvent.press(view.getByLabelText('按网址添加题库')); });
+    expect(view.getByText('已添加「测试题库」（5 题，线上题库）。')).toBeTruthy();
+    expect(view.getByText('测试题库')).toBeTruthy();
+    expect(view.getByText(/^5 题 · v1\.0\.0 · 检查于 \d{4}-\d{2}-\d{2} · 使用中$/)).toBeTruthy();
+    expect(useBankStore.getState().activeBankId).toBe(SAMPLE_BANK_ID);
   });
 
-  it('按网址添加：新地址直接安装', async () => {
+  it('地址无效时显示数据层的中文错误', async () => {
     const view = await render(<OnlineBanksScreen />);
-    await submitUrl(view, `  ${URL}  `);
-    expect(mockActions.findBankBySourceUrl).toHaveBeenCalledWith(URL);
-    expect(mockActions.setSourceUrl).toHaveBeenCalledWith(URL);
-    expect(mockActions.installConfigured).toHaveBeenCalledTimes(1);
+    await act(async () => { fireEvent.changeText(view.getByLabelText('题库清单地址'), 'ftp://nope'); });
+    await act(async () => { fireEvent.press(view.getByLabelText('按网址添加题库')); });
+    expect(view.getByText('请输入以 http(s):// 开头的 latest.json 地址')).toBeTruthy();
   });
 
-  it('按网址添加：已装线上题库的地址 = 更新它，不再询问', async () => {
-    mockActions.findBankBySourceUrl.mockResolvedValue({ bankId: 'facee-x', title: '某题库', locallyModified: false });
-    mockActions.updateBank.mockResolvedValue({ added: 2, removed: 0, updated: true });
+  it('检查更新：先展示新增 / 修改 / 删除与更新说明，确认后才安装新版本', async () => {
+    await installSampleRemote(t);
+    const next = sampleBundle('1.1.0');
+    next.questions[0] = finalize({ ...next.questions[0], title: '改过的标题' });
+    next.questions.push(finalize({ ...next.questions[1], id: QID.kafkaNew, title: 'Kafka 新题', related: [] }));
+    publish(t, next, { assets: SAMPLE_ASSETS, changes: '新增 Kafka 题；修正 Redis 标题。' });
+
     const view = await render(<OnlineBanksScreen />);
-    await submitUrl(view, URL);
-    expect(mockActions.updateBank).toHaveBeenCalledWith('facee-x', undefined);
-    expect(mockActions.installConfigured).not.toHaveBeenCalled();
-    expect(view.getByText('「某题库」更新完成：新增 2 题。')).toBeTruthy();
+    await act(async () => { fireEvent.press(view.getByLabelText('检查更新 测试题库')); });
+    expect(view.getByText('发现新版本 v1.1.0（当前 v1.0.0）')).toBeTruthy();
+    expect(view.getByText('新增 1 题 / 修改 1 题 / 删除 0 题')).toBeTruthy();
+    expect(view.getByText('更新说明：新增 Kafka 题；修正 Redis 标题。')).toBeTruthy();
+    // 只检查不安装
+    expect(useBankStore.getState().banks[0].version).toBe('1.0.0');
+
+    await act(async () => { fireEvent.press(view.getByLabelText('确认更新题库 测试题库')); });
+    await waitFor(() => expect(view.getByText('「测试题库」已更新到 v1.1.0（6 题）。')).toBeTruthy());
+    expect(useBankStore.getState().banks[0].version).toBe('1.1.0');
   });
 
-  describe('地址对应「已修改」旧库', () => {
-    beforeEach(() => {
-      mockActions.findBankBySourceUrl.mockResolvedValue({ bankId: 'local-old', title: '旧库', locallyModified: true });
+  it('检查更新可以放弃：暂不更新只收起结果；已是最新时提示', async () => {
+    await installSampleRemote(t);
+    const view = await render(<OnlineBanksScreen />);
+    await act(async () => { fireEvent.press(view.getByLabelText('检查更新 测试题库')); });
+    expect(view.getByText('已是最新版本 v1.0.0。')).toBeTruthy();
+    expect(view.queryByLabelText('确认更新题库 测试题库')).toBeNull();
+    await act(async () => { fireEvent.press(view.getByLabelText('关闭检查结果')); });
+    expect(view.queryByText('已是最新版本 v1.0.0。')).toBeNull();
+  });
+
+  it('独占操作进行中：显示 store 进度、禁用操作并拦截返回', async () => {
+    await installSampleRemote(t);
+    const view = await render(<OnlineBanksScreen />);
+    await act(async () => {
+      useBankStore.setState({ busy: { kind: 'update', bankId: SAMPLE_BANK_ID }, progress: { stage: 'bundle', message: '正在下载题库' } });
     });
-
-    it('先问：另装一份 → installConfigured', async () => {
-      const view = await render(<OnlineBanksScreen />);
-      await submitUrl(view, URL);
-      expect(view.getByText('这个地址对应已装的「旧库」')).toBeTruthy();
-      expect(mockActions.installConfigured).not.toHaveBeenCalled();
-      await act(async () => { fireEvent.press(view.getByLabelText('另装一份')); });
-      expect(mockActions.setSourceUrl).toHaveBeenCalledWith(URL);
-      expect(mockActions.installConfigured).toHaveBeenCalledTimes(1);
-    });
-
-    it('取消：什么都不做', async () => {
-      const view = await render(<OnlineBanksScreen />);
-      await submitUrl(view, URL);
-      await act(async () => { fireEvent.press(view.getByLabelText('取消')); });
-      expect(view.queryByText('这个地址对应已装的「旧库」')).toBeNull();
-      expect(mockActions.updateBank).not.toHaveBeenCalled();
-      expect(mockActions.installConfigured).not.toHaveBeenCalled();
-    });
-
-    it('更新原题库：需确认时再三选一，选择后带 onLocalEdits 重试', async () => {
-      mockActions.updateBank
-        .mockResolvedValueOnce({ added: 0, removed: 0, updated: false, needsConfirmation: true })
-        .mockResolvedValueOnce({ added: 1, removed: 0, updated: true, copiedBankId: 'local-copy' });
-      const view = await render(<OnlineBanksScreen />);
-      await submitUrl(view, URL);
-      await act(async () => { fireEvent.press(view.getByLabelText('更新原题库（会先询问如何处理本地修改）')); });
-      expect(mockActions.updateBank).toHaveBeenCalledWith('local-old', undefined);
-      expect(view.getByLabelText('直接覆盖更新题库 旧库')).toBeTruthy();
-      expect(view.getByLabelText('取消更新')).toBeTruthy();
-      await act(async () => { fireEvent.press(view.getByLabelText('另存副本后更新题库 旧库')); });
-      expect(mockActions.updateBank).toHaveBeenLastCalledWith('local-old', { onLocalEdits: 'keepCopy' });
-      expect(view.getByText('「旧库」更新完成：新增 1 题。本地修改已另存为副本。')).toBeTruthy();
-    });
-  });
-
-  it('安装失败：显示原因（returned false 与抛错两种），不抛出未处理拒绝', async () => {
-    mockActions.installConfigured.mockImplementationOnce(async () => {
-      mockState.installError = '题库下载失败（HTTP 404）';
-      return false;
-    });
-    const view = await render(<OnlineBanksScreen />);
-    await submitUrl(view, URL);
-    expect(view.getByText('题库下载失败（HTTP 404）')).toBeTruthy();
-
-    mockState.installError = null;
-    mockActions.installConfigured.mockRejectedValueOnce(new Error('正在处理题库，请稍后再试'));
-    await submitUrl(view, 'https://example.com/other.zip');
-    expect(view.getByText('正在处理题库，请稍后再试')).toBeTruthy();
-  });
-
-  it('查重失败时按新地址安装', async () => {
-    mockActions.findBankBySourceUrl.mockRejectedValue(new Error('boom'));
-    const view = await render(<OnlineBanksScreen />);
-    await submitUrl(view, URL);
-    expect(mockActions.installConfigured).toHaveBeenCalledTimes(1);
-  });
-
-  it('已装线上题库逐个检查更新，只列线上题库', async () => {
-    mockState.banks = [
-      { catalogId: 'facee-x', namespace: 'ns-x', title: '线上库', questionCount: 10, source: 'online', active: false,
-        version: '1.0.0', sourceUrl: URL },
-      { catalogId: 'local-y', namespace: 'ns-y', title: '本地库', questionCount: 3, source: 'local', active: true },
-    ];
-    mockActions.updateBank.mockResolvedValue({ added: 0, removed: 0, updated: false });
-    const view = await render(<OnlineBanksScreen />);
-    expect(view.queryByText('本地库')).toBeNull();
-    await act(async () => { fireEvent.press(view.getByLabelText('在线更新题库 线上库')); });
-    expect(mockActions.updateBank).toHaveBeenCalledWith('facee-x', undefined);
-    expect(view.getByText('「线上库」已是最新版本。')).toBeTruthy();
-  });
-
-  it('处理中拦截返回', async () => {
-    mockState.installing = true;
-    await render(<OnlineBanksScreen />);
+    expect(view.getByText('正在下载题库')).toBeTruthy();
+    expect(view.getByText('更新中')).toBeTruthy();
+    expect(view.getByLabelText('检查更新 测试题库').props.accessibilityState.disabled).toBe(true);
     expect(mockPrevent).toHaveBeenLastCalledWith(true);
+    await act(async () => { useBankStore.setState({ busy: null, progress: null }); });
+    expect(mockPrevent).toHaveBeenLastCalledWith(false);
+  });
+
+  it('Web（unsupported）只显示不支持说明', async () => {
+    await act(async () => { useBankStore.setState({ status: 'unsupported' }); });
+    const view = await render(<OnlineBanksScreen />);
+    expect(view.getByText('Web 预览不支持本地题库，请在 Android App 中使用。')).toBeTruthy();
+    expect(view.queryByText('FaceE 官方题库')).toBeNull();
   });
 });

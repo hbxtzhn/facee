@@ -1,64 +1,52 @@
 import { useEffect, useState } from 'react';
-import { Platform, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/AppNavigator';
-import { useQuestionBankStore } from '../question-bank/store';
-import { isBankEditable } from './profile/bank-contract';
-import { getBankReadingProgress } from '../question-bank/catalog';
+import { useBankStore } from '../bank';
 import { useUserStore } from '../store/userStore';
 import { AppUpdateCard } from '../components/app-update-card';
 import { colors, layout, spacing, typography } from '../theme';
-import { BankUrlDialog } from './profile/BankUrlDialog';
 import { BackupModal } from './profile/BackupModal';
 import { LlmSettingsModal } from './profile/LlmSettingsModal';
-import { ListRow, ListSection } from './profile/components/list';
+import { InlineNote, ListRow, ListSection } from './profile/components/list';
+import { ORIGIN_LABEL, UNSUPPORTED_TEXT } from './profile/bank-helpers';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 /**
- * 「我的」页（极简阅读风）：顶部一行统计，下方是安静的设置列表——
- * 题库 / 刷题 / AI / 关于。题库行永远进管理页；本地题库另给「编辑当前题库」。
+ * 「我的」页（极简阅读风）：顶部一行学习统计，下方是安静的设置列表——
+ * 题库 / 刷题 / AI / 关于。当前题库行进管理页；本地题库另给「编辑当前题库」。
  */
 export function ProfileScreen() {
   const navigation = useNavigation<Nav>();
-  const user = useUserStore();
-  const catalog = useQuestionBankStore((state) => state.catalog);
-  const banks = useQuestionBankStore((state) => state.banks);
-  const status = useQuestionBankStore((state) => state.status);
-  const initializeQuestionBank = useQuestionBankStore((state) => state.initialize);
+  const answerExpandedByDefault = useUserStore((state) => state.answerExpandedByDefault);
+  const setAnswerExpandedByDefault = useUserStore((state) => state.setAnswerExpandedByDefault);
+  const loadUser = useUserStore((state) => state.load);
+  const status = useBankStore((state) => state.status);
+  const activeBank = useBankStore((state) => state.activeBank);
+  const banks = useBankStore((state) => state.banks);
+  const stats = useBankStore((state) => state.stats);
+  const categories = useBankStore((state) => state.categories);
 
-  const [urlDialogVisible, setUrlDialogVisible] = useState(false);
   const [llmSettingsVisible, setLlmSettingsVisible] = useState(false);
   const [backupVisible, setBackupVisible] = useState(false);
-  const isNative = Platform.OS !== 'web';
+  const unsupported = status === 'unsupported';
+  const ready = status === 'ready';
 
   useEffect(() => {
-    void user.load();
-    if (status === 'idle') void initializeQuestionBank();
-  }, [initializeQuestionBank, status, user.load]);
+    void loadUser();
+  }, [loadUser]);
 
-  const { totalCount: totalBankCount, ratio: progressRatio } =
-    getBankReadingProgress(catalog, user.viewedQuestionIds);
-  const progressPercent = Math.round(progressRatio * 100);
-  const statsLine = totalBankCount > 0
-    ? `已刷 ${user.totalCount} 题 · 当前题库进度 ${progressPercent}%`
-    : `已刷 ${user.totalCount} 题`;
+  const statsLine = !ready
+    ? unsupported ? 'Web 预览不记录学习数据' : '正在读取题库…'
+    : stats && stats.questionCount > 0
+      ? `已标 ${stats.markedCount}/${stats.questionCount} 题 · 会了 ${stats.knownCount} · 今日待复习 ${stats.dueCount} · 收藏 ${stats.favoriteCount}`
+      : '还没有学习记录';
 
-  // 地址弹窗打开时自行回填已保存地址并清掉旧错误（见 BankUrlDialog）
-  const openUrlDialog = () => setUrlDialogVisible(true);
-
-  // 线上题库同样是 local- 存储 id：可否编辑只看 store 给出的来源语义，不能按 id 前缀判断
-  const currentBankSummary = catalog ? banks.find((bank) => bank.catalogId === catalog.id) : undefined;
-  const currentBankIsLocal = Boolean(currentBankSummary && isBankEditable(currentBankSummary));
-  const openBankManager = () => navigation.navigate('BankManager');
-  const openCurrentBankEditor = () => {
-    if (catalog && currentBankIsLocal) navigation.navigate('BankEditor', { bankId: catalog.id });
-  };
-
-  const bankMeta = catalog
-    ? `${catalog.questions.length} 题 · ${catalog.tags.length} 个分类${catalog.version ? ` · v${catalog.version}` : ''}`
+  const bankMeta = activeBank
+    ? `${ORIGIN_LABEL[activeBank.origin]} · ${activeBank.questionCount} 题 · ${categories.length} 个分类 · v${activeBank.version}`
     : undefined;
 
   return (
@@ -70,61 +58,59 @@ export function ProfileScreen() {
         </View>
 
         <ListSection title="题库">
-          {catalog ? (
+          {unsupported ? (
+            <View style={styles.note}>
+              <InlineNote text={UNSUPPORTED_TEXT} />
+            </View>
+          ) : (
             <>
-              <ListRow
-                title={catalog.title}
-                subtitle={bankMeta}
-                value={isNative ? '管理' : undefined}
-                onPress={isNative ? openBankManager : undefined}
-                accessibilityLabel={`管理题库 ${catalog.title}`}
-              />
-              {isNative && currentBankIsLocal ? (
+              {activeBank ? (
+                <ListRow
+                  title={activeBank.name}
+                  subtitle={bankMeta}
+                  value="管理"
+                  onPress={() => navigation.navigate('BankManager')}
+                  accessibilityLabel={`管理题库 ${activeBank.name}`}
+                />
+              ) : (
+                <ListRow
+                  title={banks.length > 0 ? '选择题库' : '新建或管理题库'}
+                  subtitle={banks.length > 0 ? '还没有选择当前题库' : '还没有题库：新建本地题库、导入题库文件，或到「线上题库」添加'}
+                  onPress={() => navigation.navigate('BankManager')}
+                  accessibilityLabel="新建或管理题库"
+                />
+              )}
+              {activeBank?.origin === 'local' ? (
                 <ListRow
                   title="编辑当前题库"
-                  onPress={openCurrentBankEditor}
-                  accessibilityLabel={`编辑当前题库 ${catalog.title}`}
+                  onPress={() => navigation.navigate('BankEditor', { bankId: activeBank.id })}
+                  accessibilityLabel={`编辑当前题库 ${activeBank.name}`}
                 />
               ) : null}
-              {!isNative ? (
-                <ListRow title="更换题库" onPress={openUrlDialog} accessibilityLabel="更换题库" />
-              ) : null}
+              <ListRow
+                title="线上题库"
+                subtitle="官方题库、按网址添加与检查更新"
+                onPress={() => navigation.navigate('OnlineBanks')}
+                accessibilityLabel="线上题库"
+              />
+              <ListRow
+                title="备份与恢复"
+                subtitle="学习数据与本地题库"
+                onPress={() => setBackupVisible(true)}
+                accessibilityLabel="备份与恢复"
+              />
             </>
-          ) : isNative ? (
-            <ListRow
-              title="新建或管理题库"
-              subtitle="还没有题库：新建本地题库，或到「线上题库」安装官方题库"
-              onPress={openBankManager}
-              accessibilityLabel="新建或管理题库"
-            />
-          ) : (
-            <ListRow title="增加题库" onPress={openUrlDialog} accessibilityLabel="增加题库" />
           )}
-          {isNative ? (
-            <ListRow
-              title="线上题库"
-              subtitle="官方题库、按网址添加与更新"
-              onPress={() => navigation.navigate('OnlineBanks')}
-              accessibilityLabel="线上题库"
-            />
-          ) : null}
-          {isNative ? (
-            <ListRow
-              title="备份与恢复"
-              onPress={() => setBackupVisible(true)}
-              accessibilityLabel="备份与恢复"
-            />
-          ) : null}
         </ListSection>
 
         <ListSection title="刷题">
           <ListRow
             title="默认展开答案"
-            subtitle={user.answerExpandedByDefault ? '进入题目即显示解答' : '先自己想，再按需查看'}
+            subtitle={answerExpandedByDefault ? '进入题目即显示解答' : '先自己想，再按需查看'}
             right={
               <Switch
-                value={user.answerExpandedByDefault}
-                onValueChange={user.setAnswerExpandedByDefault}
+                value={answerExpandedByDefault}
+                onValueChange={setAnswerExpandedByDefault}
                 trackColor={{ false: colors.borderStrong, true: colors.primary }}
                 thumbColor={colors.white}
                 accessibilityLabel="进入题目时默认展开答案"
@@ -133,7 +119,7 @@ export function ProfileScreen() {
           />
         </ListSection>
 
-        {isNative ? (
+        {!unsupported ? (
           <ListSection title="AI">
             <ListRow
               title="AI 设置"
@@ -149,10 +135,7 @@ export function ProfileScreen() {
         </ListSection>
       </ScrollView>
 
-      {/* 增加题库 / 更换题库弹窗（Web 入口）：填入 ZIP 地址后下载并启用 */}
-      <BankUrlDialog visible={urlDialogVisible} onClose={() => setUrlDialogVisible(false)} />
-
-      {isNative ? (
+      {!unsupported ? (
         <>
           <LlmSettingsModal visible={llmSettingsVisible} onClose={() => setLlmSettingsVisible(false)} />
           <BackupModal visible={backupVisible} onClose={() => setBackupVisible(false)} />
@@ -174,4 +157,5 @@ const styles = StyleSheet.create({
   header: { paddingTop: spacing.xl },
   title: { ...typography.title, color: colors.text },
   stats: { ...typography.body, color: colors.textMuted, marginTop: spacing.xs },
+  note: { paddingVertical: spacing.lg },
 });

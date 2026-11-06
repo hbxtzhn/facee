@@ -1,190 +1,290 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { MoreHorizontal } from 'lucide-react-native';
-import { useQuestionBankStore, type LocalEditsDecision } from '../../question-bank/store';
-import type { InstalledBankSummary } from '../../question-bank/types';
-import { AppButton } from '../../components/ui';
+import * as DocumentPicker from 'expo-document-picker';
+import { useBankStore, type BankOrigin, type BankSummary } from '../../bank';
 import { colors, spacing, typography } from '../../theme';
 import { ModalSheet, SheetError, type SheetPresentation } from './ModalSheet';
-import { InlineNote, LIST_ICON, ListSection, TextAction, listStyles } from './components/list';
-import { isBankEditable, isOnlineBank } from './bank-contract';
-import { errorMessage } from './bank-update-copy';
-import { describeLastCheck, useBankUpdateRecords, useUpdateBank } from './bank-updates';
-import type { BankUpdateRecord } from '../../question-bank/update-history';
-import { useBankUrlInstall } from './useBankUrlInstall';
-import { BankInstallFeedback } from './BankUrlDialog';
-import { OFFICIAL_BANK_URL } from './official-bank';
+import { InlineNote, LIST_ICON, ListSection, TextAction } from './components/list';
+import { BankBusyNote, UpdateCheckPanel } from './components/bank-status';
+import {
+  ORIGIN_HINT,
+  ORIGIN_LABEL,
+  UNSUPPORTED_TEXT,
+  bankErrorText,
+  copyBankAsLocal,
+  describeBank,
+  describeInstall,
+  formatDate,
+  shareFile,
+} from './bank-helpers';
+import { useBankUpdates } from './useBankUpdates';
+
+const ORIGIN_ORDER: BankOrigin[] = ['remote', 'local', 'file'];
+const SECTION_TITLE: Record<BankOrigin, string> = { remote: '线上题库', local: '本地题库', file: '文件导入' };
+const SECTION_EMPTY: Record<BankOrigin, string> = {
+  remote: '还没有线上题库。到「线上题库」安装官方题库或按网址添加。',
+  local: '还没有本地题库。新建一个，或把其它题库「复制为本地编辑」。',
+  file: '导入的题库文件（只读）会出现在这里。',
+};
 
 /**
- * 题库管理（BankManagerScreen 的正文）：线上 / 本地两组纯列表。
- * 点按行切换当前题库；每行一个「⋯」展开行内操作（更新 / 复制 / 编辑 / 信息 / 删除），
- * 删除与「已修改」库的更新都在行内二次确认。线上题库只能更新，要改题先复制为本地。
+ * 题库管理（BankManagerScreen 的正文）：按来源分为线上 / 本地 / 文件导入三组纯列表。
+ * 点按行切换当前题库；「⋯」展开该来源可用的操作：
+ * - 线上：检查更新 / 复制为本地编辑 / 信息 / 删除
+ * - 本地：编辑 / 导出 / 复制 / 信息 / 删除
+ * - 文件：复制为本地编辑 / 信息 / 删除
+ * 删除时询问是否一并删除学习数据（默认保留）。
  */
 export function BankManagerModal({
   visible,
   onClose,
   onEditBank,
   onBankCopied,
-  onCreateLocal,
   onOpenOnlineBanks,
   presentation,
 }: {
   visible: boolean;
   onClose: () => void;
   onEditBank: (bankId: string) => void;
+  /** 复制完成（新本地题库 id）：通常直接进入编辑 */
   onBankCopied: (bankId: string) => void;
-  onCreateLocal: () => void;
-  /** 打开「线上题库」页（官方题库 / 按网址添加） */
   onOpenOnlineBanks: () => void;
-  /** 默认弹窗；BankManagerScreen 传 screen 作为栈页面正文 */
   presentation?: SheetPresentation;
 }) {
-  const banks = useQuestionBankStore((state) => state.banks);
-  const banksLoading = useQuestionBankStore((state) => state.banksLoading);
-  const refreshBanks = useQuestionBankStore((state) => state.refreshBanks);
-  const switchBank = useQuestionBankStore((state) => state.switchBank);
-  const copyBank = useQuestionBankStore((state) => state.copyBank);
-  const deleteLocalBank = useQuestionBankStore((state) => state.deleteLocalBank);
-  const setBankSourceUrl = useQuestionBankStore((state) => state.setBankSourceUrl);
-  /** 上次在「按网址添加」里填过的地址：关联更新地址时作为预填 */
-  const lastEnteredUrl = useQuestionBankStore((state) => state.sourceUrl);
-  const installing = useQuestionBankStore((state) => state.installing);
-  const installProgress = useQuestionBankStore((state) => state.installProgress);
-  const { records, remember, forget } = useBankUpdateRecords(banks, visible);
-  const updateBank = useUpdateBank(remember);
-  const officialFlow = useBankUrlInstall({ updateBank });
-
-  const [activeBusyId, setBusyId] = useState<string | null>(null);
-  const busyId = activeBusyId ?? (installing || officialFlow.busy ? '__operation__' : null);
-  const busy = busyId !== null;
+  const status = useBankStore((state) => state.status);
+  const banks = useBankStore((state) => state.banks);
+  const activeBankId = useBankStore((state) => state.activeBankId);
+  const storeBusy = useBankStore((state) => state.busy);
+  const updates = useBankUpdates();
+  const [localBusy, setLocalBusy] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [informationId, setInformationId] = useState<string | null>(null);
+  const [infoId, setInfoId] = useState<string | null>(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
-  const [confirmingUpdateId, setConfirmingUpdateId] = useState<string | null>(null);
-  const [linkingId, setLinkingId] = useState<string | null>(null);
-  const [linkDraft, setLinkDraft] = useState('');
+  const [purgeLearning, setPurgeLearning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const busy = storeBusy !== null || localBusy !== null || updates.checkingId !== null;
 
   useEffect(() => {
     if (!visible) return;
     setError(null);
     setNotice(null);
     setExpandedId(null);
+    setInfoId(null);
     setConfirmingDeleteId(null);
-    setConfirmingUpdateId(null);
-    setInformationId(null);
-    void refreshBanks();
-  }, [visible, refreshBanks]);
+  }, [visible]);
 
-  /** 统一的忙碌 / 错误 / 提示包装 */
-  async function run(bankId: string, operation: () => Promise<void>) {
-    if (busyId) return;
-    setBusyId(bankId);
+  /** 统一的忙碌 / 错误包装；operation 返回提示文案或 null */
+  async function run(key: string, operation: () => Promise<string | null>) {
+    if (busy) return;
+    setLocalBusy(key);
     setError(null);
     setNotice(null);
     try {
-      await operation();
+      const message = await operation();
+      if (message) setNotice(message);
     } catch (operationError) {
-      setError(errorMessage(operationError));
+      setError(operationError instanceof Error ? operationError.message : String(operationError));
     } finally {
-      setBusyId(null);
+      setLocalBusy(null);
     }
   }
 
-  const handleSwitch = (catalogId: string) => run(catalogId, () => switchBank(catalogId));
+  const fail = (message: string) => { setError(message); return null; };
 
-  const handleCopy = (catalogId: string) => run(catalogId, async () => {
-    const bankId = await copyBank(catalogId);
-    onBankCopied(bankId);
+  const handleSwitch = (bank: BankSummary) => run(bank.id, async () => {
+    if (bank.id === activeBankId) return null;
+    const result = await useBankStore.getState().switchBank(bank.id);
+    return result.ok ? `已切换到「${bank.name}」。` : fail(bankErrorText(result.error));
   });
 
-  function toggleExpanded(catalogId: string) {
-    setExpandedId((current) => (current === catalogId ? null : catalogId));
+  const handleCreateLocal = () => run('create', async () => {
+    const result = await useBankStore.getState().createLocalBank({ name: '我的题库' });
+    if (!result.ok) return fail(bankErrorText(result.error));
+    onEditBank(result.value);
+    return null;
+  });
+
+  const handleImportFile = () => run('import', async () => {
+    const picked = await DocumentPicker.getDocumentAsync({ type: ['application/json', '*/*'], copyToCacheDirectory: true, multiple: false });
+    if (picked.canceled || !picked.assets?.[0]?.uri) return null;
+    const result = await useBankStore.getState().importBankFile(picked.assets[0].uri);
+    return result.ok ? describeInstall(result.value) : fail(bankErrorText(result.error));
+  });
+
+  const handleCopy = (bank: BankSummary) => run(bank.id, async () => {
+    const result = await copyBankAsLocal(bank.id);
+    if (!result.ok) return fail(bankErrorText(result.error));
+    setExpandedId(null);
+    onBankCopied(result.value.bankId);
+    return `已复制为本地题库「${result.value.name}」。`;
+  });
+
+  const handleExport = (bank: BankSummary) => run(bank.id, async () => {
+    const result = await useBankStore.getState().exportBankFile(bank.id);
+    if (!result.ok) return fail(bankErrorText(result.error));
+    const shared = await shareFile(result.value, `导出题库：${bank.name}`);
+    return shared ? `已导出「${bank.name}」，可发送给他人或保存备用。` : `已导出到：${result.value}`;
+  });
+
+  const handleDelete = (bank: BankSummary) => run(bank.id, async () => {
+    const result = await useBankStore.getState().deleteBank(bank.id, { purgeLearningData: purgeLearning });
+    if (!result.ok) return fail(bankErrorText(result.error));
     setConfirmingDeleteId(null);
-    setConfirmingUpdateId(null);
-    setLinkingId(null);
+    setExpandedId(null);
+    setInfoId(null);
+    const current = useBankStore.getState().activeBank;
+    const learningText = purgeLearning ? '，学习数据已一并删除' : '，学习数据已保留（重新安装后可恢复）';
+    return `已删除「${bank.name}」${learningText}。${bank.id === activeBankId ? (current ? `当前题库：「${current.name}」。` : '当前没有可用题库。') : ''}`;
+  });
+
+  function toggleExpanded(bankId: string) {
+    setExpandedId((current) => (current === bankId ? null : bankId));
+    setConfirmingDeleteId(null);
+    setPurgeLearning(false);
   }
 
-  function startLinking(catalogId: string) {
-    setLinkingId(catalogId);
-    setLinkDraft(lastEnteredUrl.trim());
-    setError(null);
+  if (status === 'unsupported') {
+    return (
+      <ModalSheet visible={visible} title="管理题库" onClose={onClose} presentation={presentation}>
+        <InlineNote text={UNSUPPORTED_TEXT} />
+      </ModalSheet>
+    );
   }
 
-  const handleLink = (catalogId: string, title: string) => run(catalogId, async () => {
-    await setBankSourceUrl(catalogId, linkDraft);
-    setLinkingId(null);
-    setNotice(`「${title}」已关联更新地址，可以在线更新了。`);
-  });
+  const renderRow = (bank: BankSummary) => {
+    const expanded = expandedId === bank.id;
+    const active = bank.id === activeBankId;
+    const check = updates.checks[bank.id];
+    const rowNotice = updates.notices[bank.id];
+    const confirmingDelete = confirmingDeleteId === bank.id;
+    return (
+      <View key={bank.id} style={styles.row}>
+        <View style={styles.rowMain}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`切换到题库 ${bank.name}`}
+            accessibilityState={{ disabled: busy, selected: active }}
+            disabled={busy}
+            onPress={() => void handleSwitch(bank)}
+            style={({ pressed }) => [styles.rowBody, busy && styles.disabled, pressed && styles.pressed]}
+          >
+            <View style={styles.titleLine}>
+              <Text style={[styles.title, active && styles.titleActive]} numberOfLines={1}>{bank.name}</Text>
+              {active ? <Text style={styles.activeMark}>使用中</Text> : null}
+            </View>
+            <Text style={styles.meta}>{describeBank(bank)}</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`更多操作 ${bank.name}`}
+            accessibilityState={{ expanded }}
+            onPress={() => toggleExpanded(bank.id)}
+            hitSlop={6}
+            style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}
+          >
+            <MoreHorizontal {...LIST_ICON} />
+          </Pressable>
+        </View>
 
-  const handleUpdate = (catalogId: string, title: string, decision?: LocalEditsDecision) => run(catalogId, async () => {
-    setConfirmingUpdateId(null);
-    const outcome = await updateBank(catalogId, title, decision);
-    // 需确认：尚未下载也未改动任何内容，等用户选择后带选项重试
-    if (outcome.kind === 'needsConfirmation') setConfirmingUpdateId(catalogId);
-    else if (outcome.kind === 'done') setNotice(outcome.message);
-    else setError(outcome.message);
-  });
+        {expanded ? (
+          <View style={styles.actions}>
+            {confirmingDelete ? (
+              <View style={styles.confirm} accessibilityRole="alert">
+                <InlineNote text={`删除「${bank.name}」？${bank.origin === 'local' ? '本地题库删除后无法恢复（除非有导出 / 备份）。' : '之后可重新添加。'}`} tone="danger" />
+                <View style={styles.switchRow}>
+                  <Text style={styles.switchLabel}>同时删除学习数据（掌握度、收藏、自评）</Text>
+                  <Switch
+                    value={purgeLearning}
+                    onValueChange={setPurgeLearning}
+                    disabled={busy}
+                    trackColor={{ false: colors.borderStrong, true: colors.danger }}
+                    thumbColor={colors.white}
+                    accessibilityLabel="同时删除学习数据"
+                  />
+                </View>
+                <View style={styles.inlineActions}>
+                  <TextAction
+                    label="确认删除"
+                    accessibilityLabel={`确认删除题库 ${bank.name}`}
+                    tone="danger"
+                    disabled={busy}
+                    onPress={() => void handleDelete(bank)}
+                    style={styles.leadingAction}
+                  />
+                  <TextAction label="取消" accessibilityLabel="取消删除" tone="muted" disabled={busy}
+                    onPress={() => { setConfirmingDeleteId(null); setPurgeLearning(false); }} />
+                </View>
+              </View>
+            ) : (
+              <View style={styles.inlineActions}>
+                {bank.origin === 'remote' ? (
+                  <TextAction
+                    label={updates.checkingId === bank.id ? '检查中' : '检查更新'}
+                    accessibilityLabel={`检查更新 ${bank.name}`}
+                    tone="primary"
+                    disabled={busy}
+                    onPress={() => void updates.check(bank.id)}
+                    style={styles.leadingAction}
+                  />
+                ) : null}
+                {bank.origin === 'local' ? (
+                  <>
+                    <TextAction label="编辑" accessibilityLabel={`编辑题库 ${bank.name}`} tone="primary" disabled={busy}
+                      onPress={() => onEditBank(bank.id)} style={styles.leadingAction} />
+                    <TextAction label="导出" accessibilityLabel={`导出题库 ${bank.name}`} disabled={busy}
+                      onPress={() => void handleExport(bank)} />
+                  </>
+                ) : null}
+                <TextAction
+                  label={bank.origin === 'local' ? '复制' : '复制为本地编辑'}
+                  accessibilityLabel={`复制题库 ${bank.name} 为本地可编辑副本`}
+                  disabled={busy}
+                  onPress={() => void handleCopy(bank)}
+                  style={bank.origin === 'file' ? styles.leadingAction : undefined}
+                />
+                <TextAction
+                  label={infoId === bank.id ? '收起信息' : '信息'}
+                  accessibilityLabel={`题库信息 ${bank.name}`}
+                  disabled={busy}
+                  onPress={() => setInfoId((current) => (current === bank.id ? null : bank.id))}
+                />
+                <TextAction label="删除" accessibilityLabel={`删除题库 ${bank.name}`} tone="danger" disabled={busy}
+                  onPress={() => { setConfirmingDeleteId(bank.id); setPurgeLearning(false); }} />
+              </View>
+            )}
 
-  const handleDelete = (bankId: string) => run(bankId, async () => {
-    const wasActive = banks.some((bank) => bank.catalogId === bankId && bank.active);
-    await deleteLocalBank(bankId);
-    setConfirmingDeleteId(null);
-    setExpandedId((current) => (current === bankId ? null : current));
-    setInformationId((current) => (current === bankId ? null : current));
-    await forget(bankId);
-    if (wasActive) {
-      const current = useQuestionBankStore.getState().catalog;
-      setNotice(current ? `已切换到「${current.title}」。` : '题库已删除，当前没有可用题库。');
-    }
-  });
+            {check ? (
+              <UpdateCheckPanel
+                bankName={bank.name}
+                check={check}
+                disabled={busy}
+                onConfirm={() => void updates.update(bank.id)}
+                onDismiss={() => updates.dismiss(bank.id)}
+              />
+            ) : null}
+            {rowNotice ? <InlineNote text={rowNotice.message} tone={rowNotice.failed ? 'danger' : 'default'} live /> : null}
 
-  const onlineBanks = banks.filter(isOnlineBank);
-  const localBanks = banks.filter((bank) => !isOnlineBank(bank));
-  const empty = !banksLoading && banks.length === 0;
-
-  const renderRow = (bank: InstalledBankSummary) => (
-    <BankRow
-      key={bank.namespace}
-      bank={bank}
-      busy={busy}
-      updating={busyId === bank.catalogId}
-      record={records[bank.catalogId]}
-      expanded={expandedId === bank.catalogId}
-      showInformation={informationId === bank.catalogId}
-      confirmingDelete={confirmingDeleteId === bank.catalogId}
-      confirmingUpdate={confirmingUpdateId === bank.catalogId}
-      linking={linkingId === bank.catalogId}
-      linkDraft={linkDraft}
-      onSwitch={() => void handleSwitch(bank.catalogId)}
-      onToggleExpanded={() => toggleExpanded(bank.catalogId)}
-      onUpdate={(decision) => void handleUpdate(bank.catalogId, bank.title, decision)}
-      onCancelUpdate={() => setConfirmingUpdateId(null)}
-      onCopy={() => void handleCopy(bank.catalogId)}
-      onEdit={() => onEditBank(bank.catalogId)}
-      onToggleInformation={() => setInformationId((current) => (current === bank.catalogId ? null : bank.catalogId))}
-      onAskDelete={() => setConfirmingDeleteId(bank.catalogId)}
-      onCancelDelete={() => setConfirmingDeleteId(null)}
-      onDelete={() => void handleDelete(bank.catalogId)}
-      onStartLinking={() => startLinking(bank.catalogId)}
-      onChangeLinkDraft={setLinkDraft}
-      onSaveLink={() => void handleLink(bank.catalogId, bank.title)}
-      onCancelLinking={() => setLinkingId(null)}
-    />
-  );
+            {infoId === bank.id ? <BankInformation bank={bank} /> : null}
+          </View>
+        ) : null}
+      </View>
+    );
+  };
 
   return (
     <ModalSheet
       visible={visible}
       title="管理题库"
-      hint="点按题库切换当前使用；「⋯」里有更新、复制、信息与删除。线上题库只能更新，想改题先复制为本地。"
+      hint="点按题库切换当前使用；「⋯」里有更新、复制、导出、信息与删除。线上 / 文件题库只读，想改题先复制为本地。"
       onClose={() => { if (!busy) onClose(); }}
       dismissDisabled={busy}
       presentation={presentation}
       footer={
         <View style={styles.footer}>
-          <TextAction label="新建本地题库" tone="primary" onPress={onCreateLocal} disabled={busy} />
+          <TextAction label="新建本地题库" tone="primary" onPress={() => void handleCreateLocal()} disabled={busy} />
+          <TextAction label="导入题库文件" onPress={() => void handleImportFile()} disabled={busy} />
           <TextAction label="线上题库" onPress={onOpenOnlineBanks} disabled={busy} />
           {presentation !== 'screen' ? (
             <TextAction label="完成" onPress={onClose} disabled={busy} style={styles.footerEnd} />
@@ -193,321 +293,81 @@ export function BankManagerModal({
       }
     >
       <SheetError message={error} />
-      {busy ? (
-        <View style={styles.busyRow}>
-          <ActivityIndicator size="small" color={colors.textSecondary} />
-          <Text style={styles.busyText} accessibilityLiveRegion="polite">
-            {installProgress?.label ?? '正在处理题库…'}
-          </Text>
-        </View>
-      ) : null}
+      <BankBusyNote />
       {notice ? <View style={styles.notice}><InlineNote text={notice} tone="default" live /></View> : null}
-      {/* 仅首次加载（列表为空）显示；切换题库时不显示，避免该行反复插入/移除导致抖动 */}
-      {banksLoading && banks.length === 0 ? <InlineNote text="正在读取题库列表…" /> : null}
 
-      {empty ? (
+      {banks.length === 0 ? (
         <View style={styles.emptyState}>
           <Text style={styles.emptyTitle}>本机还没有题库</Text>
-          <Text style={styles.emptyBody}>装上 FaceE 官方题库就能开始刷题，也可以新建一个空的本地题库自己出题。</Text>
-          <AppButton
-            label="安装官方题库"
-            onPress={() => void officialFlow.submit(OFFICIAL_BANK_URL)}
-            loading={officialFlow.busy}
-            disabled={busy && !officialFlow.busy}
-            style={styles.emptyButton}
-          />
-          <BankInstallFeedback flow={officialFlow} />
+          <Text style={styles.emptyBody}>到「线上题库」添加官方题库，或新建一个本地题库自己出题，也可以导入别人分享的题库文件。</Text>
+          <View style={styles.inlineActions}>
+            <TextAction label="浏览线上题库" tone="primary" disabled={busy} onPress={onOpenOnlineBanks} style={styles.leadingAction} />
+          </View>
         </View>
-      ) : null}
-
-      {!empty && banks.length > 0 ? (
-        <>
-          <ListSection title={`线上题库 · ${onlineBanks.length}`} style={styles.firstSection}>
-            {onlineBanks.length === 0 ? (
-              <View style={styles.sectionEmpty}>
-                <InlineNote text="还没有线上题库。线上题库可随时更新到最新版本。" />
-                <View style={styles.inlineActions}>
-                  <TextAction
-                    label="安装官方题库"
-                    tone="primary"
-                    disabled={busy}
-                    onPress={() => void officialFlow.submit(OFFICIAL_BANK_URL)}
-                    style={styles.leadingAction}
-                  />
-                  <TextAction label="浏览线上题库" disabled={busy} onPress={onOpenOnlineBanks} />
-                </View>
-                <BankInstallFeedback flow={officialFlow} />
-              </View>
-            ) : onlineBanks.map(renderRow)}
-          </ListSection>
-          <ListSection title={`本地题库 · ${localBanks.length}`}>
-            {localBanks.length === 0 ? (
-              <View style={styles.sectionEmpty}>
-                <InlineNote text="还没有本地题库。新建一个，或把线上题库「复制为本地编辑」。" />
-              </View>
-            ) : localBanks.map(renderRow)}
-          </ListSection>
-          {localBanks.some((bank) => bank.questionCount === 0) ? (
-            <Text style={styles.tip}>空题库也可以直接保存，稍后在编辑里加题。</Text>
-          ) : null}
-        </>
-      ) : null}
+      ) : (
+        ORIGIN_ORDER.map((origin, index) => {
+          const group = banks.filter((bank) => bank.origin === origin);
+          if (origin === 'file' && group.length === 0) return null;
+          return (
+            <ListSection key={origin} title={`${SECTION_TITLE[origin]} · ${group.length}`} style={index === 0 ? styles.firstSection : undefined}>
+              {group.length === 0 ? (
+                <View style={styles.sectionEmpty}><InlineNote text={SECTION_EMPTY[origin]} /></View>
+              ) : group.map(renderRow)}
+            </ListSection>
+          );
+        })
+      )}
     </ModalSheet>
   );
 }
 
-/** 单个题库行：主体点按切换，「⋯」展开行内操作与信息 */
-function BankRow({
-  bank, busy, updating, record, expanded, showInformation, confirmingDelete, confirmingUpdate,
-  linking, linkDraft,
-  onSwitch, onToggleExpanded, onUpdate, onCancelUpdate, onCopy, onEdit, onToggleInformation,
-  onAskDelete, onCancelDelete, onDelete, onStartLinking, onChangeLinkDraft, onSaveLink, onCancelLinking,
-}: {
-  bank: InstalledBankSummary;
-  busy: boolean;
-  updating: boolean;
-  record: BankUpdateRecord | undefined;
-  expanded: boolean;
-  showInformation: boolean;
-  confirmingDelete: boolean;
-  confirmingUpdate: boolean;
-  linking: boolean;
-  linkDraft: string;
-  onSwitch: () => void;
-  onToggleExpanded: () => void;
-  onUpdate: (decision?: LocalEditsDecision) => void;
-  onCancelUpdate: () => void;
-  onCopy: () => void;
-  onEdit: () => void;
-  onToggleInformation: () => void;
-  onAskDelete: () => void;
-  onCancelDelete: () => void;
-  onDelete: () => void;
-  onStartLinking: () => void;
-  onChangeLinkDraft: (value: string) => void;
-  onSaveLink: () => void;
-  onCancelLinking: () => void;
-}) {
-  const online = isOnlineBank(bank);
-  const editable = isBankEditable(bank);
-  const meta = [
-    `${bank.questionCount} 题`,
-    bank.version ? `v${bank.version}` : null,
-    bank.updatedAt ? `更新于 ${bank.updatedAt.slice(0, 10)}` : null,
-  ].filter(Boolean).join(' · ');
-  const sourceText = online
-    ? '线上题库，可在线更新'
-    : bank.sourceUrl
-      ? '线上下载（本机改过），可在线更新'
-      : '本地题库';
-
+function BankInformation({ bank }: { bank: BankSummary }) {
   return (
-    <View style={styles.row}>
-      <View style={styles.rowMain}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`切换到题库 ${bank.title}`}
-          accessibilityState={{ disabled: busy }}
-          disabled={busy}
-          onPress={onSwitch}
-          style={({ pressed }) => [styles.rowBody, busy && styles.disabled, pressed && styles.pressed]}
-        >
-          <View style={styles.titleLine}>
-            <Text style={[styles.title, bank.active && styles.titleActive]} numberOfLines={1}>{bank.title}</Text>
-            {bank.active ? <Text style={styles.activeMark}>使用中</Text> : null}
-            {bank.locallyModified ? (
-              <Text style={styles.modifiedMark} accessibilityLabel="本地已修改">已修改</Text>
-            ) : null}
-          </View>
-          <Text style={styles.meta}>{meta}</Text>
-          {bank.sourceUrl ? <Text style={styles.meta}>最近检查：{describeLastCheck(record)}</Text> : null}
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`更多操作 ${bank.title}`}
-          accessibilityState={{ expanded }}
-          onPress={onToggleExpanded}
-          hitSlop={6}
-          style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}
-        >
-          <MoreHorizontal {...LIST_ICON} />
-        </Pressable>
-      </View>
-
-      {expanded ? (
-        <View style={styles.actions}>
-          {confirmingUpdate ? (
-            <View style={styles.confirm} accessibilityRole="alert">
-              <InlineNote text="本地有修改，更新会覆盖它们。" tone="danger" />
-              <View style={styles.inlineActions}>
-                <TextAction
-                  label="另存副本后更新"
-                  accessibilityLabel={`另存副本后更新题库 ${bank.title}`}
-                  tone="primary"
-                  disabled={busy}
-                  onPress={() => onUpdate('keepCopy')}
-                  style={styles.leadingAction}
-                />
-                <TextAction
-                  label="直接覆盖"
-                  accessibilityLabel={`直接覆盖更新题库 ${bank.title}`}
-                  tone="danger"
-                  disabled={busy}
-                  onPress={() => onUpdate('overwrite')}
-                />
-                <TextAction label="取消" accessibilityLabel="取消更新" tone="muted" disabled={busy} onPress={onCancelUpdate} />
-              </View>
-            </View>
-          ) : null}
-          {confirmingDelete ? (
-            <View style={styles.confirm} accessibilityRole="alert">
-              <InlineNote text={`删除「${bank.title}」后无法恢复。`} tone="danger" />
-              <View style={styles.inlineActions}>
-                <TextAction
-                  label="确认删除"
-                  accessibilityLabel={`确认删除题库 ${bank.title}`}
-                  tone="danger"
-                  disabled={busy}
-                  onPress={onDelete}
-                  style={styles.leadingAction}
-                />
-                <TextAction label="取消" accessibilityLabel="取消删除" tone="muted" disabled={busy} onPress={onCancelDelete} />
-              </View>
-            </View>
-          ) : null}
-          {!confirmingUpdate && !confirmingDelete ? (
-            <View style={styles.inlineActions}>
-              {editable ? (
-                <TextAction label="编辑" accessibilityLabel={`编辑题库 ${bank.title}`} tone="primary" disabled={busy}
-                  onPress={onEdit} style={styles.leadingAction} />
-              ) : null}
-              {bank.sourceUrl ? (
-                <TextAction
-                  label={updating ? '更新中' : '更新'}
-                  accessibilityLabel={updating ? `正在更新题库 ${bank.title}` : `在线更新题库 ${bank.title}`}
-                  tone={editable ? 'default' : 'primary'}
-                  disabled={busy}
-                  onPress={() => onUpdate()}
-                  style={editable ? undefined : styles.leadingAction}
-                />
-              ) : null}
-              <TextAction
-                label={online ? '复制为本地编辑' : '复制'}
-                accessibilityLabel={`复制题库 ${bank.title} 为本地可编辑副本`}
-                disabled={busy}
-                onPress={onCopy}
-              />
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`题库信息 ${bank.title}`}
-                accessibilityState={{ disabled: busy, expanded: showInformation }}
-                disabled={busy}
-                onPress={onToggleInformation}
-                style={({ pressed }) => [styles.infoAction, busy && styles.disabled, pressed && styles.pressed]}
-              >
-                <Text style={styles.infoActionText}>{showInformation ? '收起信息' : '信息'}</Text>
-              </Pressable>
-              <TextAction label="删除" accessibilityLabel={`删除题库 ${bank.title}`} tone="danger" disabled={busy}
-                onPress={onAskDelete} />
-            </View>
-          ) : null}
-
-          {showInformation ? (
-            <View style={styles.information}>
-              <Text style={styles.infoText}>题目数量：{bank.questionCount} 题</Text>
-              <Text style={styles.infoText}>版本：{bank.version ?? '未提供'}</Text>
-              <Text style={styles.infoText}>题库更新日期：{bank.updatedAt?.slice(0, 10) ?? '未提供'}</Text>
-              <Text style={styles.infoText}>来源：{sourceText}</Text>
-              {bank.sourceUrl ? <Text selectable style={styles.infoText}>来源地址：{bank.sourceUrl}</Text> : null}
-              {!bank.sourceUrl && !online ? (
-                linking ? (
-                  <View style={styles.linkBox}>
-                    <TextInput
-                      value={linkDraft}
-                      onChangeText={onChangeLinkDraft}
-                      placeholder="https://github.com/.../releases/latest/download/question-bank.zip"
-                      placeholderTextColor={colors.textSubtle}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      keyboardType="url"
-                      editable={!busy}
-                      accessibilityLabel={`题库 ${bank.title} 的更新地址`}
-                      style={listStyles.input}
-                    />
-                    <View style={styles.inlineActions}>
-                      <TextAction
-                        label="保存"
-                        accessibilityLabel={`保存题库 ${bank.title} 的更新地址`}
-                        tone="primary"
-                        disabled={busy || !linkDraft.trim()}
-                        onPress={onSaveLink}
-                        style={styles.leadingAction}
-                      />
-                      <TextAction label="取消" accessibilityLabel="取消关联更新地址" tone="muted" disabled={busy} onPress={onCancelLinking} />
-                    </View>
-                  </View>
-                ) : (
-                  <TextAction
-                    label="关联更新地址（从线上下载过、但没有更新按钮时使用）"
-                    accessibilityLabel={`关联更新地址 ${bank.title}`}
-                    tone="primary"
-                    disabled={busy}
-                    onPress={onStartLinking}
-                    style={styles.linkAction}
-                  />
-                )
-              ) : null}
-              <Text style={styles.infoText}>最近检查：{record
-                ? new Date(record.checkedAt).toLocaleString() : '尚未检查更新'}</Text>
-              {record ? (
-                <Text style={[styles.infoText, record.status === 'failed' && styles.failed]}>
-                  最近结果：{record.message}
-                </Text>
-              ) : null}
-            </View>
-          ) : null}
-        </View>
+    <View style={styles.information}>
+      <Text style={styles.infoText}>来源：{ORIGIN_LABEL[bank.origin]}（{ORIGIN_HINT[bank.origin]}）</Text>
+      <Text style={styles.infoText}>题目数量：{bank.questionCount} 题</Text>
+      <Text style={styles.infoText}>版本：v{bank.version}</Text>
+      {bank.description ? <Text style={styles.infoText}>简介：{bank.description}</Text> : null}
+      {bank.license ? <Text style={styles.infoText}>许可：{bank.license}</Text> : null}
+      {bank.homepage ? <Text selectable style={styles.infoText}>主页：{bank.homepage}</Text> : null}
+      {bank.manifestUrl ? <Text selectable style={styles.infoText}>更新地址：{bank.manifestUrl}</Text> : null}
+      <Text selectable style={styles.infoText}>题库 id：{bank.id}</Text>
+      <Text style={styles.infoText}>安装于：{formatDate(bank.installedAt)} · 最近写入：{formatDate(bank.updatedAt)}</Text>
+      {bank.origin === 'remote' ? (
+        <Text style={styles.infoText}>最近检查：{bank.checkedAt ? formatDate(bank.checkedAt) : '尚未检查更新'}</Text>
       ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  footer: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  footer: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: spacing.md },
   footerEnd: { marginLeft: 'auto' },
-  busyRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
-  busyText: { ...typography.caption, color: colors.textMuted },
   notice: { marginBottom: spacing.sm },
   firstSection: { marginTop: spacing.md },
-  emptyState: { paddingVertical: spacing.xxl },
+  emptyState: { paddingVertical: spacing.xxl, gap: spacing.sm },
   emptyTitle: { ...typography.heading, color: colors.text },
-  emptyBody: { ...typography.body, color: colors.textMuted, marginTop: spacing.sm },
-  emptyButton: { marginTop: spacing.lg, alignSelf: 'flex-start', minWidth: 160 },
+  emptyBody: { ...typography.body, color: colors.textMuted },
   sectionEmpty: {
     paddingVertical: spacing.lg,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  tip: { ...typography.caption, color: colors.textSubtle, marginTop: spacing.sm },
-  row: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
+  row: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   rowMain: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   rowBody: { flex: 1, paddingVertical: spacing.lg, minHeight: 52 },
   titleLine: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
   title: { ...typography.body, color: colors.text, flexShrink: 1 },
   titleActive: { fontWeight: '600' },
   activeMark: { ...typography.caption, color: colors.primary, fontWeight: '600' },
-  modifiedMark: { ...typography.caption, color: colors.textMuted },
   meta: { ...typography.caption, color: colors.textMuted, marginTop: 2, lineHeight: 18 },
   moreButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  actions: { paddingBottom: spacing.md },
+  actions: { paddingBottom: spacing.md, gap: spacing.xs },
   inlineActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: spacing.xs },
   leadingAction: { paddingLeft: 0 },
   confirm: { gap: spacing.xs },
-  infoAction: { minHeight: 44, minWidth: 44, paddingHorizontal: spacing.sm, alignItems: 'center', justifyContent: 'center' },
-  infoActionText: { ...typography.label, fontSize: 14, color: colors.text },
+  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, minHeight: 44 },
+  switchLabel: { ...typography.caption, color: colors.textSecondary, flex: 1 },
   information: {
     marginTop: spacing.xs,
     paddingTop: spacing.md,
@@ -516,9 +376,6 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   infoText: { ...typography.caption, color: colors.textSecondary, lineHeight: 18 },
-  failed: { color: colors.danger },
-  linkBox: { gap: spacing.xs },
-  linkAction: { alignItems: 'flex-start', paddingHorizontal: 0 },
   disabled: { opacity: 0.4 },
   pressed: { opacity: 0.6 },
 });
