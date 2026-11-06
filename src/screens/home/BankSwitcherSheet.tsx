@@ -1,18 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Check, ChevronRight } from 'lucide-react-native';
-import { useQuestionBankStore } from '../../question-bank/store';
-import type { InstalledBankSummary } from '../../question-bank/types';
+import { useBankStore, type BankOrigin, type BankSummary } from '../../bank';
 import { colors, layout, radii, spacing, typography } from '../../theme';
 import { ICON_SIZE, ICON_STROKE } from './components/reading';
 
+const ORIGIN_GROUPS: { origin: BankOrigin; label: string }[] = [
+  { origin: 'remote', label: '线上' },
+  { origin: 'local', label: '本地' },
+  { origin: 'file', label: '导入' },
+];
+
 /**
- * 首页题库切换底部弹层（极简阅读风）：本机题库按「线上题库 / 本地题库」分两组
- * （打开时刷新），使用中的题库以主色对勾标出；点其它题库即切换（行内转圈 + 失败提示）。
- * 线上题库 = 官方下载、只能更新；本地题库 = 自建或复制，可编辑。
- * 末尾两个入口：「线上题库」进入官方题库目录，「管理题库」进入管理页；
- * 本机没有题库时第一个入口改为「安装官方题库」。
+ * 首页题库切换底部弹层（极简阅读风）：本机题库按来源分组——
+ * 线上（remote，可检查更新）/ 本地（local，自建可编辑）/ 导入（file，文件导入只读）。
+ * 使用中的题库以主色对勾标出；点其它题库即切换（行内转圈 + 失败提示）。
+ * 末尾两个入口：「线上题库」进入线上题库页，「管理题库」进入管理页；
+ * 本机没有题库时第一个入口改为「添加线上题库」。
  */
 export function BankSwitcherSheet({
   visible,
@@ -24,53 +29,45 @@ export function BankSwitcherSheet({
 }: {
   visible: boolean;
   onClose: () => void;
-  /** 切换成功后回调（首页据此重新读取题库） */
-  onSwitched: () => void;
+  /** 切换成功后回调 */
+  onSwitched?: () => void;
   /** 进入题库管理页 */
   onManage: () => void;
-  /** 进入线上（官方）题库目录 */
+  /** 进入线上题库页 */
   onOnlineBanks: () => void;
-  /** 平台是否支持题库管理（Web 只读，不给入口） */
+  /** 平台是否支持题库管理（Web 不给入口） */
   canManage?: boolean;
 }) {
-  const banks = useQuestionBankStore((state) => state.banks);
-  const banksLoading = useQuestionBankStore((state) => state.banksLoading);
-  const refreshBanks = useQuestionBankStore((state) => state.refreshBanks);
-  const switchBank = useQuestionBankStore((state) => state.switchBank);
-  const installing = useQuestionBankStore((state) => state.installing);
+  const banks = useBankStore((state) => state.banks);
+  const activeBankId = useBankStore((state) => state.activeBankId);
+  const storeBusy = useBankStore((state) => state.busy);
   const [switchingId, setSwitchingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // 自己发起的切换或其它页面正在处理题库时，都不允许再点
-  const busy = switchingId !== null || installing;
-
-  useEffect(() => {
-    if (!visible) return;
-    setError(null);
-    void refreshBanks();
-  }, [visible, refreshBanks]);
+  // 自己发起的切换或其它页面正在安装 / 更新 / 删除题库时，都不允许再点
+  const busy = switchingId !== null || storeBusy !== null;
 
   function close() {
     if (switchingId) return;
+    setError(null);
     onClose();
   }
 
-  async function handleSelect(catalogId: string, active: boolean) {
+  async function handleSelect(bankId: string, active: boolean) {
     if (busy) return;
     if (active) {
-      onClose();
+      close();
       return;
     }
-    setSwitchingId(catalogId);
+    setSwitchingId(bankId);
     setError(null);
-    try {
-      await switchBank(catalogId);
-      onSwitched();
-      onClose();
-    } catch (switchError) {
-      setError(switchError instanceof Error ? switchError.message : String(switchError));
-    } finally {
-      setSwitchingId(null);
+    const result = await useBankStore.getState().switchBank(bankId);
+    setSwitchingId(null);
+    if (!result.ok) {
+      setError(result.error.message);
+      return;
     }
+    onSwitched?.();
+    onClose();
   }
 
   function leaveTo(target: () => void) {
@@ -79,26 +76,25 @@ export function BankSwitcherSheet({
     target();
   }
 
-  const onlineBanks = banks.filter((bank) => bank.source === 'online');
-  const localBanks = banks.filter((bank) => bank.source !== 'online');
-  const empty = !banksLoading && banks.length === 0;
+  const empty = banks.length === 0;
 
-  function renderBank(bank: InstalledBankSummary) {
-    const switching = switchingId === bank.catalogId;
+  function renderBank(bank: BankSummary) {
+    const active = bank.id === activeBankId;
+    const switching = switchingId === bank.id;
     const disabled = busy && !switching;
     return (
       <Pressable
-        key={bank.namespace}
+        key={bank.id}
         accessibilityRole="button"
-        accessibilityLabel={bank.active ? `当前题库 ${bank.title}` : `切换到题库 ${bank.title}`}
-        accessibilityState={{ selected: bank.active, disabled: busy, busy: switching }}
+        accessibilityLabel={active ? `当前题库 ${bank.name}` : `切换到题库 ${bank.name}`}
+        accessibilityState={{ selected: active, disabled: busy, busy: switching }}
         disabled={busy}
-        onPress={() => void handleSelect(bank.catalogId, bank.active)}
+        onPress={() => void handleSelect(bank.id, active)}
         style={({ pressed }) => [styles.bankRow, disabled && styles.disabled, pressed && styles.pressed]}
       >
         <View style={styles.bankInfo}>
-          <Text style={[styles.bankTitle, bank.active && styles.bankTitleActive]} numberOfLines={1}>
-            {bank.title}
+          <Text style={[styles.bankTitle, active && styles.bankTitleActive]} numberOfLines={1}>
+            {bank.name}
           </Text>
           <Text style={styles.bankMeta}>
             {bank.questionCount} 题{bank.version ? ` · v${bank.version}` : ''}
@@ -106,7 +102,7 @@ export function BankSwitcherSheet({
         </View>
         {switching ? (
           <ActivityIndicator size="small" color={colors.primary} />
-        ) : bank.active ? (
+        ) : active ? (
           <View style={styles.activeMark}>
             <Check size={16} color={colors.primary} strokeWidth={2} />
             <Text style={styles.activeMarkText}>使用中</Text>
@@ -116,10 +112,10 @@ export function BankSwitcherSheet({
     );
   }
 
-  function renderGroup(label: string, list: InstalledBankSummary[]) {
+  function renderGroup(label: string, list: BankSummary[]) {
     if (list.length === 0) return null;
     return (
-      <View style={styles.group}>
+      <View key={label} style={styles.group}>
         <Text style={styles.groupLabel} accessibilityRole="header">{label}</Text>
         {list.map(renderBank)}
       </View>
@@ -155,24 +151,24 @@ export function BankSwitcherSheet({
             <Text style={styles.errorText} accessibilityRole="alert">{error}</Text>
           ) : null}
           <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
-            {banksLoading && banks.length === 0 ? (
-              <Text style={styles.mutedText}>正在读取题库列表…</Text>
-            ) : null}
             {empty ? (
               <Text style={styles.mutedText}>
-                本机还没有题库。安装一个官方线上题库，或新建本地题库后即可开始练习。
+                本机还没有题库。添加一个线上题库，或新建本地题库后即可开始练习。
               </Text>
             ) : null}
-            {renderGroup('线上题库', onlineBanks)}
-            {renderGroup('本地题库', localBanks)}
+            {ORIGIN_GROUPS.map(({ origin, label }) =>
+              renderGroup(label, banks.filter((bank) => bank.origin === origin)),
+            )}
           </ScrollView>
           {switchingId ? (
             <Text style={styles.mutedText} accessibilityLiveRegion="polite">正在切换题库…</Text>
+          ) : storeBusy ? (
+            <Text style={styles.mutedText} accessibilityLiveRegion="polite">正在处理题库，请稍候…</Text>
           ) : null}
           {canManage ? (
             <View style={styles.entries}>
-              {renderEntry(empty ? '安装官方题库' : '线上题库', onOnlineBanks, '浏览并安装官方线上题库')}
-              {renderEntry('管理题库', onManage, '新建、复制、编辑或删除题库')}
+              {renderEntry(empty ? '添加线上题库' : '线上题库', onOnlineBanks, '浏览、添加或更新线上题库')}
+              {renderEntry('管理题库', onManage, '新建、导入、编辑或删除题库')}
             </View>
           ) : null}
         </SafeAreaView>

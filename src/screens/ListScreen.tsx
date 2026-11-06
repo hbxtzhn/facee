@@ -1,26 +1,38 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useRoute, type CompositeNavigationProp, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ChevronDown, ChevronUp } from 'lucide-react-native';
-import type { Question, QuestionBankCatalog, QuestionFilter, QuestionTag } from '../question-bank';
-import { collectTagSubtreeIds, filterCatalogQuestions, questionBankRepository } from '../question-bank';
-import type { HomeStackParamList, RootStackParamList } from '../navigation/AppNavigator';
+import {
+  useBankStore,
+  type Difficulty,
+  type Importance,
+  type Mastery,
+  type QuestionFilter,
+  type QuestionListItem,
+  type QuestionType,
+  type SectionInfo,
+} from '../bank';
+import type { HomeStackParamList, ListParams, RootStackParamList } from '../navigation/AppNavigator';
+import { listTitle } from './home/components/list-title';
 import { EmptyState } from '../components/ui';
 import { SkeletonBlock } from '../components/skeleton';
 import { shuffled } from '../lib/shuffle';
-import { useMasteryStore } from '../store/masteryStore';
-import { usePracticeSessionStore } from '../store/practiceSessionStore';
-import { colors, difficultyStyles, layout, radii, spacing, typography } from '../theme';
+import { colors, layout, radii, spacing, typography } from '../theme';
+import { ICON_SIZE, ICON_STROKE, ReadingRow, TextAction, UnderlineSearchField } from './home/components/reading';
 import {
-  ICON_SIZE,
-  ICON_STROKE,
-  ReadingRow,
-  SectionLabel,
-  TextAction,
-  UnderlineSearchField,
-} from './home/components/reading';
-import { buildQuestionMeta } from './home/components/question-meta';
+  DIFFICULTIES,
+  DIFFICULTY_LABEL,
+  IMPORTANCES,
+  IMPORTANCE_LABEL,
+  MASTERY_FILTERS,
+  MASTERY_FILTER_LABEL,
+  QUESTION_TYPES,
+  TYPE_LABEL,
+  buildQuestionMeta,
+  summaryPreview,
+} from './home/components/question-meta';
+import { BankGateEmpty, useBankGateState, useEnsureBankInitialized } from './home/components/bank-gate';
 
 /** 列表在 HomeStack 内；详情页挂在 RootStack，push 会冒泡到根栈 */
 type Nav = CompositeNavigationProp<
@@ -28,200 +40,208 @@ type Nav = CompositeNavigationProp<
   NativeStackNavigationProp<RootStackParamList>
 >;
 type ListRoute = RouteProp<HomeStackParamList, 'List'>;
-type Level = 1 | 2 | 3;
-const LEVELS: Level[] = [1, 2, 3];
 
-type BodyHit = { question: Question; snippet: string | null };
+/** 列表行：题目 + 搜索命中片段（正文命中时） */
+export interface ListRow {
+  item: QuestionListItem;
+  snippet: string | null;
+}
+
+export interface PanelFilters {
+  difficulties: Difficulty[];
+  types: QuestionType[];
+  importance: Importance[];
+  mastery: Array<Mastery | 'unmarked'>;
+  tagIds: string[];
+}
+
+export const EMPTY_FILTERS: PanelFilters = { difficulties: [], types: [], importance: [], mastery: [], tagIds: [] };
 
 /**
- * 正文命中只保留通过当前范围（分类 / 标签域）与筛选（难度 / 标签 chips）的题。
- * 与 listQuestions 用同一套判定（filterCatalogQuestions），只是不带关键词；
- * 保持正文命中原有的相关度顺序。
+ * 入口范围 → 数据层筛选。分区取其中仍在题库中的分类；分区为空（或全部已不在题库中）时
+ * 返回 null，表示范围内没有题（不能退化成整库）。
  */
-export function filterBodyHits(hits: BodyHit[], tags: readonly QuestionTag[], filter: QuestionFilter): BodyHit[] {
-  const passing = new Set(
-    filterCatalogQuestions(
-      { schemaVersion: 1, id: '', title: '', tags: [...tags], questions: hits.map((hit) => hit.question) },
-      { ...filter, query: undefined },
-    ).map((question) => question.id),
-  );
-  return hits.filter((hit) => passing.has(hit.question.id));
+export function scopeFilter(params: ListParams | undefined, sections: readonly SectionInfo[]): QuestionFilter | null {
+  if (!params) return {};
+  if (params.categoryId) return { categoryIds: [params.categoryId] };
+  if (params.tagId) return { tagIds: [params.tagId] };
+  if (params.collectionId) return { collectionId: params.collectionId };
+  if (params.sectionId) {
+    const section = sections.find((item) => item.id === params.sectionId);
+    const categoryIds = (section?.categories ?? []).filter((category) => category.exists).map((category) => category.id);
+    return categoryIds.length > 0 ? { categoryIds } : null;
+  }
+  if (params.updatedOnly) return { updatedSinceSeen: true };
+  return {};
+}
+
+/** 合并范围与面板筛选；面板里的标签与入口标签同时存在时，数据层按「任一命中」处理，这里取面板值收窄 */
+export function combineFilters(scope: QuestionFilter, panel: PanelFilters): QuestionFilter {
+  const filter: QuestionFilter = { ...scope };
+  if (panel.difficulties.length > 0) filter.difficulties = panel.difficulties;
+  if (panel.types.length > 0) filter.types = panel.types;
+  if (panel.importance.length > 0) filter.importance = panel.importance;
+  if (panel.mastery.length > 0) filter.mastery = panel.mastery;
+  if (panel.tagIds.length > 0 && !scope.tagIds) filter.tagIds = panel.tagIds;
+  return filter;
+}
+
+function toggle<T>(list: T[], value: T): T[] {
+  return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
 }
 
 export function ListScreen() {
   const route = useRoute<ListRoute>();
   const nav = useNavigation<Nav>();
-  const tagId = route.params.tagId;
-  const categoryId = route.params.categoryId;
-  const tagName = route.params.categoryName ?? route.params.tagName ?? '题目';
+  useEnsureBankInitialized();
+  const gate = useBankGateState();
+  const params = route.params;
+  const isGlobalSearch = params?.search === true;
+  const title = listTitle(params);
+  const sections = useBankStore((state) => state.sections);
+  const tags = useBankStore((state) => state.tags);
+  const contentVersion = useBankStore((state) => state.contentVersion);
+  const learningVersion = useBankStore((state) => state.learningVersion);
   const [keyword, setKeyword] = useState('');
-  // §6.3 难度多选（并集）；§6.4 标签多选（父含子孙）
-  const [difficulties, setDifficulties] = useState<ReadonlySet<Level>>(new Set());
-  const [tagFilter, setTagFilter] = useState<ReadonlySet<string>>(new Set());
-  // 「随机刷」：练习队列按当前筛选结果洗牌（点题时构建，保持筛选语义不变）
+  const [panel, setPanel] = useState<PanelFilters>(EMPTY_FILTERS);
+  // 「随机刷」：练习队列按当前结果洗牌（点题时构建，保持筛选语义不变）
   const [shuffle, setShuffle] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [items, setItems] = useState<Question[]>([]);
-  // §6.2 正文命中：标题/标签即时匹配之外，再用安装期语料搜正文。
-  // 注意：正文命中的题**不在** titleMatches 里，元数据必须单独取，不能拿 items 反查。
-  const [bodyOnlyItems, setBodyOnlyItems] = useState<BodyHit[]>([]);
+  const [rows, setRows] = useState<ListRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // 原生栈标题：导航层只读 tagName，分类入口会显示成「题目」，这里按实际入口名修正
   useLayoutEffect(() => {
-    if (typeof nav.setOptions === 'function') nav.setOptions({ title: tagName });
-  }, [nav, tagName]);
+    if (typeof nav.setOptions === 'function') nav.setOptions({ title });
+  }, [nav, title]);
 
+  // 分区数组在每次学习数据变化后都会换新引用：按内容（JSON）稳定范围，避免重复查询
+  const scopeJson = JSON.stringify(scopeFilter(params, sections));
+  const scope = useMemo(() => JSON.parse(scopeJson) as QuestionFilter | null, [scopeJson]);
+  const filter = useMemo(() => (scope ? combineFilters(scope, panel) : null), [scope, panel]);
+  const trimmed = keyword.trim();
+  /** 全局搜索未输入关键词时不列整库，只给提示 */
+  const idle = isGlobalSearch && !trimmed;
+
+  const generation = useRef(0);
   const load = useCallback(async () => {
+    const current = ++generation.current;
+    const store = useBankStore.getState();
+    if (store.status !== 'ready' || !store.activeBankId) {
+      setRows([]);
+      setLoading(false);
+      return;
+    }
+    if (!filter || idle) {
+      setRows([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
-    const filter: QuestionFilter = {
-      tagId,
-      categoryId,
-      difficulties: [...difficulties],
-      tagIds: [...tagFilter],
-    };
-    try {
-      const titleMatches = await questionBankRepository.listQuestions({ ...filter, query: keyword });
-      setItems(titleMatches);
-
-      const trimmed = keyword.trim();
-      if (!trimmed) {
-        setBodyOnlyItems([]);
-        return;
-      }
-      // 正文命中：只保留「标题没命中」的题，避免同一题出现两次
-      const titleIds = new Set(titleMatches.map((question) => question.id));
-      const [hits, loadedCatalog] = await Promise.all([
-        questionBankRepository.searchBody(trimmed),
-        questionBankRepository.getCatalog().catch(() => null),
-      ]);
-      const resolved = await Promise.all(
-        hits
-          .filter((hit) => !titleIds.has(hit.id))
-          .map(async (hit) => {
-            const question = await questionBankRepository.getQuestion(hit.id);
-            return question ? { question, snippet: hit.snippet } : null;
-          }),
-      );
-      const bodyHits = resolved.filter((entry): entry is BodyHit => entry !== null);
-      // 修复：正文命中此前只排除标题命中，完全忽略分类 / 标签 / 难度筛选
-      setBodyOnlyItems(filterBodyHits(bodyHits, loadedCatalog?.tags ?? [], filter));
-    } catch (loadError) {
-      setItems([]);
-      setBodyOnlyItems([]);
-      setError(loadError instanceof Error ? loadError.message : String(loadError));
-    } finally {
-      setLoading(false);
-    }
-  }, [categoryId, difficulties, keyword, tagFilter, tagId]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => void load(), 160);
-    return () => clearTimeout(timer);
-  }, [load]);
-
-  // §6.4 父标签：当前范围（分类/标签域）内实际出现的根标签；标签树抽屉明确不做
-  const [catalog, setCatalog] = useState<QuestionBankCatalog | null>(null);
-  useEffect(() => {
-    let active = true;
-    questionBankRepository
-      .getCatalog()
-      .then((loaded) => {
-        if (active) setCatalog(loaded);
-      })
-      .catch(() => {
-        if (active) setCatalog(null);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const bankMarks = useMasteryStore((state) => (catalog ? state.marks[catalog.id] : undefined));
-
-  const tagChips = useMemo(() => {
-    if (!catalog) return [];
-    const inScopeIds = new Set(
-      filterCatalogQuestions(catalog, { tagId, categoryId }).map((question) => question.id),
-    );
-    return catalog.tags
-      .filter((tag) => tag.parentId === null)
-      .map((tag) => {
-        const subtree = collectTagSubtreeIds(catalog.tags, tag.id);
-        let count = 0;
-        for (const question of catalog.questions) {
-          if (!inScopeIds.has(question.id)) continue;
-          if (question.tags.some((item) => subtree.has(item.id))) count += 1;
+    let next: ListRow[] = [];
+    let failure: string | null = null;
+    if (trimmed) {
+      // 搜索：数据层负责 FTS（≥ 3 字）/ LIKE（1–2 字）与筛选；再取列表项补齐难度 / 掌握度等元信息
+      const hits = await store.search(trimmed, { filter });
+      if (!hits.ok) failure = hits.error.message;
+      else if (hits.value.length > 0) {
+        const items = await store.listQuestions({ ...filter, questionIds: hits.value.map((hit) => hit.id) });
+        if (!items.ok) failure = items.error.message;
+        else {
+          const byId = new Map(items.value.map((item) => [item.id, item]));
+          next = hits.value.flatMap((hit) => {
+            const item = byId.get(hit.id);
+            if (!item) return [];
+            return [{ item, snippet: hit.matchedIn === 'body' && hit.snippet ? hit.snippet : null }];
+          });
         }
-        return { id: tag.id, name: tag.name, count };
-      })
-      .filter((chip) => chip.count > 0);
-  }, [catalog, categoryId, tagId]);
+      }
+    } else {
+      const items = await store.listQuestions(filter);
+      if (!items.ok) failure = items.error.message;
+      else next = items.value.map((item) => ({ item, snippet: null }));
+    }
+    if (current !== generation.current) return;
+    setRows(next);
+    setError(failure);
+    setLoading(false);
+  }, [filter, idle, trimmed]);
 
-  function toggleDifficulty(level: Level) {
-    setDifficulties((current) => {
-      const next = new Set(current);
-      if (next.has(level)) next.delete(level);
-      else next.add(level);
-      return next;
+  // 关键词输入防抖；内容 / 学习数据变化（打标、收藏、题库更新）后重新查询
+  useEffect(() => {
+    const timer = setTimeout(() => void load(), trimmed ? 160 : 0);
+    return () => clearTimeout(timer);
+  }, [load, trimmed, gate, contentVersion, learningVersion]);
+
+  // 标签筛选：根标签 + 其直接子标签（数据层自动含子孙）；入口本身是标签时不再显示
+  const tagOptions = useMemo(() => {
+    if (params?.tagId) return [];
+    return tags.filter((tag) => tag.questionCount > 0 && (tag.parentId === null || tags.some((root) => root.id === tag.parentId && root.parentId === null)));
+  }, [params?.tagId, tags]);
+
+  async function openQuestion(id: string) {
+    const ordered = rows.map((row) => row.item.id);
+    const queue = shuffle ? shuffled(ordered) : ordered;
+    const queueIndex = Math.max(0, queue.indexOf(id));
+    await useBankStore.getState().saveSession({
+      queue,
+      index: queueIndex,
+      mode: 'practice',
+      title: shuffle ? `${title} · 随机` : title,
     });
+    nav.push('Detail', { id, queue, queueIndex, mode: 'practice' });
   }
 
-  function toggleTag(id: string) {
-    setTagFilter((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
+  const panelCount =
+    panel.difficulties.length + panel.types.length + panel.importance.length + panel.mastery.length + panel.tagIds.length;
+  const hasPanelFilters = panelCount > 0 || shuffle;
+  const hasFilters = Boolean(trimmed) || panelCount > 0;
 
   function clearFilters() {
     setKeyword('');
-    setDifficulties(new Set());
-    setTagFilter(new Set());
+    setPanel(EMPTY_FILTERS);
   }
 
-  function openQuestion(item: Question) {
-    const ordered = items.map((question) => question.id);
-    const queue = shuffle ? shuffled(ordered) : ordered;
-    const queueIndex = queue.indexOf(item.id);
-    if (catalog) {
-      usePracticeSessionStore.getState().saveSession(catalog.id, {
-        queue,
-        index: queueIndex,
-        mode: 'practice',
-        title: shuffle ? `${tagName} · 随机` : tagName,
-      });
-    }
-    nav.push('Detail', { id: item.id, meta: item, queue, queueIndex, mode: 'practice' });
-  }
-
-  const hasFilters = Boolean(keyword || difficulties.size > 0 || tagFilter.size > 0);
-  const hasPanelFilters = difficulties.size > 0 || tagFilter.size > 0 || shuffle;
-
-  // 单行筛选摘要：「难度 · 标签 · 顺序」，点按展开原有筛选项
+  // 单行筛选摘要：「全部难度 · 全部类型 · …· 顺序」，点按展开筛选
   const filterSummary = [
-    difficulties.size > 0
-      ? LEVELS.filter((level) => difficulties.has(level)).map((level) => difficultyStyles[level].label).join('、')
-      : '全部难度',
-    tagFilter.size > 0
-      ? tagChips.filter((chip) => tagFilter.has(chip.id)).map((chip) => chip.name).join('、') || `${tagFilter.size} 个标签`
-      : '全部标签',
+    panel.difficulties.length > 0 ? panel.difficulties.map((d) => DIFFICULTY_LABEL[d]).join('、') : '全部难度',
+    panel.types.length > 0 ? panel.types.map((t) => TYPE_LABEL[t]).join('、') : null,
+    panel.importance.length > 0 ? panel.importance.map((i) => IMPORTANCE_LABEL[i]).join('、') : null,
+    panel.mastery.length > 0 ? panel.mastery.map((m) => MASTERY_FILTER_LABEL[m]).join('、') : '全部掌握度',
+    panel.tagIds.length > 0
+      ? tags.filter((tag) => panel.tagIds.includes(tag.id)).map((tag) => tag.name).join('、')
+      : null,
     shuffle ? '随机' : '顺序',
-  ].join(' · ');
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
-  const resultLabel = loading ? '正在查找' : `${items.length} 题`;
+  const resultLabel = idle ? '' : loading ? '正在查找' : `${rows.length} 题`;
+
+  if (gate !== 'ready') {
+    return (
+      <View style={[styles.container, styles.listContent]}>
+        {gate === 'loading' ? null : (
+          <BankGateEmpty
+            state={gate}
+            onOnlineBanks={() => nav.navigate('OnlineBanks')}
+            onCreateLocal={() => nav.navigate('BankManager')}
+          />
+        )}
+      </View>
+    );
+  }
 
   const header = (
     <View style={styles.toolbar}>
       <UnderlineSearchField
         value={keyword}
         onChangeText={setKeyword}
-        placeholder={`搜索${tagName}题目`}
+        placeholder={isGlobalSearch ? '搜索全部题目' : `在「${title}」中搜索`}
         accessibilityLabel="搜索题目"
+        autoFocus={isGlobalSearch}
       />
 
       <Pressable
@@ -246,32 +266,65 @@ export function ListScreen() {
       {filtersOpen ? (
         <View style={styles.panel}>
           <FilterGroup label="难度">
-            {LEVELS.map((level) => (
+            {DIFFICULTIES.map((value) => (
               <FilterOption
-                key={level}
-                label={difficultyStyles[level].label}
-                accessibilityLabel={`${difficultyStyles[level].label}难度`}
-                selected={difficulties.has(level)}
-                onPress={() => toggleDifficulty(level)}
+                key={value}
+                label={DIFFICULTY_LABEL[value]}
+                accessibilityLabel={`${DIFFICULTY_LABEL[value]}难度`}
+                selected={panel.difficulties.includes(value)}
+                onPress={() => setPanel((p) => ({ ...p, difficulties: toggle(p.difficulties, value) }))}
               />
             ))}
           </FilterGroup>
-          {tagChips.length > 0 ? (
+          <FilterGroup label="类型">
+            {QUESTION_TYPES.map((value) => (
+              <FilterOption
+                key={value}
+                label={TYPE_LABEL[value]}
+                accessibilityLabel={`${TYPE_LABEL[value]}题`}
+                selected={panel.types.includes(value)}
+                onPress={() => setPanel((p) => ({ ...p, types: toggle(p.types, value) }))}
+              />
+            ))}
+          </FilterGroup>
+          <FilterGroup label="频度">
+            {IMPORTANCES.map((value) => (
+              <FilterOption
+                key={value}
+                label={IMPORTANCE_LABEL[value]}
+                accessibilityLabel={`重要度${IMPORTANCE_LABEL[value]}`}
+                selected={panel.importance.includes(value)}
+                onPress={() => setPanel((p) => ({ ...p, importance: toggle(p.importance, value) }))}
+              />
+            ))}
+          </FilterGroup>
+          <FilterGroup label="掌握">
+            {MASTERY_FILTERS.map((value) => (
+              <FilterOption
+                key={value}
+                label={MASTERY_FILTER_LABEL[value]}
+                accessibilityLabel={`掌握度${MASTERY_FILTER_LABEL[value]}`}
+                selected={panel.mastery.includes(value)}
+                onPress={() => setPanel((p) => ({ ...p, mastery: toggle(p.mastery, value) }))}
+              />
+            ))}
+          </FilterGroup>
+          {tagOptions.length > 0 ? (
             <FilterGroup label="标签">
-              {tagChips.map((chip) => (
+              {tagOptions.map((tag) => (
                 <FilterOption
-                  key={chip.id}
-                  label={`${chip.name} · ${chip.count}`}
-                  accessibilityLabel={`按标签 ${chip.name} 筛选`}
-                  selected={tagFilter.has(chip.id)}
-                  onPress={() => toggleTag(chip.id)}
+                  key={tag.id}
+                  label={`${tag.name} · ${tag.questionCount}`}
+                  accessibilityLabel={`按标签 ${tag.name} 筛选`}
+                  selected={panel.tagIds.includes(tag.id)}
+                  onPress={() => setPanel((p) => ({ ...p, tagIds: toggle(p.tagIds, tag.id) }))}
                 />
               ))}
             </FilterGroup>
           ) : null}
           <FilterGroup label="顺序">
             <FilterOption label="顺序" selected={!shuffle} onPress={() => setShuffle(false)} />
-            <FilterOption label="随机刷" accessibilityLabel="随机刷" selected={shuffle} onPress={() => setShuffle(true)} />
+            <FilterOption label="随机刷" selected={shuffle} onPress={() => setShuffle(true)} />
           </FilterGroup>
           {hasPanelFilters ? (
             <View style={styles.panelFooter}>
@@ -279,8 +332,7 @@ export function ListScreen() {
                 label="重置筛选"
                 muted
                 onPress={() => {
-                  setDifficulties(new Set());
-                  setTagFilter(new Set());
+                  setPanel(EMPTY_FILTERS);
                   setShuffle(false);
                 }}
               />
@@ -291,48 +343,42 @@ export function ListScreen() {
     </View>
   );
 
+  const emptyDescription = scope === null
+    ? '这个分区里还没有题库中的分类，先去分区里添加分类。'
+    : hasFilters
+      ? '换一个关键词，或清除筛选后再试。'
+      : params?.updatedOnly
+        ? '学过的题都已是最新内容。'
+        : '这里暂时还没有题目。';
+
   return (
     <View style={styles.container}>
       {/* 列表始终挂载：输入关键词触发加载时搜索框不能被卸载（会丢焦点） */}
       <FlatList
-        data={items}
+        data={rows}
         ListHeaderComponent={header}
-        ListFooterComponent={
-          bodyOnlyItems.length > 0 ? (
-            <View>
-              <SectionLabel>{`正文命中 ${bodyOnlyItems.length} 题`}</SectionLabel>
-              {bodyOnlyItems.map(({ question, snippet }, index) => (
-                <ReadingRow
-                  key={question.id}
-                  first={index === 0}
-                  title={question.title}
-                  snippet={snippet ? `…${snippet}…` : null}
-                  meta={buildQuestionMeta(question, bankMarks?.[question.id])}
-                  accessibilityLabel={`${question.title}，正文命中`}
-                  onPress={() => nav.push('Detail', { id: question.id, meta: question })}
-                />
-              ))}
-            </View>
-          ) : null
-        }
-        keyExtractor={(item) => item.id}
+        keyExtractor={(row) => row.item.id}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.listContent}
-        renderItem={({ item, index }) => {
-          const config = difficultyStyles[item.difficulty];
-          const meta = buildQuestionMeta(item, bankMarks?.[item.id]);
+        renderItem={({ item: row, index }) => {
+          const { item } = row;
           return (
             <ReadingRow
               first={index === 0}
               title={item.title}
-              meta={item.hasAnswer ? meta : `${meta} · 暂无答案`}
-              accessibilityLabel={`${item.title}，${config.label}${item.hasAnswer ? '，有参考答案' : ''}`}
-              onPress={() => openQuestion(item)}
+              snippet={row.snippet ?? summaryPreview(item.summary)}
+              snippetLines={1}
+              badge={item.contentUpdated ? '内容已更新' : null}
+              meta={buildQuestionMeta(item)}
+              accessibilityLabel={`${item.title}，${buildQuestionMeta(item)}${item.contentUpdated ? '，内容已更新' : ''}`}
+              onPress={() => void openQuestion(item.id)}
             />
           );
         }}
         ListEmptyComponent={
-          loading ? (
+          idle ? (
+            <Text style={styles.hint}>输入关键词搜索整个题库：标题、一句话、要点与详解都会命中。</Text>
+          ) : loading ? (
             <View>
               {[0, 1, 2, 3, 4].map((row) => (
                 <View key={row} style={styles.skeletonRow}>
@@ -341,10 +387,10 @@ export function ListScreen() {
                 </View>
               ))}
             </View>
-          ) : bodyOnlyItems.length > 0 ? null : (
+          ) : (
             <EmptyState
               title={error ? '题目加载失败' : '没有找到匹配题目'}
-              description={error ?? (hasFilters ? '换一个关键词，或清除筛选后再试。' : '这个分类暂时还没有题目。')}
+              description={error ?? emptyDescription}
               actionLabel={error ? '重新加载' : hasFilters ? '清除筛选' : undefined}
               onAction={error ? () => void load() : hasFilters ? clearFilters : undefined}
             />
@@ -417,6 +463,7 @@ const styles = StyleSheet.create({
   optionText: { ...typography.label, color: colors.textMuted, fontWeight: '400' },
   optionTextSelected: { color: colors.primary, fontWeight: '600' },
   panelFooter: { alignItems: 'flex-end', paddingTop: spacing.xs },
+  hint: { ...typography.caption, color: colors.textMuted, lineHeight: 18, paddingTop: spacing.lg },
   listContent: {
     paddingHorizontal: layout.pagePadding,
     paddingBottom: spacing.xxxl,
