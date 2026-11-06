@@ -8,6 +8,8 @@
 
 import { withNetworkTimeout } from './network';
 import { inspectImageBase64, type LlmImageInput } from './import-image';
+import { clipSpecChars, countSpecChars } from './import-text';
+import type { Difficulty, KeyPointWeight, QuestionType } from '../bank/types';
 
 export interface LlmConfig {
   /** 例如 https://api.deepseek.com/v1（不含 /chat/completions） */
@@ -16,15 +18,30 @@ export interface LlmConfig {
   model: string;
 }
 
-/** LLM 抽取出的题目草稿（尚未并入题库包；id 由 local-banks 的模型层生成） */
+/**
+ * LLM 抽取出的 v2 结构题目草稿（尚未写入题库；题目 / 要点 / 追问 id 由数据层分配）。
+ * 已按规范规范化：要点 3–5 条、一句话 ≤ 80 字、要点 ≤ 40 字；做过的修正记在 notes 里供预览提示。
+ */
 export interface GeneratedQuestionDraft {
   title: string;
-  questionMd: string;
-  /** 资料没有可用答案时为 null（hasAnswer 将为 false） */
-  answerMd: string | null;
-  difficulty: 1 | 2 | 3;
-  tags: string[];
+  /** 不含 choice（AI 导入不生成选项） */
+  type: Exclude<QuestionType, 'choice'>;
+  difficulty: Difficulty;
+  /** 标题之外的补充（Markdown），无则 null */
+  prompt: string | null;
+  summary: string;
+  keyPoints: Array<{ text: string; weight: KeyPointWeight }>;
+  detail: string | null;
+  pitfalls: string[];
+  followups: Array<{ q: string; a: string }>;
+  /** 规范化时做过的修正（截断等），预览时提示用户核对 */
+  notes: string[];
 }
+
+export const DRAFT_SUMMARY_LIMIT = 80;
+export const DRAFT_KEY_POINT_LIMIT = 40;
+export const DRAFT_MIN_KEY_POINTS = 3;
+export const DRAFT_MAX_KEY_POINTS = 5;
 
 export interface LlmPreset {
   id: string;
@@ -64,8 +81,9 @@ export const DEFAULT_EXTRACTION_REQUIREMENTS =
 const EXTRACTION_FORMAT_LINES = [
   '【输出格式（固定要求，必须遵守，不得修改）】',
   '1. 每道题输出一个 JSON 对象，字段固定为：',
-  '   {"title": "题目标题（一句话，不超过 60 字）", "question": "题干（Markdown，可包含要求与背景）", "answer": "参考答案（Markdown；资料中没有就填 null）", "difficulty": "easy|medium|hard 之一", "tags": ["1-4 个短标签"]}',
-  '2. 输出一个 JSON 数组，只输出 JSON 本身，不要任何解释或 Markdown 代码栏。',
+  '   {"title": "题目标题（一句话，不超过 60 字）", "type": "concept|scenario|coding|design|behavioral 之一", "difficulty": "easy|medium|hard 之一", "prompt": "标题之外的补充：场景、约束、给定代码（Markdown；没有填 null）", "summary": "一句话结论（纯文本，1–2 句，不超过 80 字）", "keyPoints": [{"text": "答题要点（纯文本，不超过 40 字）", "weight": 1}], "detail": "详解（Markdown，代码块标注语言；没有填 null）", "pitfalls": ["易错点（纯文本）"], "followups": [{"q": "追问问题", "a": "追问答案（Markdown，不超过 150 字）"}]}',
+  '2. keyPoints 必须 3–5 条；weight 取 1（加分项）、2（重要）或 3（核心）。summary 与 keyPoints 必填，资料无法支撑答案的题目不要输出。',
+  '3. 输出一个 JSON 数组，只输出 JSON 本身，不要任何解释或 Markdown 代码栏。',
 ];
 
 /** 从一段资料中抽取面试题的用户提示词；requirements 为用户在导入弹窗里编辑的抽取要求 */
@@ -129,7 +147,7 @@ export async function extractQuestionsFromImage(
   validateConfig(config);
   if (inspectImageBase64(image.base64) !== image.mimeType) throw new Error('图片内容与类型不一致，请重新选择');
   const prompt = buildExtractionUserPrompt(
-    '资料是本消息附带的图片。请阅读图片中的题目和答案；保留公式、选项与上下文。看不清的内容不要猜测，图片没有答案时填 null。',
+    '资料是本消息附带的图片。请阅读图片中的题目和答案；保留公式、选项与上下文。看不清的内容不要猜测；无法给出要点的题目不要输出。',
     options.requirements,
   );
   const raw = await callChatCompletion(options.fetchImpl ?? fetch, config, [
@@ -234,7 +252,7 @@ async function callChatCompletion(
 
 /**
  * 容错解析模型输出：剥 Markdown 代码栏；无 fenced 时截取首个「[」到最后一个「]」。
- * 单条不合法（缺标题/缺题干）直接跳过，不让一条坏数据毁掉整块结果。
+ * 单条不合法（缺标题 / 缺一句话 / 要点不足 3 条）直接跳过，不让一条坏数据毁掉整块结果；规范化见 normalizeDraft。
  */
 export function parseGeneratedQuestions(raw: string): GeneratedQuestionDraft[] {
   const jsonArrayText = extractJsonArrayText(raw);
@@ -268,72 +286,150 @@ function extractJsonArrayText(raw: string): string | null {
   return withoutFence.slice(start, end + 1);
 }
 
-function normalizeDraft(item: unknown): GeneratedQuestionDraft | null {
-  if (typeof item !== 'object' || item === null) return null;
+const QUESTION_TYPES_FOR_DRAFT = ['concept', 'scenario', 'coding', 'design', 'behavioral'] as const;
+
+const text = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
+const markdownOrNull = (value: unknown): string | null => (text(value) ? text(value) : null);
+
+function normalizeWeight(value: unknown): KeyPointWeight {
+  if (value === 3 || value === '3' || value === '核心') return 3;
+  if (value === 2 || value === '2' || value === '重要') return 2;
+  return 1;
+}
+
+function normalizeType(value: unknown): GeneratedQuestionDraft['type'] {
+  const candidate = text(value).toLowerCase();
+  return (QUESTION_TYPES_FOR_DRAFT as readonly string[]).includes(candidate)
+    ? (candidate as GeneratedQuestionDraft['type'])
+    : 'concept';
+}
+
+function normalizeDifficulty(value: unknown): Difficulty {
+  if (value === 1 || value === '1' || value === 'easy') return 'easy';
+  if (value === 3 || value === '3' || value === 'hard') return 'hard';
+  return 'medium'; // medium / 2 / 未识别一律归中
+}
+
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map(text).filter(Boolean))];
+}
+
+/**
+ * 规范化单条模型输出为 v2 草稿；无法满足硬性规则（缺标题 / 缺一句话 / 要点不足 3 条）返回 null。
+ * 可修复的偏差就地修正并记入 notes：一句话超 80 字截断、要点超 40 字截断、要点超过 5 条只留前 5 条。
+ */
+export function normalizeDraft(item: unknown): GeneratedQuestionDraft | null {
+  if (typeof item !== 'object' || item === null || Array.isArray(item)) return null;
   const record = item as Record<string, unknown>;
-  const title = typeof record.title === 'string' ? record.title.trim() : '';
-  const question = typeof record.question === 'string' ? record.question.trim() : '';
-  if (!title || !question) return null;
+  const answer = typeof record.answer === 'object' && record.answer !== null ? (record.answer as Record<string, unknown>) : {};
+  const title = text(record.title);
+  let summary = text(record.summary ?? answer.summary).replace(/\s+/g, ' ');
+  if (!title || !summary) return null;
+  const notes: string[] = [];
 
-  const answer =
-    typeof record.answer === 'string' && record.answer.trim().length > 0
-      ? record.answer
-      : null;
+  if (countSpecChars(summary) > DRAFT_SUMMARY_LIMIT) {
+    summary = clipSpecChars(summary, DRAFT_SUMMARY_LIMIT);
+    notes.push(`一句话超过 ${DRAFT_SUMMARY_LIMIT} 字，已截断`);
+  }
 
-  const difficulty = normalizeDifficulty(record.difficulty);
-  const tags = Array.isArray(record.tags)
-    ? [...new Set(record.tags.filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0).map((tag) => tag.trim()))].slice(0, 4)
-    : [];
+  const rawKeyPoints = Array.isArray(record.keyPoints) ? record.keyPoints : Array.isArray(answer.keyPoints) ? answer.keyPoints : [];
+  const seen = new Set<string>();
+  let clippedKeyPoint = false;
+  let keyPoints: GeneratedQuestionDraft['keyPoints'] = [];
+  for (const entry of rawKeyPoints) {
+    const isObject = typeof entry === 'object' && entry !== null;
+    let kpText = text(isObject ? (entry as Record<string, unknown>).text : entry).replace(/\s+/g, ' ');
+    if (!kpText || seen.has(kpText)) continue;
+    seen.add(kpText);
+    if (countSpecChars(kpText) > DRAFT_KEY_POINT_LIMIT) {
+      kpText = clipSpecChars(kpText, DRAFT_KEY_POINT_LIMIT);
+      clippedKeyPoint = true;
+    }
+    keyPoints.push({ text: kpText, weight: normalizeWeight(isObject ? (entry as Record<string, unknown>).weight : undefined) });
+  }
+  if (keyPoints.length < DRAFT_MIN_KEY_POINTS) return null;
+  if (clippedKeyPoint) notes.push(`有要点超过 ${DRAFT_KEY_POINT_LIMIT} 字，已截断`);
+  if (keyPoints.length > DRAFT_MAX_KEY_POINTS) {
+    notes.push(`要点超过 ${DRAFT_MAX_KEY_POINTS} 条，只保留前 ${DRAFT_MAX_KEY_POINTS} 条`);
+    keyPoints = keyPoints.slice(0, DRAFT_MAX_KEY_POINTS);
+  }
 
-  return { title: title.slice(0, 200), questionMd: question, answerMd: answer, difficulty, tags };
+  const followups: GeneratedQuestionDraft['followups'] = [];
+  if (Array.isArray(record.followups)) {
+    for (const entry of record.followups) {
+      if (typeof entry !== 'object' || entry === null) continue;
+      const f = entry as Record<string, unknown>;
+      const q = text(f.q ?? f.question);
+      const a = text(f.a ?? f.answer);
+      if (q && a) followups.push({ q, a });
+    }
+  }
+
+  return {
+    title: title.slice(0, 200),
+    type: normalizeType(record.type),
+    difficulty: normalizeDifficulty(record.difficulty),
+    prompt: markdownOrNull(record.prompt ?? record.question),
+    summary,
+    keyPoints,
+    detail: markdownOrNull(record.detail ?? answer.detail ?? (typeof record.answer === 'string' ? record.answer : null)),
+    pitfalls: stringList(record.pitfalls ?? answer.pitfalls),
+    followups,
+    notes,
+  };
 }
 
-function normalizeDifficulty(value: unknown): 1 | 2 | 3 {
-  if (value === 1 || value === '1' || value === 'easy') return 1;
-  if (value === 3 || value === '3' || value === 'hard') return 3;
-  return 2; // medium / 2 / 未识别一律归中
-}
-
-/** 待改写的现有题目（题库里的原版） */
+/** 待改写的现有题目（编辑表单当前内容） */
 export interface RewriteQuestionInput {
   title: string;
-  questionMd: string;
-  answerMd: string | null;
-  tags?: string[];
+  prompt: string | null;
+  summary: string;
+  keyPoints: Array<{ text: string; weight: KeyPointWeight }>;
+  detail: string | null;
+  pitfalls: string[];
+  followups: Array<{ q: string; a: string }>;
 }
 
 /** 「AI 改写此题」的用户提示词；instruction 是用户的额外要求，可留空 */
 export function buildRewriteUserPrompt(question: RewriteQuestionInput, instruction: string): string {
   const lines = [
     '下面是一道现有的面试题。请重写一份更好的版本：题意更清晰、贴近真实面试提问方式，',
-    '答案更完整有条理（分点、给关键概念），但**保持题目主题与考查点不变**，不要换题。',
+    '结论更精炼、要点更准确有区分度，但**保持题目主题与考查点不变**，不要换题。',
   ];
   if (instruction.trim()) {
     lines.push(`用户的额外要求（优先满足）：${instruction.trim()}`);
   }
   lines.push(
     '输出一个 JSON 对象，字段固定为：',
-    '{"title": "题目标题", "question": "题干（Markdown）", "answer": "参考答案（Markdown；原题没有答案且无法合理补全时填 null）", "difficulty": "easy|medium|hard 之一", "tags": ["1-4 个短标签"]}',
+    EXTRACTION_FORMAT_LINES[1].trim(),
+    EXTRACTION_FORMAT_LINES[2].replace(/^2\. /, ''),
     '只输出 JSON 本身，不要解释或代码栏。',
     '',
     '【原题开始】',
     `标题：${question.title}`,
-    `题干：\n${question.questionMd}`,
-    question.answerMd ? `参考答案：\n${question.answerMd}` : '参考答案：（无）',
-    question.tags?.length ? `标签：${question.tags.join('、')}` : '',
+    question.prompt ? `补充：\n${question.prompt}` : '补充：（无）',
+    `一句话：${question.summary || '（无）'}`,
+    '要点：',
+    ...(question.keyPoints.length > 0
+      ? question.keyPoints.map((kp) => `- [权重 ${kp.weight}] ${kp.text}`)
+      : ['（无）']),
+    question.detail ? `详解：\n${question.detail}` : '详解：（无）',
+    question.pitfalls.length > 0 ? `易错点：${question.pitfalls.join('；')}` : '',
+    ...question.followups.map((f) => `追问：${f.q}\n答：${f.a}`),
     '【原题结束】',
   );
-  return lines.filter((line) => line !== undefined).join('\n');
+  return lines.filter((line) => line !== '').join('\n');
 }
 
-/** 容错解析改写结果：模型可能输出裸对象或包一层数组；解析不出返回 null */
+/** 容错解析改写结果：模型可能输出裸对象或包一层数组；解析不出或不满足规范返回 null */
 export function parseRewrittenQuestion(raw: string): GeneratedQuestionDraft | null {
   const trimmed = raw.trim();
   const withoutFence = trimmed.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
 
-  const tryParse = (text: string): unknown => {
+  const tryParse = (input: string): unknown => {
     try {
-      return JSON.parse(text);
+      return JSON.parse(input);
     } catch {
       return undefined;
     }
@@ -366,6 +462,6 @@ export async function rewriteQuestion(
   validateConfig(config);
   const raw = await callChatCompletion(doFetch, config, buildRewriteUserPrompt(question, options.instruction ?? ''), options.signal);
   const draft = parseRewrittenQuestion(raw);
-  if (!draft) throw new Error('模型返回的内容无法解析成题目，请重试或换个说法');
+  if (!draft) throw new Error('模型返回的内容无法解析成符合规范的题目（需要标题、一句话与 3–5 条要点），请重试或换个说法');
   return draft;
 }

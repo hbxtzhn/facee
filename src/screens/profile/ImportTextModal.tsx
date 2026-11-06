@@ -19,14 +19,13 @@ import {
 import { colors, radii, spacing, typography } from '../../theme';
 import { AppButton } from '../../components/ui';
 import { FieldLabel, ModalSheet, SheetActions, SheetError } from './ModalSheet';
+import { DIFFICULTY_LABEL, QUESTION_TYPE_LABEL } from './question-form';
 
 type ImportPhase = 'input' | 'extracting' | 'review';
 
 interface DraftWithKey extends GeneratedQuestionDraft {
   key: string;
 }
-
-const DIFFICULTY_LABEL: Record<number, string> = { 1: '简单', 2: '中等', 3: '困难' };
 
 /**
  * AI 导入题目：文本按块抽取，或用户确认后发送单张图片给视觉模型
@@ -179,7 +178,7 @@ export function ImportTextModal({
       if (controller.signal.aborted) return;
       if (extracted.length === 0) throw new Error(source === 'image'
         ? '没有从图片中提取到题目，请选择更清晰、包含完整题干的图片。'
-        : '没有从文本中提取到题目，试试换一段更完整的资料。');
+        : '没有从文本中提取到符合规范的题目（需要一句话结论与 3–5 条要点），试试换一段更完整的资料。');
       setDrafts(extracted.map((draft, index) => ({ ...draft, key: `draft-${index}` })));
       setSelectedKeys(new Set(extracted.map((_, index) => `draft-${index}`)));
       setPhase('review');
@@ -224,7 +223,8 @@ export function ImportTextModal({
             confirmDisabled={selectedKeys.size === 0}
             onCancel={() => setPhase('input')}
             onConfirm={() => {
-              onConfirm(drafts.filter((draft) => selectedKeys.has(draft.key)));
+              // 去掉 UI 用的 key，只把规范化后的 v2 草稿交给编辑器写入题库
+              onConfirm(drafts.filter((draft) => selectedKeys.has(draft.key)).map(({ key: _key, ...draft }) => draft));
               reset();
             }}
           />
@@ -329,7 +329,7 @@ export function ImportTextModal({
 
       {phase === 'review' ? (
         <>
-          <Text style={styles.reviewHint}>已识别 {drafts.length} 道题，点按取消不需要的，再点「导入」。</Text>
+          <Text style={styles.reviewHint}>已识别 {drafts.length} 道题（已按规范整理为一句话 + 要点），点按取消不需要的，再点「导入」；导入后可逐题编辑。</Text>
           {drafts.map((draft) => {
             const selected = selectedKeys.has(draft.key);
             return (
@@ -349,10 +349,14 @@ export function ImportTextModal({
                 <View style={styles.draftInfo}>
                   <Text style={styles.draftTitle} numberOfLines={2}>{draft.title}</Text>
                   <Text style={styles.draftMeta}>
-                    {DIFFICULTY_LABEL[draft.difficulty]}
-                    {draft.tags.length > 0 ? ` · ${draft.tags.join(' / ')}` : ''}
-                    {draft.answerMd ? '' : ' · 无答案'}
+                    {QUESTION_TYPE_LABEL[draft.type]} · {DIFFICULTY_LABEL[draft.difficulty]} · 要点 {draft.keyPoints.length} 条
+                    {draft.followups.length > 0 ? ` · 追问 ${draft.followups.length}` : ''}
+                    {draft.detail ? '' : ' · 无详解'}
                   </Text>
+                  <Text style={styles.draftSummary} numberOfLines={2}>{draft.summary}</Text>
+                  {draft.notes.length > 0 ? (
+                    <Text style={styles.draftNote}>已自动修正：{draft.notes.join('；')}</Text>
+                  ) : null}
                 </View>
               </Pressable>
             );
@@ -436,5 +440,7 @@ const styles = StyleSheet.create({
   draftInfo: { flex: 1 },
   draftTitle: { ...typography.body, color: colors.text, lineHeight: 22 },
   draftMeta: { ...typography.caption, color: colors.textMuted, marginTop: 2 },
+  draftSummary: { ...typography.caption, color: colors.textSecondary, marginTop: 2, lineHeight: 18 },
+  draftNote: { ...typography.caption, color: colors.warning, marginTop: 2, lineHeight: 18 },
   pressed: { opacity: 0.6 },
 });

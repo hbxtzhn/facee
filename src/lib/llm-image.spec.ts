@@ -1,7 +1,11 @@
 import { extractQuestionsFromImage } from './llm';
 const CONFIG = { baseUrl: 'https://example.com/v1/', apiKey: 'test-dummy-key', model: 'vision-test' };
 const IMAGE = { mimeType: 'image/png' as const, base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=' };
-const RAW = JSON.stringify([{ title: '图中题目', question: '完整题干', answer: null, difficulty: 'easy', tags: ['测试'] }]);
+const RAW = JSON.stringify([{
+  title: '图中题目', type: 'concept', difficulty: 'easy', prompt: '完整题干', summary: '一句话结论。',
+  keyPoints: [{ text: '要点一', weight: 2 }, { text: '要点二', weight: 1 }, { text: '要点三', weight: 3 }],
+  detail: null, pitfalls: [], followups: [],
+}]);
 const response = (content = RAW) => ({ ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content } }] }) });
 
 afterEach(() => jest.useRealTimers());
@@ -20,7 +24,11 @@ it('发送带 data URL 的多模态消息，复用固定格式与用户要求，
   expect(body.messages[1].content[0].text).toContain('输出格式（固定要求');
   expect(body.messages[1].content[0].text).toContain('看不清的内容不要猜测');
   expect(body.messages[1].content[1]).toEqual({ type: 'image_url', image_url: { url: `data:image/png;base64,${IMAGE.base64}`, detail: 'auto' } });
-  expect(drafts).toEqual([{ title: '图中题目', questionMd: '完整题干', answerMd: null, difficulty: 1, tags: ['测试'] }]);
+  expect(drafts).toEqual([{
+    title: '图中题目', type: 'concept', difficulty: 'easy', prompt: '完整题干', summary: '一句话结论。',
+    keyPoints: [{ text: '要点一', weight: 2 }, { text: '要点二', weight: 1 }, { text: '要点三', weight: 3 }],
+    detail: null, pitfalls: [], followups: [], notes: [],
+  }]);
   expect(onProgress).toHaveBeenCalledWith(1, 1);
 });
 
