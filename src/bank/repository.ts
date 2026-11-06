@@ -94,7 +94,11 @@ export async function getBank(rt: BankRuntime, bankId: string): Promise<BankSumm
   return row ? toSummary(row) : null;
 }
 
-/** 持久化的当前题库 id；指向的题库已不存在时返回第一个题库（都没有返回 null） */
+/**
+ * 持久化的当前题库 id；没有设置或指向的题库已不存在时，回退到最早安装的题库，
+ * 并把这次回退选择写回——否则之后再装题库（或安装时间相同）时，回退结果可能变化，
+ * 当前题库会在用户没操作的情况下悄悄切换。都没有题库时返回 null。
+ */
 export async function getActiveBankId(rt: BankRuntime): Promise<string | null> {
   const row = await rt.db.getFirstAsync<{ value: string | null }>('SELECT value FROM app_settings WHERE key = ?', [ACTIVE_BANK_KEY]);
   if (row?.value) {
@@ -102,7 +106,9 @@ export async function getActiveBankId(rt: BankRuntime): Promise<string | null> {
     if (exists) return row.value;
   }
   const first = await rt.db.getFirstAsync<{ id: string }>('SELECT id FROM banks ORDER BY installed_at, id LIMIT 1');
-  return first?.id ?? null;
+  if (!first) return null;
+  await rt.db.runAsync('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [ACTIVE_BANK_KEY, first.id]);
+  return first.id;
 }
 
 export async function setActiveBankId(rt: BankRuntime, bankId: string | null): Promise<void> {

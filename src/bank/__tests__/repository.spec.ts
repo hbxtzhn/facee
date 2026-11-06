@@ -148,4 +148,17 @@ describe('查询', () => {
     expect(await t.db.getAllAsync('SELECT * FROM progress')).toEqual([]);
     expect(await getActiveBankId(t.rt)).toBeNull();
   });
+
+  it('自动选中的当前题库会被持久化：之后装入安装时间相同、id 更靠前的题库也不会悄悄切换', async () => {
+    // 从未显式选择过：回退到最早安装的样例题库
+    expect(await getActiveBankId(t.rt)).toBe(SAMPLE_BANK_ID);
+
+    const earlier = sampleBundle();
+    earlier.bank.id = 'github.com/aaa/first'; // id 排序更靠前
+    delete earlier.bank.update;
+    // 不推进时钟：与样例题库安装时间相同，单靠 ORDER BY installed_at, id 会选中它
+    await installBundle(t.rt, earlier);
+
+    expect(await getActiveBankId(t.rt)).toBe(SAMPLE_BANK_ID);
+  });
 });
