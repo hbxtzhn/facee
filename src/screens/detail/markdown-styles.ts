@@ -137,14 +137,3 @@ export const markdownStyles = createMarkdownStyles(1);
 export function createFollowUpMarkdownStyles(scale = 1) {
   return createMarkdownStyles(Math.round(scale * 0.94 * 100) / 100);
 }
-
-/** 题干下方折叠的「来源与说明」小字样式 */
-export const sourceMetaMarkdownStyles = {
-  body: { ...typography.caption, color: colors.textSubtle, lineHeight: 18 },
-  paragraph: { margin: 0 },
-  blockquote: {
-    borderLeftWidth: 0,
-    padding: 0,
-    backgroundColor: 'transparent',
-  },
-};
