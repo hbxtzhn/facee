@@ -13,6 +13,7 @@ import type {
   CollectionInfo,
   Mastery,
   QuestionDetail,
+  LinkedQuestion,
   QuestionFilter,
   QuestionListItem,
   SearchHit,
@@ -395,7 +396,25 @@ export async function getQuestion(rt: BankRuntime, bankId: string, questionId: s
     categoryName: category?.name ?? null,
     assetBaseUri,
     learning: await getQuestionLearning(rt, bankId, raw),
+    links: await getLinkedQuestions(rt, bankId, raw),
   };
+}
+
+/** 前置题 / 相关题的标题与掌握度；已不在题库中的引用省略 */
+async function getLinkedQuestions(rt: BankRuntime, bankId: string, question: Question): Promise<QuestionDetail['links']> {
+  const prerequisites = question.prerequisites ?? [];
+  const related = question.related ?? [];
+  const ids = Array.from(new Set([...prerequisites, ...related]));
+  if (ids.length === 0) return { prerequisites: [], related: [] };
+  const rows = await rt.db.getAllAsync<{ id: string; title: string; mastery: Mastery | null }>(
+    `SELECT q.id, q.title, p.mastery FROM questions q
+       LEFT JOIN progress p ON p.bank_id = q.bank_id AND p.question_id = q.id AND p.archived_at IS NULL
+      WHERE q.bank_id = ? AND q.id IN (${ids.map(() => '?').join(', ')})`,
+    [bankId, ...ids],
+  );
+  const byId = new Map(rows.map((row) => [row.id, { id: row.id, title: row.title, mastery: row.mastery ?? null }]));
+  const pick = (list: string[]): LinkedQuestion[] => list.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []));
+  return { prerequisites: pick(prerequisites), related: pick(related) };
 }
 
 // ---------- 搜索 ----------

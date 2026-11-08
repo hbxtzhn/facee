@@ -16,6 +16,7 @@ export type {
   KeypointAttempt,
   Mastery,
   QuestionDetail,
+  LinkedQuestion,
   QuestionFilter,
   QuestionLearningInfo,
   QuestionListItem,

@@ -6,6 +6,7 @@ import { setFavorite, setMastery, markViewed } from '../learning';
 import {
   deleteBank,
   getActiveBankId,
+  getQuestion,
   getQuestionIds,
   listBanks,
   listCategories,
@@ -73,6 +74,19 @@ describe('查询', () => {
     });
     expect(exported.tags.find((tag) => tag.id === 'db')).not.toHaveProperty('description');
     expect(exported.tags.find((tag) => tag.id === 'db')).not.toHaveProperty('aliases');
+  });
+
+  it('详情附带前置题 / 相关题：按书写顺序，带标题与掌握度', async () => {
+    await setMastery(t.rt, SAMPLE_BANK_ID, QID.mysqlIndex, 'known');
+    const tx = await getQuestion(t.rt, SAMPLE_BANK_ID, QID.mysqlTx);
+    expect(tx?.links).toEqual({
+      prerequisites: [{ id: QID.mysqlIndex, title: 'MySQL 索引为什么用 B+ 树？', mastery: 'known' }],
+      related: [],
+    });
+    const expire = await getQuestion(t.rt, SAMPLE_BANK_ID, QID.redisExpire);
+    expect(expire?.links.related).toEqual([{ id: QID.redisPersist, title: 'Redis 持久化 RDB 与 AOF 的区别', mastery: null }]);
+    const persist = await getQuestion(t.rt, SAMPLE_BANK_ID, QID.redisPersist);
+    expect(persist?.links).toEqual({ prerequisites: [], related: [] });
   });
 
   it('难度 / 类型 / 重要度 / 分类 / 专题筛选', async () => {

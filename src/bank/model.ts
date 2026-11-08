@@ -141,4 +141,12 @@ export interface QuestionDetail {
   categoryName: string | null;
   assetBaseUri: string | null;
   learning: QuestionLearningInfo;
+  /** 前置题 / 相关题：按题目里的书写顺序，只含当前题库中仍存在的题 */
+  links: { prerequisites: LinkedQuestion[]; related: LinkedQuestion[] };
+}
+
+export interface LinkedQuestion {
+  id: string;
+  title: string;
+  mastery: Mastery | null;
 }

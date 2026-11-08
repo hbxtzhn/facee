@@ -30,11 +30,12 @@ const mockRouteParams: {
 
 // 头部「Aa」经 navigation.setOptions({ headerRight }) 注入：记录调用以便渲染断言
 const mockSetOptions = jest.fn();
+const mockPush = jest.fn();
 
 jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({
     setOptions: mockSetOptions,
-    push: jest.fn(),
+    push: mockPush,
     replace: jest.fn(),
     goBack: jest.fn(),
     popToTop: jest.fn(),
@@ -346,6 +347,25 @@ describe('DetailScreen 内容已更新 / 纠错 / 来源', () => {
     openURL.mockRestore();
   });
 
+  it('相关题 / 前置题：显示标题与掌握度，点按进入该题', async () => {
+    await installBank();
+    expect(await store().setMastery(QID.redisPersist, 'fuzzy')).toMatchObject({ ok: true });
+    await render(<DetailScreen />);
+    await screen.findByText('相关题');
+    expect(screen.queryByText('前置题')).toBeNull();
+    const link = await screen.findByLabelText('相关题：Redis 持久化 RDB 与 AOF 的区别，模糊');
+    await fireEvent.press(link);
+    expect(mockPush).toHaveBeenCalledWith('Detail', { id: QID.redisPersist });
+  });
+
+  it('没有前置题 / 相关题时不显示该区块', async () => {
+    setRoute({ id: QID.redisPersist });
+    await installBank();
+    await render(<DetailScreen />);
+    await screen.findByText('Redis 持久化 RDB 与 AOF 的区别');
+    expect(screen.queryByTestId('question-links')).toBeNull();
+  });
+
   it('没有 feedbackUrl 时不显示纠错入口', async () => {
     await installBank((bundle) => {
       delete bundle.bank.feedbackUrl;
@@ -392,6 +412,7 @@ describe('DetailScreen 图片资源', () => {
   });
 });
 
+// 页面按标题（header）定位：「前置题 / 相关题」区块也会出现其他题的标题
 describe('DetailScreen 队列分页 + 会话同步', () => {
   const QUEUE = [QID.mysqlTx, QID.mysqlIndex, QID.redisExpire, QID.redisPersist, QID.tcpHandshake];
 
@@ -413,10 +434,10 @@ describe('DetailScreen 队列分页 + 会话同步', () => {
     await startSession();
     await render(<DetailScreen />);
 
-    expect(await screen.findByText('MySQL 的隔离级别有哪些？')).toBeTruthy();
+    expect(await screen.findByRole('header', { name: 'MySQL 的隔离级别有哪些？' })).toBeTruthy();
     expect(screen.getByText('1 / 5')).toBeTruthy();
-    expect(await screen.findByText('MySQL 索引为什么用 B+ 树？')).toBeTruthy();
-    expect(screen.queryByText('Redis 过期 key 的删除策略有哪些？')).toBeNull();
+    expect(await screen.findByRole('header', { name: 'MySQL 索引为什么用 B+ 树？' })).toBeTruthy();
+    expect(screen.queryByRole('header', { name: 'Redis 过期 key 的删除策略有哪些？' })).toBeNull();
 
     await waitFor(async () => expect((await learningOf(QID.mysqlTx)).viewedAt).not.toBeNull());
     // 预加载的相邻页不记浏览
@@ -424,7 +445,7 @@ describe('DetailScreen 队列分页 + 会话同步', () => {
 
     await fireEvent.press(screen.getByLabelText('下一题'));
     expect(screen.getByText('2 / 5')).toBeTruthy();
-    expect(await screen.findByText('Redis 过期 key 的删除策略有哪些？')).toBeTruthy();
+    expect(await screen.findByRole('header', { name: 'Redis 过期 key 的删除策略有哪些？' })).toBeTruthy();
     await waitFor(async () => expect(await sessionIndex()).toBe(1));
     await waitFor(async () => expect((await learningOf(QID.mysqlIndex)).viewedAt).not.toBeNull());
 
@@ -436,23 +457,23 @@ describe('DetailScreen 队列分页 + 会话同步', () => {
     expect(screen.getByText('2 / 5')).toBeTruthy();
     await waitFor(async () => expect(await sessionIndex()).toBe(1));
     // 窗口外的页被卸载
-    await waitFor(() => expect(screen.queryByText('Redis 持久化 RDB 与 AOF 的区别')).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('header', { name: 'Redis 持久化 RDB 与 AOF 的区别' })).toBeNull());
   });
 
   it('从队列中间进入时起始页即 queueIndex，且同步一次下标', async () => {
     setRoute({ id: QUEUE[3], mode: 'practice', queue: QUEUE, queueIndex: 3 });
     await startSession();
     await render(<DetailScreen />);
-    expect(await screen.findByText('Redis 持久化 RDB 与 AOF 的区别')).toBeTruthy();
+    expect(await screen.findByRole('header', { name: 'Redis 持久化 RDB 与 AOF 的区别' })).toBeTruthy();
     expect(screen.getByText('4 / 5')).toBeTruthy();
-    expect(screen.queryByText('MySQL 的隔离级别有哪些？')).toBeNull();
+    expect(screen.queryByRole('header', { name: 'MySQL 的隔离级别有哪些？' })).toBeNull();
     await waitFor(async () => expect(await sessionIndex()).toBe(3));
   });
 
   it('首题禁用上一题，末题禁用下一题', async () => {
     await startSession();
     await render(<DetailScreen />);
-    await screen.findByText('MySQL 的隔离级别有哪些？');
+    await screen.findByRole('header', { name: 'MySQL 的隔离级别有哪些？' });
     expect(screen.getByLabelText('上一题')).toBeDisabled();
     await fireEvent(screen.getByTestId('question-pager'), 'pageSelected', { nativeEvent: { position: 4 } });
     expect(screen.getByText('5 / 5')).toBeTruthy();
@@ -462,7 +483,7 @@ describe('DetailScreen 队列分页 + 会话同步', () => {
   it('底栏打标写入当前题（经 store 排期），再点清除；答案开关只作用于当前题', async () => {
     await startSession();
     await render(<DetailScreen />);
-    await screen.findByText('MySQL 的隔离级别有哪些？');
+    await screen.findByRole('header', { name: 'MySQL 的隔离级别有哪些？' });
 
     await fireEvent.press(await screen.findByLabelText('标记这道题为模糊'));
     await waitFor(async () => expect((await learningOf(QID.mysqlTx)).mastery).toBe('fuzzy'));
@@ -490,7 +511,7 @@ describe('DetailScreen 队列分页 + 会话同步', () => {
     jest.spyOn(Date, 'now').mockReturnValue(t.clock.value);
     try {
       await render(<DetailScreen />);
-      await screen.findByText('MySQL 的隔离级别有哪些？');
+      await screen.findByRole('header', { name: 'MySQL 的隔离级别有哪些？' });
       const known = await screen.findByLabelText('标记这道题为会了');
       expect(known.props.accessibilityState).toMatchObject({ selected: false });
       await fireEvent.press(known);
@@ -504,7 +525,7 @@ describe('DetailScreen 队列分页 + 会话同步', () => {
   it('收藏按当前页的题目写入 store', async () => {
     await startSession();
     await render(<DetailScreen />);
-    await screen.findByText('MySQL 索引为什么用 B+ 树？');
+    await screen.findByRole('header', { name: 'MySQL 索引为什么用 B+ 树？' });
 
     // 当前页与预加载页各有一个收藏按钮；第一个属于当前题
     const buttons = await screen.findAllByLabelText('收藏这道题');
@@ -519,7 +540,7 @@ describe('DetailScreen 阅读字号（Aa）与版式', () => {
   it('头部注入 Aa 开关，点按循环 标准 → 大 → 特大 → 标准', async () => {
     await installBank();
     await render(<DetailScreen />);
-    await screen.findByText('Redis 过期 key 的删除策略有哪些？');
+    await screen.findByRole('header', { name: 'Redis 过期 key 的删除策略有哪些？' });
     expect(mockSetOptions).toHaveBeenCalledWith(expect.objectContaining({ headerRight: expect.any(Function) }));
 
     await render(latestHeaderRight());

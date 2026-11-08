@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Markdown, { type RenderRules } from 'react-native-markdown-display';
 import { Bookmark, Check, ChevronDown, RotateCcw, X } from 'lucide-react-native';
-import { useBankStore, type KeypointAttempt, type Mastery, type Question, type QuestionDetail } from '../../bank';
+import { useBankStore, type KeypointAttempt, type LinkedQuestion, type Mastery, type Question, type QuestionDetail } from '../../bank';
 import markdownit from '../../lib/markdown';
 import { useUserStore } from '../../store/userStore';
 import { EmptyState } from '../../components/ui';
@@ -47,7 +47,7 @@ export interface QuestionPageProps {
  * 学习数据变化（learningVersion）/ 题库内容变化（contentVersion）后静默重新读取。
  *
  * 结构：元信息行 · 标题 · 补充题干（prompt）· [选择题选项] · 答案区（一句话 / 要点自评 / 详解 / 示例 / 易错点 / 追问）
- * · 参考资料 / 来源 / 复核日期 / 内容有误？
+ * · 前置题 / 相关题 · 参考资料 / 来源 / 复核日期 / 内容有误？
  */
 export function QuestionPage({
   id,
@@ -314,6 +314,7 @@ export function QuestionPage({
           </View>
         ) : null}
 
+        <QuestionLinks links={detail.links} nav={nav} />
         <SourceFooter question={question} feedbackUrl={feedbackUrl} />
       </View>
     </ScrollView>
@@ -587,6 +588,35 @@ function ChoiceSection({
   );
 }
 
+/** 前置题 / 相关题：不依赖答案是否展开，读不懂时可以先去补前置知识 */
+function QuestionLinks({ links, nav }: { links: QuestionDetail['links']; nav: LinkNavigation }) {
+  if (links.prerequisites.length === 0 && links.related.length === 0) return null;
+  const group = (title: string, items: LinkedQuestion[]) =>
+    items.length > 0 ? (
+      <View style={styles.linkGroup}>
+        <Text style={styles.eyebrow}>{title}</Text>
+        {items.map((item) => (
+          <Pressable
+            key={item.id}
+            accessibilityRole="link"
+            accessibilityLabel={`${title}：${item.title}，${item.mastery ? MASTERY_LABELS[item.mastery] : '未标记'}`}
+            onPress={() => nav.push('Detail', { id: item.id })}
+            style={({ pressed }) => [styles.linkRow, pressed && styles.linkRowPressed]}
+          >
+            <Text style={styles.linkTitle}>{item.title}</Text>
+            <Text style={styles.linkMastery}>{item.mastery ? MASTERY_LABELS[item.mastery] : '未标记'}</Text>
+          </Pressable>
+        ))}
+      </View>
+    ) : null;
+  return (
+    <View style={styles.links} testID="question-links">
+      {group('前置题', links.prerequisites)}
+      {group('相关题', links.related)}
+    </View>
+  );
+}
+
 /** 参考资料、来源 / 许可、复核日期与「内容有误？」：一组安静的小字 */
 function SourceFooter({ question, feedbackUrl }: { question: Question; feedbackUrl: string | null }) {
   const references = question.references ?? [];
@@ -724,6 +754,20 @@ const styles = StyleSheet.create({
   verdictCorrect: { color: colors.success },
   verdictWrong: { color: colors.danger },
   explanation: { marginTop: spacing.md },
+  links: { marginTop: spacing.xxl, gap: spacing.lg },
+  linkGroup: {},
+  linkRow: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  linkRowPressed: { opacity: 0.6 },
+  linkTitle: { ...typography.body, color: colors.text, flex: 1 },
+  linkMastery: { ...typography.caption, color: colors.textMuted },
   footer: { marginTop: spacing.xxl, gap: spacing.xs },
   references: { marginBottom: spacing.sm, gap: spacing.xs },
   footerLink: { ...typography.caption, color: colors.textSecondary, textDecorationLine: 'underline' },
