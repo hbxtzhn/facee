@@ -27,6 +27,7 @@
 - `packages/bank-spec` 改为 v2 构建 / 校验 CLI，附示例题库；移除 v1 生成器与恶意 ZIP 回归
 - 题库规范修订：标签 `description` / `aliases`、每题 1–3 个标签、难度语义、核心要点上限、contentHash 只算内容字段；
   `build` 需 `--previous` 或显式 `--first-release`；`packages/bank-spec` 可独立 `npm install` 使用
+- `bank-spec` 新增 `stats`（全库分布报告）与 `merge-question` / `remove-question`（一次改完引用、专题与生命周期）
 - 移除 v1 题库仓库、ZIP 安装器与相关状态模块
 
 ## [0.1.2] - 2026-10-19

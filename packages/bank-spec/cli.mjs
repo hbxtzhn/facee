@@ -6,6 +6,9 @@
 //   node packages/bank-spec/cli.mjs validate --bank <dir> [--previous <latest.json>]
 //   node packages/bank-spec/cli.mjs build    --bank <dir> --out <dist> (--previous <latest.json> | --first-release)
 //                                            [--base-url <url>] [--published-at <iso>] [--pretty]
+//   node packages/bank-spec/cli.mjs stats    --bank <dir> [--stale-days <n>] [--today <YYYY-MM-DD>] [--json]
+//   node packages/bank-spec/cli.mjs merge-question  --bank <dir> --from <id> --into <id> [--dry-run]
+//   node packages/bank-spec/cli.mjs remove-question --bank <dir> --id <id> [--dry-run]
 //
 // 诊断输出：`file:line: CODE message`（警告为 `file:line: warning CODE message`）；有 error 时退出码 1。
 
@@ -16,6 +19,8 @@ import { fileURLToPath } from 'node:url';
 import { compileBank } from './lib/compile.mjs';
 import { buildBank } from './lib/build.mjs';
 import { fixIds, newQuestion } from './lib/ids.mjs';
+import { bankStats, formatStats } from './lib/stats.mjs';
+import { retireQuestion } from './lib/retire.mjs';
 
 const USAGE = `用法：bank-spec <command> [options]
 
@@ -27,7 +32,12 @@ const USAGE = `用法：bank-spec <command> [options]
   build     --bank <dir> --out <dist> (--previous <latest.json> | --first-release)
             [--base-url <url>] [--published-at <iso>] [--pretty]
                                                           发版构建：校验并生成 bundle / assets / latest.json；
-                                                          --previous 时另要求版本递增，首发必须显式 --first-release`;
+                                                          --previous 时另要求版本递增，首发必须显式 --first-release
+  stats     --bank <dir> [--stale-days <n>] [--today <YYYY-MM-DD>] [--json]
+                                                          分类 / 标签 / 题型 / 难度 / 重要度分布，未用标签，复核时效
+  merge-question  --bank <dir> --from <id> --into <id> [--dry-run]
+                                                          合并题目：改写引用与专题、展开合并链、写 lifecycle.merged、删除旧题文件
+  remove-question --bank <dir> --id <id> [--dry-run]      删除题目：清理引用与专题、写 lifecycle.removed、删除题目文件`;
 
 export async function main(argv = process.argv.slice(2), io = { log: console.log, error: console.error }) {
   const [command, ...rest] = argv;
@@ -51,6 +61,12 @@ export async function main(argv = process.argv.slice(2), io = { log: console.log
         pretty: { type: 'boolean' },
         'dry-run': { type: 'boolean' },
         'first-release': { type: 'boolean' },
+        'stale-days': { type: 'string' },
+        today: { type: 'string' },
+        json: { type: 'boolean' },
+        from: { type: 'string' },
+        into: { type: 'string' },
+        id: { type: 'string' },
       },
       strict: true,
     }));
@@ -121,6 +137,34 @@ ${USAGE}`);
         }
         io.log(`构建完成 v${res.manifest.version}：${res.bundle.questions.length} 题，${res.assets.size} 个资源`);
         for (const f of res.files) io.log(`  ${values.out.replace(/[\\/]+$/, '')}/${f}`);
+        return 0;
+      }
+      case 'stats': {
+        const staleDays = values['stale-days'] === undefined ? undefined : Number(values['stale-days']);
+        if (staleDays !== undefined && !(Number.isInteger(staleDays) && staleDays >= 0)) {
+          io.error(`--stale-days 必须是非负整数\n\n${USAGE}`);
+          return 2;
+        }
+        const s = bankStats(bankDir, { staleDays, today: values.today });
+        if (!s.ok) {
+          printDiagnostics(s.diagnostics, io);
+          io.error(`无法统计：bank.yaml 有 ${s.errorCount} 个错误`);
+          return 1;
+        }
+        io.log(values.json ? JSON.stringify(s, null, 2) : formatStats(s));
+        return 0;
+      }
+      case 'merge-question':
+      case 'remove-question': {
+        const merge = command === 'merge-question';
+        const from = merge ? values.from : values.id;
+        if (!from || (merge && !values.into)) {
+          io.error(`${command} 需要 ${merge ? '--from 与 --into' : '--id'}\n\n${USAGE}`);
+          return 2;
+        }
+        const r = retireQuestion(bankDir, { from, into: merge ? values.into : null, dryRun: values['dry-run'] });
+        for (const c of r.changes) io.log(c);
+        io.log(values['dry-run'] ? '[dry-run] 未写入文件' : `完成；请运行 validate 复核${merge ? '，并确认旧题有价值的内容已并入新题' : ''}`);
         return 0;
       }
       default:

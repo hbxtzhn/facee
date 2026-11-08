@@ -623,8 +623,15 @@ export function compileBank(bankDir, opts = {}) {
   }
 
   // ---------------- 组装 bundle ----------------
+  // 草稿：即使有错误也给出已解析的题目与分类 / 标签 / 专题，供 stats 等只读报告使用
+  const draft = {
+    categories: categories.map(({ item }) => item),
+    tags: tags.map(({ item }) => item),
+    collections: collections.map(({ item }) => item),
+    questions: parsedQuestions.map(({ file, q }) => ({ ...q, file })),
+  };
   const hasError = diagnostics.some((d) => d.severity === 'error');
-  if (hasError) return finish(null);
+  if (hasError) return finish(null, draft);
 
   const questions = parsedQuestions
     .map(({ q }) => {
@@ -662,15 +669,16 @@ export function compileBank(bankDir, opts = {}) {
     lifecycle: { removed, merged },
     questions,
   };
-  return finish(bundle);
+  return finish(bundle, draft);
 
-  function finish(bundle) {
+  function finish(bundle, draft = null) {
     diagnostics.sort((a, b) => (a.file === b.file ? a.line - b.line : a.file < b.file ? -1 : 1));
     return {
       bundle,
       assets: new Map([...assets].sort(([a], [b]) => (a < b ? -1 : 1))),
       diagnostics,
       release,
+      draft,
       errorCount: diagnostics.filter((d) => d.severity === 'error').length,
     };
   }
