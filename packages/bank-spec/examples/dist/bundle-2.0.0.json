@@ -38,34 +38,40 @@
   ],
   "tags": [
     {
-      "id": "storage",
-      "name": "存储",
-      "parent": null
-    },
-    {
       "id": "redis",
       "name": "Redis",
-      "parent": "storage"
+      "parent": null
     },
     {
       "id": "mysql",
       "name": "MySQL",
-      "parent": "storage"
+      "parent": null,
+      "aliases": [
+        "InnoDB"
+      ]
     },
     {
       "id": "memory",
       "name": "内存",
-      "parent": "redis"
+      "parent": "redis",
+      "description": "过期删除、内存淘汰与内存占用；不含持久化",
+      "aliases": [
+        "内存管理"
+      ]
     },
     {
       "id": "index",
       "name": "索引",
-      "parent": "mysql"
+      "parent": "mysql",
+      "aliases": [
+        "B+ 树"
+      ]
     },
     {
       "id": "transaction",
       "name": "事务",
-      "parent": "mysql"
+      "parent": "mysql",
+      "description": "ACID、隔离级别与 MVCC"
     },
     {
       "id": "cache",
@@ -75,7 +81,10 @@
     {
       "id": "concurrency",
       "name": "并发",
-      "parent": null
+      "parent": null,
+      "aliases": [
+        "多线程"
+      ]
     },
     {
       "id": "lock",
@@ -100,7 +109,11 @@
     {
       "id": "tls",
       "name": "TLS",
-      "parent": "network"
+      "parent": "network",
+      "aliases": [
+        "HTTPS",
+        "SSL"
+      ]
     },
     {
       "id": "performance",
@@ -226,7 +239,7 @@
       ],
       "reviewedAt": "2026-11-05",
       "estimatedMinutes": 3,
-      "contentHash": "sha256:8d42c124599b0156ebbb48ba19e014e895e8bd569cea787026e0299db5ff104a"
+      "contentHash": "sha256:e4d90e0caaf489473cf5977912018c8553ff001b2085cee2495a953712f0493b"
     },
     {
       "id": "q_01M6B20HK0ZNWA1FJ4RESDFN8M",
@@ -300,7 +313,7 @@
       ],
       "reviewedAt": "2026-11-05",
       "estimatedMinutes": 4,
-      "contentHash": "sha256:40c52919c85fd23352d07b172bee0ce203800a3031f226f022e0c26a56d9e8a3"
+      "contentHash": "sha256:4841059324cad56be2cb0eb02339cb92a19ab07e3ef48f09dbfba11b1ffd5bd0"
     },
     {
       "id": "q_01M6B22C60ED5XXJXQWP3KD9RG",
@@ -372,7 +385,7 @@
       },
       "reviewedAt": "2026-11-05",
       "estimatedMinutes": 5,
-      "contentHash": "sha256:42e5ceeb65b30200030bfabaa636f8908f25c758e4ae0ce4f55a34e9185ae3ee"
+      "contentHash": "sha256:9e11c1a9a566ed8b126fd8cc639a8b19601c1ebd8eb7cb0f2c62420e700f6a79"
     },
     {
       "id": "q_01M6B246S0HK05NM2HC5EC52F8",
@@ -448,7 +461,7 @@
       },
       "reviewedAt": "2026-11-05",
       "estimatedMinutes": 1,
-      "contentHash": "sha256:ac1e9a01a024e76d98b888c229474974398dd40652f67ad1799242f518562ac3"
+      "contentHash": "sha256:7a3e547dd183302c19327b6be030807fa63e0ef39d8b3033900c995d139db620"
     },
     {
       "id": "q_01M6B261C0ZAPARVE2GQ1GDDW8",
@@ -526,7 +539,7 @@
       ],
       "reviewedAt": "2026-11-05",
       "estimatedMinutes": 8,
-      "contentHash": "sha256:ff80aa684cef861c2f26a1739933b479581d0146cae13a9dc26aa09a461469dd"
+      "contentHash": "sha256:80009141c0d949f84aaf0d42266af512d5464d30c65920fdbc35d55fa3b7bfd7"
     },
     {
       "id": "q_01M6B27VZ068DC8PEV0GWCQG5K",
@@ -603,7 +616,7 @@
       ],
       "reviewedAt": "2026-11-05",
       "estimatedMinutes": 4,
-      "contentHash": "sha256:44c1cc274397ee220a8a237177ba10563c99b0c7b62f07f0140e5af3d762f2ba"
+      "contentHash": "sha256:98cdf7a3d94e826c789cfe3607ef903c9f112c0a235db3b89447fb1c9c6a3ac3"
     },
     {
       "id": "q_01M6B29PJ0B0Z5A1V1E5PP94J6",
@@ -686,7 +699,7 @@
       ],
       "reviewedAt": "2026-11-05",
       "estimatedMinutes": 6,
-      "contentHash": "sha256:bbd18a964912e4b3613ff0d78c5d4b8595c9eb161e3a80448c4950ee32ae061f"
+      "contentHash": "sha256:3171ea348c8d9b1aa4049c91de6f4d366946779c2d24d7ef63e8cee91ea2eb26"
     },
     {
       "id": "q_01M6B2BH50RQSFZCW9Z120DZ0H",
@@ -696,7 +709,6 @@
       "importance": 3,
       "categoryId": "mysql",
       "tags": [
-        "mysql",
         "index",
         "performance",
         "troubleshooting"
@@ -765,7 +777,7 @@
       ],
       "reviewedAt": "2026-11-05",
       "estimatedMinutes": 5,
-      "contentHash": "sha256:c4b01c81696244328b8e5fb4e34e07fba0c2c356a3a47fdfdfba395a3de08989"
+      "contentHash": "sha256:6c83ed3c735fd33f03fcb7fea9f14b406cde7147a9f1692c4b024aaa2460e200"
     },
     {
       "id": "q_01M6B2DBR0BTR2PNH2KQJNCC8V",
@@ -836,7 +848,7 @@
       ],
       "reviewedAt": "2026-11-05",
       "estimatedMinutes": 4,
-      "contentHash": "sha256:ad1b205eb72ec979384f5ee2b3261c0c787ebb0d5e679ee84b797eaf5e2ea53a"
+      "contentHash": "sha256:498401eba9c8a991ccdd02a4b630078d1b6b953c5296ebfb97e3f52a0866b87b"
     },
     {
       "id": "q_01M6B2F6B0M7TZ6C70HX4YY892",
@@ -914,7 +926,7 @@
       ],
       "reviewedAt": "2026-11-05",
       "estimatedMinutes": 5,
-      "contentHash": "sha256:bb9ef389767c44d88d453411012d1ee2466aadb669262f698a7a4f8d61035f80"
+      "contentHash": "sha256:9860c32c33b4c4dde7998644fdb7cb26be08b0b124f25924ac0f086801bb3665"
     },
     {
       "id": "q_01M6B2H0Y0P09AH15Y5NM6H584",
@@ -981,7 +993,7 @@
       },
       "reviewedAt": "2026-11-05",
       "estimatedMinutes": 15,
-      "contentHash": "sha256:9b58267487eb93ce4c15fafb3413f27cacdb3107c1ac5e3b432f2f0add1ab44a"
+      "contentHash": "sha256:eb5ecb93cabd3ac40d2d431cd982ac36bb86e93790b08fb9e6d02fddedf92add"
     },
     {
       "id": "q_01M6B2JVH07BD81K60YMCZ3N87",
@@ -1061,7 +1073,7 @@
       ],
       "reviewedAt": "2026-11-05",
       "estimatedMinutes": 6,
-      "contentHash": "sha256:fafd9e5151160d26a4e949d35d5fe2b6e1c3512c0113de2175a4385740a6921c"
+      "contentHash": "sha256:7fb3634f04c5c2b33e2cd27afdf7dbeff80804faa55cf752633050f97b668227"
     },
     {
       "id": "q_01M6B2MP40WM52PJV40MZJ9T5J",
@@ -1137,7 +1149,7 @@
       ],
       "reviewedAt": "2026-11-05",
       "estimatedMinutes": 3,
-      "contentHash": "sha256:18b22fb963a9601df8a7ccdd575fc9c160c6274bfc000fb33ad12479bf3b2155"
+      "contentHash": "sha256:12e8346c0ab7ff48d9872f8a77a2a4cf6712b53bd6d8d5e830caa91ce019e537"
     },
     {
       "id": "q_01M6B2PGQ08QR5DBTVMRVK4QD8",
@@ -1203,7 +1215,7 @@
       },
       "reviewedAt": "2026-11-05",
       "estimatedMinutes": 5,
-      "contentHash": "sha256:8bd6361b4560d51942af62ef91930294800bacbbb6bbe1ca89de4a00c1fb0151"
+      "contentHash": "sha256:53fd7953063e4a31b5dc92eaebc2249ff185451fd1e5215576fcda953783914a"
     }
   ]
 }

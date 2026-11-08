@@ -20,7 +20,7 @@ jest.mock('@react-navigation/native', () => ({
 }));
 
 // eslint-disable-next-line import/first
-import { ListScreen, combineFilters, scopeFilter, EMPTY_FILTERS } from './ListScreen';
+import { ListScreen, combineFilters, scopeDescriptionOf, scopeFilter, EMPTY_FILTERS } from './ListScreen';
 // eslint-disable-next-line import/first
 import { QID, bankStore, sampleBundle, startSampleBank, stopBank, unwrap, updateSampleBank } from './home/__fixtures__/bank-screen';
 // eslint-disable-next-line import/first
@@ -44,6 +44,17 @@ function visibleTitles(): string[] {
 }
 
 describe('ListScreen 纯函数', () => {
+  it('scopeDescriptionOf：标签 / 专题入口展示作者写的范围说明，没有说明返回 null', () => {
+    const tags = [{ id: 'db', description: '存储与事务' }, { id: 'cache', description: null }];
+    const collections = [{ id: 'sprint', description: '高频题' }];
+    expect(scopeDescriptionOf({ tagId: 'db' }, tags, collections)).toBe('存储与事务');
+    expect(scopeDescriptionOf({ tagId: 'cache' }, tags, collections)).toBeNull();
+    expect(scopeDescriptionOf({ tagId: 'gone' }, tags, collections)).toBeNull();
+    expect(scopeDescriptionOf({ collectionId: 'sprint' }, tags, collections)).toBe('高频题');
+    expect(scopeDescriptionOf({}, tags, collections)).toBeNull();
+    expect(scopeDescriptionOf(undefined, tags, collections)).toBeNull();
+  });
+
   it('scopeFilter：入口互斥；分区只取仍在题库中的分类，空分区返回 null', () => {
     const sections = [
       {

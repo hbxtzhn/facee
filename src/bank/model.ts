@@ -47,6 +47,10 @@ export interface TagInfo {
   name: string;
   parentId: string | null;
   order: number;
+  /** 范围说明（纯文本）；无则 null */
+  description: string | null;
+  /** 同义词；无则空数组 */
+  aliases: string[];
   /** 直接子标签 id（按 order、id 排序） */
   childIds: string[];
   /** 含全部子孙标签的题数（去重） */

@@ -40,7 +40,7 @@ if (!result.ok) showToast(result.error.message);
 | `banks` | 全部题库 `BankSummary[]`（origin：`remote` 在线可更新 / `local` 自建可编辑 / `file` 文件导入只读；`lastCheck` 为最近检查更新结果） |
 | `activeBankId` / `activeBank` | 当前题库（持久化在 SQLite `app_settings`） |
 | `categories` | 当前题库分类：题数、已标数、会了数；按 order → id |
-| `tags` | 标签：`parentId`、`childIds`、含子孙的题数 |
+| `tags` | 标签：`parentId`、`childIds`、含子孙的题数、`description`、`aliases` |
 | `collections` | 专题（有序题单，只含存在的题） |
 | `sections` | 自定义分区（issue #3）；分类已不在题库中时 `exists: false, name: null` |
 | `stats` | 当前题库学习统计（总数 / 已标 / 各档 / 到期 / 收藏 / 内容已更新） |
@@ -79,8 +79,9 @@ if (!result.ok) showToast(result.error.message);
 - **本地题库**：id 为 `local/device/<ULID>`（满足三段式 BANK_ID_PATTERN，`local` 不是域名，不会与在线题库冲突）。
   每次修改都用与在线题库相同的 `validateBundle` 整库校验（要点 3–5 条等规则不放宽），版本号 patch 位自增；
   要点 / 追问 id 单调递增、删除后不复用；删除题目写入 `lifecycle.removed`。导出的 bundle 可分享，`importBankFile` 再导入后仍为可编辑的本地题库。
-- **contentHash**：`sha256:` + 去掉 `contentHash` 的题目对象规范化 JSON（键按 UTF-16 码元排序、无空白、省略 undefined）的 UTF-8 sha256；
-  资源以 `asset:<sha256>.<ext>` 出现在 Markdown 中，因此资源哈希已包含在内。安装时只校验其格式，不重算。
+- **contentHash**：`sha256:` + 题目内容字段 `{ title, prompt, answer, choice, followups }` 的规范化 JSON（键按 UTF-16 码元排序、无空白、省略 undefined）的 UTF-8 sha256；
+  标签、难度、关系等元数据不参与，变化不会标记「内容已更新」。与 `packages/bank-spec` 一致（`cross-tool-contract.spec.ts` 锁定）。资源以 `asset:<sha256>.<ext>` 出现在 Markdown 中，
+  因此资源哈希已包含在内。安装时只校验其格式，不重算。
 - **备份**：纯 JSON（本地题库暂不支持图片，无需 ZIP），含全部学习数据表 + 本地题库 bundle + 已安装题库清单；
   恢复按主键合并，`updated_at` 较新者胜出，收藏与自评取并集，本地题库仅在不存在或备份版本更高时导入。
 

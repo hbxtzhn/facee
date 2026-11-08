@@ -96,8 +96,17 @@ export async function writeTaxonomyRows(tx: SqlExecutor, bundle: Pick<Bundle, 'b
   await insertMany(
     tx,
     'tags',
-    ['bank_id', 'id', 'name', 'parent_id', 'sort', 'position'],
-    bundle.tags.map((t, index) => [bankId, t.id, t.name, t.parent ?? null, t.order ?? 1000, index]),
+    ['bank_id', 'id', 'name', 'parent_id', 'sort', 'position', 'description', 'aliases'],
+    bundle.tags.map((t, index) => [
+      bankId,
+      t.id,
+      t.name,
+      t.parent ?? null,
+      t.order ?? 1000,
+      index,
+      t.description ?? null,
+      t.aliases && t.aliases.length > 0 ? JSON.stringify(t.aliases) : null,
+    ]),
   );
   await insertMany(
     tx,

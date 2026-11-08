@@ -28,6 +28,13 @@ export const LIMITS = {
   codeBlockLines: 40,
   assetBytes: 1024 * 1024,
   choiceOptionsMin: 2,
+  /** 每题标签数 */
+  tagsMin: 1,
+  tagsMax: 3,
+  /** 标签层级建议上限（超出报 warning） */
+  tagDepth: 2,
+  /** 核心要点（权重 3）建议上限（超出报 warning） */
+  coreKeyPointsMax: 2,
 };
 
 export const FRONT_MATTER_KEYS = [

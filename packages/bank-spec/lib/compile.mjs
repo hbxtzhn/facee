@@ -50,7 +50,9 @@ export function isQuestionId(id) {
 
 /**
  * @param {string} bankDir
- * @param {{ previous?: object|null, previousFile?: string }} [opts]
+ * @param {{ previous?: object|null, previousFile?: string, release?: boolean }} [opts]
+ *   previous：上一版 latest.json，用于检查 bank.id 不变与生命周期完整；
+ *   release：发版构建，额外要求 bank.version 大于上一版（日常 validate 不检查，PR 不必每次升版本）
  * @returns {{ bundle: object|null, assets: Map<string, Buffer>, diagnostics: Diagnostic[], release: object, errorCount: number }}
  */
 export function compileBank(bankDir, opts = {}) {
@@ -116,7 +118,7 @@ export function compileBank(bankDir, opts = {}) {
 
   // 分类 / 标签 / 专题
   const categories = slugList(B.categories, 'categories', ['id', 'name', 'order', 'description'], bankErr, true);
-  const tags = slugList(B.tags, 'tags', ['id', 'name', 'parent', 'order'], bankErr, false);
+  const tags = slugList(B.tags, 'tags', ['id', 'name', 'parent', 'order', 'description', 'aliases'], bankErr, false);
   const collections = slugList(B.collections, 'collections', ['id', 'name', 'description', 'questions'], bankErr, false);
   const categoryIds = new Set(categories.map((c) => c.item.id));
   const tagIds = new Set(tags.map((t) => t.item.id));
@@ -124,8 +126,35 @@ export function compileBank(bankDir, opts = {}) {
     if (item.order !== undefined && !Number.isInteger(item.order)) bankErr([...path, 'order'], 'BANK_FIELD', 'order 必须是整数');
     if (item.description !== undefined && !nonEmptyString(item.description)) bankErr([...path, 'description'], 'BANK_FIELD', 'description 必须是非空字符串');
   }
+  // 标签别名：全库唯一（忽略大小写与首尾空白），且不得与任何标签的 id / name 相同
+  const tagTerm = (v) => v.trim().toLowerCase();
+  const tagTerms = new Map(); // 规范化后的 id / name → 标签 id
+  for (const { item } of tags) {
+    for (const v of [item.id, item.name]) if (nonEmptyString(v) && !tagTerms.has(tagTerm(v))) tagTerms.set(tagTerm(v), item.id);
+  }
+  const aliasOwner = new Map();
   for (const { item, path } of tags) {
     if (item.order !== undefined && !Number.isInteger(item.order)) bankErr([...path, 'order'], 'BANK_FIELD', 'order 必须是整数');
+    if (item.description !== undefined) {
+      if (!nonEmptyString(item.description)) bankErr([...path, 'description'], 'BANK_FIELD', 'description 必须是非空字符串');
+      else checkPlain(item.description, bl([...path, 'description']), '标签说明', (line, code, msg) => error(BANK_FILE, line, code, msg));
+    }
+    if (item.aliases !== undefined) {
+      if (!Array.isArray(item.aliases) || item.aliases.length === 0 || item.aliases.some((a) => !nonEmptyString(a))) {
+        bankErr([...path, 'aliases'], 'BANK_FIELD', 'aliases 必须是非空字符串数组');
+      } else {
+        item.aliases.forEach((alias, i) => {
+          const key = tagTerm(alias);
+          const at = [...path, 'aliases', i];
+          if (tagTerms.has(key)) {
+            bankErr(at, 'TAG_ALIAS_CONFLICT', `标签「${item.id}」的别名「${alias}」与标签「${tagTerms.get(key)}」的 id / name 相同`);
+          } else if (aliasOwner.has(key)) {
+            const owner = aliasOwner.get(key);
+            bankErr(at, 'TAG_ALIAS_CONFLICT', owner === item.id ? `标签「${item.id}」的别名「${alias}」重复` : `别名「${alias}」已被标签「${owner}」使用`);
+          } else aliasOwner.set(key, item.id);
+        });
+      }
+    }
     if (item.parent !== undefined && item.parent !== null) {
       if (typeof item.parent !== 'string' || !tagIds.has(item.parent)) {
         bankErr([...path, 'parent'], 'REF_MISSING', `标签父级「${item.parent}」不存在`);
@@ -150,6 +179,10 @@ export function compileBank(bankDir, opts = {}) {
       if (chain.includes(cur)) break; // 环不经过自身，由环上的标签报告
       chain.push(cur);
       cur = tagParent.get(cur);
+    }
+    // 层级建议最多两层（根 → 子）；成环时 chain 不完整，由 TAG_CYCLE 报告
+    if (!cur && chain.length > LIMITS.tagDepth) {
+      warn(BANK_FILE, bl([...path, 'parent']), 'TAG_DEPTH', `标签「${item.id}」位于第 ${chain.length} 层（${[...chain].reverse().join(' > ')}），建议最多 ${LIMITS.tagDepth} 层`);
     }
   }
 
@@ -240,6 +273,10 @@ export function compileBank(bankDir, opts = {}) {
     // tags
     const qTags = stringArray(fm.tags, 'tags', fl, qErr) ?? [];
     for (const t of qTags) if (!tagIds.has(t)) qErr(fl('tags'), 'REF_MISSING', `标签「${t}」未在 bank.yaml tags 中声明`);
+    if (qTags.length < LIMITS.tagsMin || qTags.length > LIMITS.tagsMax) {
+      qErr(fl('tags'), 'TAG_COUNT', `tags 必须 ${LIMITS.tagsMin}–${LIMITS.tagsMax} 个，当前 ${qTags.length} 个`);
+    }
+    if (new Set(qTags).size !== qTags.length) qErr(fl('tags'), 'ID_DUPLICATE', 'tags 有重复项');
     const appliesTo = stringArray(fm.appliesTo, 'appliesTo', fl, qErr) ?? [];
     for (const a of appliesTo) checkPlain(a, fl('appliesTo'), 'appliesTo', qErr);
     const prerequisites = stringArray(fm.prerequisites, 'prerequisites', fl, qErr) ?? [];
@@ -346,6 +383,10 @@ export function compileBank(bankDir, opts = {}) {
         else if (charCount(it.text) > LIMITS.keyPointChars) qErr(it.line, 'KEYPOINT_LENGTH', `要点 ${charCount(it.text)} 字，超过 ${LIMITS.keyPointChars} 字`);
         checkPlain(it.text, it.line, '要点', qErr);
         keyPoints.push({ id: it.id ?? '', text: it.text, weight });
+      }
+      const core = keyPoints.filter((k) => k.weight === 3).length;
+      if (core > LIMITS.coreKeyPointsMax) {
+        qWarn(p.keyPoints.line, 'KEYPOINT_CORE_COUNT', `核心要点（|3）${core} 条，建议每题最多 ${LIMITS.coreKeyPointsMax} 条`);
       }
       checkLocalIds(items.filter((i) => i.id), 'kp', retired, file, qErr, fl('retired'));
     }
@@ -564,7 +605,7 @@ export function compileBank(bankDir, opts = {}) {
       if (typeof meta.id === 'string' && prev.bankId !== meta.id) {
         bankErr(['bank', 'id'], 'BANK_MISMATCH', `bank.id「${meta.id}」与上一版「${prev.bankId}」不同；题库 id 永不改变`);
       }
-      if (isSemver(meta.version) && isSemver(prev.version) && compareSemver(meta.version, prev.version) <= 0) {
+      if (opts.release && isSemver(meta.version) && isSemver(prev.version) && compareSemver(meta.version, prev.version) <= 0) {
         bankErr(['bank', 'version'], 'VERSION_NOT_INCREASED', `bank.version ${meta.version} 必须大于上一版 ${prev.version}`);
       }
       for (const id of Object.keys(prev.questions)) {
@@ -607,7 +648,16 @@ export function compileBank(bankDir, opts = {}) {
       update: meta.update ? stripUndefined({ manifest: meta.update.manifest, fallback: meta.update.fallback }) : undefined,
     }),
     categories: categories.map(({ item }) => stripUndefined(pick(item, ['id', 'name', 'order', 'description']))),
-    tags: tags.map(({ item }) => stripUndefined({ id: item.id, name: item.name, parent: item.parent ?? null, order: item.order })),
+    tags: tags.map(({ item }) =>
+      stripUndefined({
+        id: item.id,
+        name: item.name,
+        parent: item.parent ?? null,
+        order: item.order,
+        description: item.description?.trim(),
+        aliases: item.aliases?.map((a) => a.trim()),
+      }),
+    ),
     collections: collections.map(({ item }) => stripUndefined(pick(item, ['id', 'name', 'description', 'questions']))),
     lifecycle: { removed, merged },
     questions,

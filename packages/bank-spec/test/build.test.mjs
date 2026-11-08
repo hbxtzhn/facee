@@ -5,7 +5,7 @@ import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'no
 import { join } from 'node:path';
 import { buildBank, resolveBaseUrl } from '../lib/build.mjs';
 import { compileBank } from '../lib/compile.mjs';
-import { canonicalJson, questionContentHash, sha256Hex } from '../lib/canonical.mjs';
+import { CONTENT_HASH_FIELDS, canonicalJson, questionContentHash, sha256Hex } from '../lib/canonical.mjs';
 import { readCentralDirectory, inflateEntry } from '../lib/zip.mjs';
 import * as rules from '../lib/rules.mjs';
 import {
@@ -127,7 +127,10 @@ test('示例题库：bundle / latest 满足 schema（严格模式：无多余字
   assert.ok(bundle.questions.some((q) => q.followups.length) && bundle.questions.some((q) => q.answer.examples));
   assert.ok(bundle.questions.some((q) => q.prerequisites.length) && bundle.questions.some((q) => q.related.length));
   assert.ok(bundle.collections.length >= 1);
-  assert.ok(bundle.tags.some((t) => t.parent && bundle.tags.find((p) => p.id === t.parent)?.parent));
+  assert.ok(bundle.tags.some((t) => t.parent), '有两层标签');
+  assert.ok(!bundle.tags.some((t) => t.parent && bundle.tags.find((p) => p.id === t.parent)?.parent), '示例标签不超过两层');
+  assert.ok(bundle.tags.some((t) => t.description) && bundle.tags.some((t) => t.aliases?.length), '覆盖标签说明与别名');
+  for (const q of bundle.questions) assert.ok(q.tags.length >= 1 && q.tags.length <= 3, q.id);
   for (const q of bundle.questions) {
     assert.equal(q.choice === null, q.type !== 'choice');
     for (const c of q.choice?.correct ?? []) assert.ok(q.choice.options.some((o) => o.id === c));
@@ -183,14 +186,15 @@ test('构建可复现：同输入同字节；提交的 examples/dist 与源文�
 
 // ---------------- contentHash ----------------
 
-test('contentHash = sha256(规范化 JSON，不含 contentHash)，与键顺序无关', () => {
+test('contentHash = sha256(内容字段的规范化 JSON)，与键顺序无关', () => {
+  assert.deepEqual(CONTENT_HASH_FIELDS, ['title', 'prompt', 'answer', 'choice', 'followups']);
   const res = compileBank(SAMPLE_BANK);
   for (const q of res.bundle.questions) {
     assert.equal(q.contentHash, questionContentHash(q));
-    const { contentHash, ...rest } = q;
-    assert.equal(contentHash, `sha256:${sha256Hex(canonicalJson(rest))}`);
-    const reversed = Object.fromEntries(Object.entries(rest).reverse());
-    assert.equal(questionContentHash(reversed), contentHash);
+    const { title, prompt, answer, choice, followups } = q;
+    assert.equal(q.contentHash, `sha256:${sha256Hex(canonicalJson({ title, prompt, answer, choice, followups }))}`);
+    const reversed = Object.fromEntries(Object.entries(q).reverse());
+    assert.equal(questionContentHash(reversed), q.contentHash);
   }
   assert.equal(canonicalJson({ b: 1, a: [true, null, 'x'], c: { y: '中', x: undefined } }), '{"a":[true,null,"x"],"b":1,"c":{"y":"中"}}');
   assert.throws(() => canonicalJson({ a: Number.NaN }));
@@ -211,7 +215,22 @@ test('contentHash：只随本题内容（含引用图片）变化，不受文件
   assert.equal(res.errorCount, 0, JSON.stringify(res.diagnostics));
   for (const q of base.questions) assert.equal(hashOf(res.bundle, q.id), q.contentHash);
 
-  // 2) 只替换图片内容：引用它的题哈希变化，其余不变
+  // 2) 只改题目元数据（题型以外的标签、难度、重要度、关系、参考资料、复核日期）：哈希不变
+  const m1 = join(dir, 'questions', 'redis', `${M1}.md`);
+  const meta = readFileSync(m1, 'utf8')
+    .replace(/^difficulty: \w+/m, 'difficulty: hard')
+    .replace(/^importance: \d/m, 'importance: 1')
+    .replace(/^reviewedAt: .*/m, 'reviewedAt: 2026-01-01')
+    .replace(/^estimatedMinutes: .*/m, 'estimatedMinutes: 9');
+  assert.notEqual(meta, readFileSync(m1, 'utf8'), '测试前提：元数据确实被改动');
+  writeFileSync(m1, meta);
+  res = compileBank(dir);
+  assert.equal(res.errorCount, 0, JSON.stringify(res.diagnostics));
+  const changedMeta = res.bundle.questions.find((q) => q.id === M1);
+  assert.equal(changedMeta.difficulty, 'hard');
+  assert.equal(changedMeta.contentHash, hashOf(base, M1));
+
+  // 3) 只替换图片内容：引用它的题哈希变化，其余不变
   const png = join(dir, 'questions', 'redis', 'assets', 'expire-cycle.png');
   const bytes = readFileSync(png);
   writeFileSync(png, Buffer.concat([bytes, Buffer.from([0])])); // PNG 尾部附加字节仍可识别
@@ -264,7 +283,7 @@ test('第二版：removed + merged + 内容修改，对比上一版 latest.json'
   const changed = Object.keys(v2.questions).filter((id) => id in v1.questions && v1.questions[id] !== v2.questions[id]);
   assert.deepEqual(removed.sort(), [R4, R5].sort());
   assert.ok(changed.includes(R1), '修改过的题 contentHash 必须变化');
-  assert.ok(changed.includes(R3), 'related 变化也算内容变化');
+  assert.ok(!changed.includes(R3), 'related 属于元数据，变化不算内容变化');
   assert.equal(v2.questions[M1], v1.questions[M1], '未改动的题 contentHash 不变');
 });
 
@@ -341,8 +360,15 @@ test('CLI build / new / fix-ids 与参数错误', () => {
   const bad = run(['build', '--bank', SAMPLE_BANK, '--out', tempDir(), '--previous', prev]);
   assert.equal(bad.status, 1);
   assert.match(bad.stderr, /bank\.yaml:\d+: VERSION_NOT_INCREASED /);
+  // 发版必须二选一：--previous 或显式 --first-release
+  assert.equal(run(['build', '--bank', SAMPLE_BANK, '--out', tempDir()]).status, 2);
+  assert.equal(run(['build', '--bank', SAMPLE_BANK, '--out', tempDir(), '--previous', prev, '--first-release']).status, 2);
+  const first = run(['build', '--bank', SAMPLE_BANK, '--out', tempDir(), '--first-release']);
+  assert.equal(first.status, 0, first.stderr);
+  // 日常 validate 对比上一版：版本没升也通过
+  assert.equal(run(['validate', '--bank', SAMPLE_BANK, '--previous', prev]).status, 0);
 
-  const created = run(['new', '--bank', dir, '--category', 'mysql', '--title', '新题']);
+  const created = run(['new', '--bank', dir, '--category', 'mysql', '--title', '新题', '--tags', 'index']);
   assert.equal(created.status, 0, created.stderr);
   const id = created.stdout.split('\n')[0].trim();
   assert.match(id, rules.QUESTION_ID_PATTERN);

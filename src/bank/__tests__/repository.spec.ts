@@ -16,6 +16,7 @@ import {
   setActiveBankId,
 } from '../repository';
 import { finalize } from '../__fixtures__/sample-bank';
+import { exportBundle } from '../local';
 
 describe('查询', () => {
   let t: TestRuntime;
@@ -49,6 +50,29 @@ describe('查询', () => {
     expect(await ids({ tagIds: ['db'] })).toEqual([QID.mysqlTx, QID.mysqlIndex, QID.redisExpire, QID.redisPersist]);
     expect(await ids({ tagIds: ['memory'] })).toEqual([QID.redisExpire]);
     expect(await ids({ tagIds: [] })).toEqual([]);
+  });
+
+  it('标签的 description / aliases 随安装写入并由 listTags 返回；本地导出保留它们', async () => {
+    const bundle = sampleBundle('1.1.0');
+    bundle.tags = bundle.tags.map((tag) =>
+      tag.id === 'cache' ? { ...tag, description: '缓存设计与问题', aliases: ['Cache Layer', '缓冲'] } : tag,
+    );
+    await installBundle(t.rt, bundle);
+    const tags = await listTags(t.rt, SAMPLE_BANK_ID);
+    expect(tags.find((tag) => tag.id === 'cache')).toMatchObject({ description: '缓存设计与问题', aliases: ['Cache Layer', '缓冲'] });
+    expect(tags.find((tag) => tag.id === 'db')).toMatchObject({ description: null, aliases: [] });
+
+    const exported = await exportBundle(t.rt, SAMPLE_BANK_ID);
+    expect(exported.tags.find((tag) => tag.id === 'cache')).toEqual({
+      id: 'cache',
+      name: expect.any(String),
+      parent: expect.anything(),
+      order: expect.any(Number),
+      description: '缓存设计与问题',
+      aliases: ['Cache Layer', '缓冲'],
+    });
+    expect(exported.tags.find((tag) => tag.id === 'db')).not.toHaveProperty('description');
+    expect(exported.tags.find((tag) => tag.id === 'db')).not.toHaveProperty('aliases');
   });
 
   it('难度 / 类型 / 重要度 / 分类 / 专题筛选', async () => {

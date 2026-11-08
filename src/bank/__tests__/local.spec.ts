@@ -39,14 +39,17 @@ function input(overrides: Partial<LocalQuestionInput> = {}): LocalQuestionInput 
 }
 
 describe('contentHash 规范化', () => {
-  it('键排序、无空白、忽略 undefined、不含 contentHash 本身', () => {
+  it('键排序、无空白、忽略 undefined；只取内容字段（不含 contentHash 与元数据）', () => {
     expect(canonicalJson({ b: 1, a: [true, null, 'x'], c: undefined, d: { z: 1, y: '中' } })).toBe('{"a":[true,null,"x"],"b":1,"d":{"y":"中","z":1}}');
-    const q = { id: 'q', title: 't', tags: ['a'] };
-    const expected = `sha256:${sha256HexOfText('{"id":"q","tags":["a"],"title":"t"}')}`;
+    const q = { id: 'q', title: 't', tags: ['a'], prompt: null, followups: [] };
+    const expected = `sha256:${sha256HexOfText('{"followups":[],"prompt":null,"title":"t"}')}`;
     expect(computeContentHash(q as never)).toBe(expected);
     expect(computeContentHash({ ...q, contentHash: 'sha256:old' } as never)).toBe(expected);
     // 与键顺序无关
-    expect(computeContentHash({ title: 't', tags: ['a'], id: 'q' } as never)).toBe(expected);
+    expect(computeContentHash({ followups: [], title: 't', prompt: null, tags: ['a'], id: 'q' } as never)).toBe(expected);
+    // 元数据变化不改变 hash
+    expect(computeContentHash({ ...q, tags: ['b'], difficulty: 'hard', related: ['x'], reviewedAt: '2026-01-01' } as never)).toBe(expected);
+    expect(computeContentHash({ ...q, title: 't2' } as never)).not.toBe(expected);
   });
 });
 
@@ -128,7 +131,7 @@ describe('本地自建题库', () => {
     expect((await exportBundle(t.rt, bankId)).lifecycle.removed).toEqual([created.id]);
   });
 
-  it('删除题目时清理其它题的 related / prerequisites 并重算 hash', async () => {
+  it('删除题目时清理其它题的 related / prerequisites；关系属于元数据，hash 不变', async () => {
     const bankId = await createLocalBank(t.rt, { name: 'x' });
     const a = await addLocalQuestion(t.rt, bankId, input());
     const b = await addLocalQuestion(t.rt, bankId, input({ title: 'B', related: [a.id], prerequisites: [a.id] }));
@@ -137,7 +140,7 @@ describe('本地自建题库', () => {
     expect(after.related).toBeUndefined();
     expect(after.prerequisites).toBeUndefined();
     expect(after.contentHash).toBe(computeContentHash(after));
-    expect(after.contentHash).not.toBe(b.contentHash);
+    expect(after.contentHash).toBe(b.contentHash);
   });
 
   it('分类 / 标签管理', async () => {

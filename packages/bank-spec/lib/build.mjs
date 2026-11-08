@@ -11,7 +11,7 @@ import { writeZip } from './zip.mjs';
  * @param {{ out: string, previous?: object|null, previousFile?: string, baseUrl?: string, publishedAt?: string, pretty?: boolean }} opts
  */
 export function buildBank(bankDir, opts) {
-  const result = compileBank(bankDir, { previous: opts.previous, previousFile: opts.previousFile });
+  const result = compileBank(bankDir, { previous: opts.previous, previousFile: opts.previousFile, release: true });
   if (!result.bundle) return { ...result, manifest: null, files: [] };
   const { bundle, assets, release } = result;
   const version = bundle.bank.version;

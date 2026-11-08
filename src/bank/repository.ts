@@ -164,10 +164,10 @@ export async function listCategories(rt: BankRuntime, bankId: string): Promise<C
   }));
 }
 
-interface TagRow { id: string; name: string; parent_id: string | null; sort: number }
+interface TagRow { id: string; name: string; parent_id: string | null; sort: number; description: string | null; aliases: string | null }
 
 async function loadTags(rt: BankRuntime, bankId: string): Promise<TagRow[]> {
-  return rt.db.getAllAsync<TagRow>('SELECT id, name, parent_id, sort FROM tags WHERE bank_id = ? ORDER BY sort, id', [bankId]);
+  return rt.db.getAllAsync<TagRow>('SELECT id, name, parent_id, sort, description, aliases FROM tags WHERE bank_id = ? ORDER BY sort, id', [bankId]);
 }
 
 /** 标签及其全部子孙标签 id */
@@ -210,6 +210,8 @@ export async function listTags(rt: BankRuntime, bankId: string): Promise<TagInfo
       name: tag.name,
       parentId: tag.parent_id,
       order: tag.sort,
+      description: tag.description,
+      aliases: tag.aliases ? (JSON.parse(tag.aliases) as string[]) : [],
       childIds: tags.filter((t) => t.parent_id === tag.id).map((t) => t.id),
       questionCount: ids.size,
     };

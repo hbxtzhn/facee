@@ -120,17 +120,22 @@ test('fix-ids：整库运行后通过校验，再次运行无改动', () => {
 
 test('new：生成骨架，经 fix-ids 补号后只剩 TODO 警告', () => {
   const dir = writeBank();
-  const { id, file } = newQuestion(dir, { category: 'mysql', title: '索引是什么？' });
+  const { id, file } = newQuestion(dir, { category: 'mysql', title: '索引是什么？', tags: ['storage'] });
   assert.ok(isQuestionId(id));
   assert.ok(file.endsWith(`${id}.md`));
   assert.ok(readdirSync(join(dir, 'questions', 'mysql')).includes(`${id}.md`));
   assert.throws(() => newQuestion(dir, { category: 'nope' }), /未在 bank.yaml/);
+  assert.throws(() => newQuestion(dir, { category: 'mysql', tags: ['nope'] }), /标签「nope」未在 bank.yaml/);
+  // 不给 tags：骨架为 tags: []，validate 报 TAG_COUNT 提醒补标签
+  const bare = newQuestion(writeBank(), { category: 'mysql' });
+  assert.match(readFileSync(bare.file, 'utf8'), /^tags: \[\]$/m);
   fixIds(dir);
   const res = compileBank(dir);
   assert.equal(res.errorCount, 0, JSON.stringify(res.diagnostics));
   assert.ok(res.diagnostics.some((d) => d.code === 'TODO_LEFT'));
   const q = res.bundle.questions.find((x) => x.id === id);
   assert.equal(q.title, '索引是什么？');
+  assert.deepEqual(q.tags, ['storage']);
   assert.deepEqual(q.answer.keyPoints.map((k) => [k.id, k.weight]), [['kp1', 2], ['kp2', 2], ['kp3', 1]]);
 });
 

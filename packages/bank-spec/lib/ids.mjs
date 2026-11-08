@@ -127,7 +127,7 @@ export function fixIds(bankDir, opts = {}) {
 }
 
 /** 题目骨架；要点 / 追问不带 id，交给 fix-ids 补号 */
-export function questionSkeleton({ id, title, category }) {
+export function questionSkeleton({ id, title, category, tags = [] }) {
   return [
     '---',
     `id: ${id}`,
@@ -136,7 +136,7 @@ export function questionSkeleton({ id, title, category }) {
     'difficulty: medium',
     'importance: 2',
     `category: ${category}`,
-    'tags: []',
+    `tags: [${tags.join(', ')}]`,
     '---',
     '',
     '## 一句话',
@@ -157,19 +157,21 @@ export function questionSkeleton({ id, title, category }) {
  * 新建题目文件：questions/<category>/<id>.md
  * @returns {{ id: string, file: string }}
  */
-export function newQuestion(bankDir, { category, title, now, rand } = {}) {
+export function newQuestion(bankDir, { category, title, tags = [], now, rand } = {}) {
   if (!category || !SLUG_ID_PATTERN.test(category)) throw new Error(`--category 必须匹配 ${SLUG_ID_PATTERN}`);
   const bankPath = join(bankDir, BANK_FILE);
   if (!existsSync(bankPath)) throw new Error(`找不到 ${bankPath}`);
   const by = readYaml(readFileSync(bankPath, 'utf8'));
   const cats = Array.isArray(by.value?.categories) ? by.value.categories.map((c) => c?.id) : [];
   if (!cats.includes(category)) throw new Error(`分类「${category}」未在 bank.yaml categories 中声明`);
+  const declaredTags = Array.isArray(by.value?.tags) ? by.value.tags.map((t) => t?.id) : [];
+  for (const t of tags) if (!declaredTags.includes(t)) throw new Error(`标签「${t}」未在 bank.yaml tags 中声明`);
   const id = newQuestionId(now, rand);
   if (!isQuestionId(id)) throw new Error(`生成的 id 不合法：${id}`);
   const dir = join(bankDir, QUESTIONS_DIR, category);
   mkdirSync(dir, { recursive: true });
   const file = join(dir, `${id}.md`);
   if (existsSync(file)) throw new Error(`文件已存在：${file}`);
-  writeFileSync(file, questionSkeleton({ id, title, category }), 'utf8');
+  writeFileSync(file, questionSkeleton({ id, title, category, tags }), 'utf8');
   return { id, file };
 }

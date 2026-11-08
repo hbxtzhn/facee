@@ -1,0 +1,17 @@
+{
+  "name": "@facee/bank-spec",
+  "version": "2.0.0",
+  "private": true,
+  "description": "FaceE 题库规范 v2 的校验与构建工具（docs/题库规范-v2-草案.md §5）",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "bank-spec": "cli.mjs"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "dependencies": {
+    "yaml": "2.9.1"
+  }
+}

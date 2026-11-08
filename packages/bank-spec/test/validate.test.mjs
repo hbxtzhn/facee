@@ -44,6 +44,10 @@ const ERROR_CASES = [
   ['references url 非 http(s)', qa({ fm: { references: '[{ title: a, url: "ftp://x" }]' } }), 'FM_INVALID'],
   ['source 缺 name', qa({ fm: { source: '{ license: MIT }' } }), 'FM_INVALID'],
   ['tags 不是字符串数组', qa({ fm: { tags: 'cache' } }), 'FM_INVALID'],
+  ['缺少 tags', qa({ fm: { tags: null } }), 'TAG_COUNT'],
+  ['tags 为空', qa({ fm: { tags: '[]' } }), 'TAG_COUNT'],
+  ['tags 超过 3 个', { 'bank.yaml': bankYaml([['  - { id: cache, name: 缓存, parent: storage }', '  - { id: cache, name: 缓存, parent: storage }\n  - { id: a1, name: A1 }\n  - { id: a2, name: A2 }']]), ...qa({ fm: { tags: '[storage, cache, a1, a2]' } }) }, 'TAG_COUNT'],
+  ['tags 重复', qa({ fm: { tags: '[cache, cache]' } }), 'ID_DUPLICATE'],
   // ---- id ----
   ['题目 id 格式非法', qa({ id: 'q_123' }), 'ID_INVALID'],
   ['题目 id 含非 Crockford 字符', qa({ id: 'q_01J0000000000000000000000I' }), 'ID_INVALID'],
@@ -112,6 +116,16 @@ const ERROR_CASES = [
   ['专题引用不存在的题', { 'bank.yaml': bankYaml([[`[${QID.a}, ${QID.b}]`, `[${QID.a}, ${QID.c}]`]]) }, 'REF_MISSING'],
   ['专题重复引用', { 'bank.yaml': bankYaml([[`[${QID.a}, ${QID.b}]`, `[${QID.a}, ${QID.a}]`]]) }, 'ID_DUPLICATE'],
   ['标签父级不存在', { 'bank.yaml': bankYaml([['parent: storage', 'parent: nope']]) }, 'REF_MISSING'],
+  ['标签别名与其他标签 name 相同', { 'bank.yaml': bankYaml([['{ id: cache, name: 缓存, parent: storage }', '{ id: cache, name: 缓存, parent: storage, aliases: [存储] }']]) }, 'TAG_ALIAS_CONFLICT'],
+  ['标签别名与其他标签 id 相同（忽略大小写）', { 'bank.yaml': bankYaml([['{ id: cache, name: 缓存, parent: storage }', '{ id: cache, name: 缓存, parent: storage, aliases: [Storage] }']]) }, 'TAG_ALIAS_CONFLICT'],
+  ['标签别名与本标签 name 相同', { 'bank.yaml': bankYaml([['{ id: cache, name: 缓存, parent: storage }', '{ id: cache, name: 缓存, parent: storage, aliases: [缓存] }']]) }, 'TAG_ALIAS_CONFLICT'],
+  [
+    '标签别名跨标签重复',
+    { 'bank.yaml': bankYaml([['{ id: storage, name: 存储, parent: null }', '{ id: storage, name: 存储, parent: null, aliases: [Cache Layer] }'], ['{ id: cache, name: 缓存, parent: storage }', '{ id: cache, name: 缓存, parent: storage, aliases: [cache layer] }']]) },
+    'TAG_ALIAS_CONFLICT',
+  ],
+  ['标签别名不是非空字符串数组', { 'bank.yaml': bankYaml([['{ id: cache, name: 缓存, parent: storage }', '{ id: cache, name: 缓存, parent: storage, aliases: [] }']]) }, 'BANK_FIELD'],
+  ['标签说明为空', { 'bank.yaml': bankYaml([['{ id: cache, name: 缓存, parent: storage }', '{ id: cache, name: 缓存, parent: storage, description: "" }']]) }, 'BANK_FIELD'],
   [
     'prerequisites 成环',
     {
@@ -137,8 +151,8 @@ const ERROR_CASES = [
   ['同时 removed 与 merged', { 'bank.yaml': bankYaml([['removed: []', `removed: [${QID.c}]`], ['merged: {}', `merged: { ${QID.c}: ${QID.a} }`]]) }, 'LIFECYCLE_CONFLICT'],
   ['merged 目标不存在', { 'bank.yaml': bankYaml([['merged: {}', `merged: { ${QID.c}: ${QID.d} }`]]) }, 'REF_MISSING'],
   ['上一版的题消失且未声明', { 'questions/redis/b.md': null, 'bank.yaml': bankYaml([[`[${QID.a}, ${QID.b}]`, `[${QID.a}]`]]) }, 'LIFECYCLE_MISSING', { previous: prevManifest() }],
-  ['版本未递增', {}, 'VERSION_NOT_INCREASED', { previous: prevManifest({ version: '1.0.0' }) }],
-  ['预发布版本低于正式版', { 'bank.yaml': bankYaml([['version: 1.0.0', 'version: 1.0.0-rc.1']]) }, 'VERSION_NOT_INCREASED', { previous: prevManifest({ version: '1.0.0' }) }],
+  ['发版：版本未递增', {}, 'VERSION_NOT_INCREASED', { previous: prevManifest({ version: '1.0.0' }), release: true }],
+  ['发版：预发布版本低于正式版', { 'bank.yaml': bankYaml([['version: 1.0.0', 'version: 1.0.0-rc.1']]) }, 'VERSION_NOT_INCREASED', { previous: prevManifest({ version: '1.0.0' }), release: true }],
   ['bank.id 与上一版不同', {}, 'BANK_MISMATCH', { previous: prevManifest({ bankId: 'github.com/example/other' }) }],
   ['上一版清单无效', {}, 'PREVIOUS_INVALID', { previous: { bankId: 'x' } }],
 ];
@@ -160,6 +174,8 @@ const WARNING_CASES = [
   ['题目里写出处', qa({ body: `## 题目\n来源：某面经\n\n${DEFAULT_BODY}` }), 'PROMPT_SOURCE'],
   ['资源未被引用', { 'questions/redis/assets/unused.png': PNG }, 'ASSET_UNUSED'],
   ['TODO 占位', qa({ body: withSection('详解', 'TODO 补充') }), 'TODO_LEFT'],
+  ['核心要点超过 2 条', qa({ body: DEFAULT_BODY.replace('[kp1|2]', '[kp1|3]').replace('[kp2]', '[kp2|3]').replace('[kp3]', '[kp3|3]') }), 'KEYPOINT_CORE_COUNT'],
+  ['标签超过两层', { 'bank.yaml': bankYaml([['  - { id: cache, name: 缓存, parent: storage }', '  - { id: cache, name: 缓存, parent: storage }\n  - { id: lru, name: LRU, parent: cache }']]) }, 'TAG_DEPTH'],
 ];
 
 for (const [name, files, code] of WARNING_CASES) {
@@ -192,6 +208,28 @@ test('代码块中的 HTML / 图片 / TODO 不触发校验', () => {
     writeBank(qa({ body: withSection('示例', '```html\n<div>TODO</div>\n![x](./none.png)\n```') })),
   );
   assert.deepEqual(res.diagnostics, []);
+});
+
+test('日常校验（非发版）对比上一版时不要求版本递增，但仍检查生命周期与 bank.id', () => {
+  const same = compileBank(writeBank(), { previous: prevManifest({ version: '1.0.0' }) });
+  assert.equal(same.errorCount, 0, JSON.stringify(same.diagnostics));
+  const gone = compileBank(writeBank({ 'questions/redis/b.md': null, 'bank.yaml': bankYaml([[`[${QID.a}, ${QID.b}]`, `[${QID.a}]`]]) }), {
+    previous: prevManifest({ version: '1.0.0' }),
+  });
+  assert.ok(gone.diagnostics.some((d) => d.code === 'LIFECYCLE_MISSING'));
+});
+
+test('标签 description / aliases 进入 bundle（去首尾空白），两层标签不报 TAG_DEPTH，核心要点 2 条不报警告', () => {
+  const res = compileBank(
+    writeBank({
+      'bank.yaml': bankYaml([['{ id: cache, name: 缓存, parent: storage }', '{ id: cache, name: 缓存, parent: storage, description: " 读多写少的加速层 ", aliases: [" 缓存层 ", 缓冲] }']]),
+      ...qa({ body: DEFAULT_BODY.replace('[kp2]', '[kp2|3]').replace('[kp1|2]', '[kp1|3]') }),
+    }),
+  );
+  assert.deepEqual(res.diagnostics, []);
+  const cache = res.bundle.tags.find((t) => t.id === 'cache');
+  assert.deepEqual(cache, { id: 'cache', name: '缓存', parent: 'storage', description: '读多写少的加速层', aliases: ['缓存层', '缓冲'] });
+  assert.deepEqual(res.bundle.tags.find((t) => t.id === 'storage'), { id: 'storage', name: '存储', parent: null });
 });
 
 test('合法的 lifecycle 声明通过校验', () => {

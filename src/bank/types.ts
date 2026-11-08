@@ -70,9 +70,13 @@ export interface Category {
 export interface Tag {
   id: SlugId;
   name: string;
-  /** 父标签 id；不得成环 */
+  /** 父标签 id；不得成环；建议最多两层 */
   parent: SlugId | null;
   order?: number;
+  /** 范围说明（纯文本）：包括什么、不包括什么 */
+  description?: string;
+  /** 同义词：用于搜索与近义标签映射；全库唯一，不与任何标签 id / name 相同 */
+  aliases?: string[];
 }
 
 /** 专题 / 学习路径：作者定义的有序题单 */

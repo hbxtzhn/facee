@@ -87,5 +87,5 @@ jobs:
       - name: 重新构建示例题库，提交的 examples/dist 必须是最新产物
         run: |
           node packages/bank-spec/cli.mjs build --bank packages/bank-spec/examples/sample-bank \
-            --out packages/bank-spec/examples/dist --pretty --published-at 2026-11-05T00:00:00Z
+            --out packages/bank-spec/examples/dist --first-release --pretty --published-at 2026-11-05T00:00:00Z
           git diff --exit-code -- packages/bank-spec/examples/dist

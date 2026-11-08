@@ -12,6 +12,8 @@ import {
   type QuestionListItem,
   type QuestionType,
   type SectionInfo,
+  type CollectionInfo,
+  type TagInfo,
 } from '../bank';
 import type { HomeStackParamList, ListParams, RootStackParamList } from '../navigation/AppNavigator';
 import { listTitle } from './home/components/list-title';
@@ -76,6 +78,17 @@ export function scopeFilter(params: ListParams | undefined, sections: readonly S
 }
 
 /** 合并范围与面板筛选；面板里的标签与入口标签同时存在时，数据层按「任一命中」处理，这里取面板值收窄 */
+/** 标签 / 专题范围的说明文字；无说明返回 null */
+export function scopeDescriptionOf(
+  params: Pick<ListParams, 'tagId' | 'collectionId'> | undefined,
+  tags: readonly Pick<TagInfo, 'id' | 'description'>[],
+  collections: readonly Pick<CollectionInfo, 'id' | 'description'>[],
+): string | null {
+  if (params?.tagId) return tags.find((tag) => tag.id === params.tagId)?.description ?? null;
+  if (params?.collectionId) return collections.find((c) => c.id === params.collectionId)?.description ?? null;
+  return null;
+}
+
 export function combineFilters(scope: QuestionFilter, panel: PanelFilters): QuestionFilter {
   const filter: QuestionFilter = { ...scope };
   if (panel.difficulties.length > 0) filter.difficulties = panel.difficulties;
@@ -100,6 +113,7 @@ export function ListScreen() {
   const title = listTitle(params);
   const sections = useBankStore((state) => state.sections);
   const tags = useBankStore((state) => state.tags);
+  const collections = useBankStore((state) => state.collections);
   const contentVersion = useBankStore((state) => state.contentVersion);
   const learningVersion = useBankStore((state) => state.learningVersion);
   const [keyword, setKeyword] = useState('');
@@ -114,6 +128,9 @@ export function ListScreen() {
   useLayoutEffect(() => {
     if (typeof nav.setOptions === 'function') nav.setOptions({ title });
   }, [nav, title]);
+
+  // 从标签 / 专题进入时，在列表顶部展示作者写的范围说明
+  const scopeDescription = scopeDescriptionOf(params, tags, collections);
 
   // 分区数组在每次学习数据变化后都会换新引用：按内容（JSON）稳定范围，避免重复查询
   const scopeJson = JSON.stringify(scopeFilter(params, sections));
@@ -236,6 +253,7 @@ export function ListScreen() {
 
   const header = (
     <View style={styles.toolbar}>
+      {scopeDescription ? <Text style={styles.scopeDescription}>{scopeDescription}</Text> : null}
       <UnderlineSearchField
         value={keyword}
         onChangeText={setKeyword}
@@ -448,6 +466,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   summaryText: { ...typography.caption, color: colors.textMuted, flexShrink: 1 },
+  scopeDescription: { ...typography.caption, color: colors.textSecondary, paddingBottom: spacing.sm },
   summaryTextActive: { color: colors.text, fontWeight: '600' },
   resultCount: { ...typography.caption, color: colors.textSubtle, marginLeft: 'auto', paddingLeft: spacing.md },
   panel: {

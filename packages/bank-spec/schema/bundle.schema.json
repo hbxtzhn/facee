@@ -61,7 +61,14 @@
         "id": { "$ref": "#/$defs/SlugId" },
         "name": { "type": "string", "minLength": 1 },
         "parent": { "anyOf": [{ "$ref": "#/$defs/SlugId" }, { "type": "null" }] },
-        "order": { "type": "integer" }
+        "order": { "type": "integer" },
+        "description": { "type": "string", "minLength": 1, "description": "标签范围说明（纯文本）" },
+        "aliases": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "同义词，用于搜索与近义标签映射；全库唯一，不与任何标签 id / name 相同"
+        }
       }
     },
     "Collection": {

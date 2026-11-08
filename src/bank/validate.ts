@@ -324,6 +324,10 @@ export function validateBundle(input: unknown): ValidationResult<Bundle> {
     requireString(c, tag.name, `${path}.name`);
     validateOrder(c, tag.order, `${path}.order`);
     if (tag.parent === undefined) c.add(`${path}.parent`, '必填，无父标签时为 null');
+    if (tag.description !== undefined && typeof tag.description !== 'string') c.add(`${path}.description`, '应为字符串或省略');
+    if (tag.aliases !== undefined && (!Array.isArray(tag.aliases) || tag.aliases.some((a) => typeof a !== 'string'))) {
+      c.add(`${path}.aliases`, '应为字符串数组或省略');
+    }
   });
   const tagIds = checkUnique(c, tags.map((x) => (isRecord(x) ? x.id : undefined)), 'tags', '标签');
   const tagEdges = new Map<string, string[]>();

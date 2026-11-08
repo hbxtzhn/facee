@@ -1,5 +1,5 @@
 # FaceE 示例题库（规范 v2 编写格式）
-# 构建：node packages/bank-spec/cli.mjs build --bank packages/bank-spec/examples/sample-bank --out packages/bank-spec/examples/dist --pretty --published-at 2026-11-05T00:00:00Z
+# 构建：node packages/bank-spec/cli.mjs build --bank packages/bank-spec/examples/sample-bank --out packages/bank-spec/examples/dist --first-release --pretty --published-at 2026-11-05T00:00:00Z
 schemaVersion: 2
 bank:
   id: github.com/hbxtzhn/facee-sample-bank
@@ -19,21 +19,25 @@ categories:
   - { id: java-concurrency, name: Java 并发, order: 30 }
   - { id: network, name: 网络与 HTTP, order: 40 }
 
-# 标签层级：storage > redis / mysql；concurrency > lock / thread-pool；network > http / tls
+# 标签最多两层：redis > memory；mysql > index / transaction；concurrency > lock / thread-pool；network > http / tls
+# description：标签范围说明（App 展示）；aliases：同义词（搜索与近义标签映射），全库唯一
 tags:
-  - { id: storage, name: 存储, parent: null }
-  - { id: redis, name: Redis, parent: storage }
-  - { id: mysql, name: MySQL, parent: storage }
-  - { id: memory, name: 内存, parent: redis }
-  - { id: index, name: 索引, parent: mysql }
-  - { id: transaction, name: 事务, parent: mysql }
+  - { id: redis, name: Redis, parent: null }
+  - { id: mysql, name: MySQL, parent: null, aliases: [InnoDB] }
+  - id: memory
+    name: 内存
+    parent: redis
+    description: 过期删除、内存淘汰与内存占用；不含持久化
+    aliases: [内存管理]
+  - { id: index, name: 索引, parent: mysql, aliases: [B+ 树] }
+  - { id: transaction, name: 事务, parent: mysql, description: ACID、隔离级别与 MVCC }
   - { id: cache, name: 缓存, parent: null }
-  - { id: concurrency, name: 并发, parent: null }
+  - { id: concurrency, name: 并发, parent: null, aliases: [多线程] }
   - { id: lock, name: 锁, parent: concurrency }
   - { id: thread-pool, name: 线程池, parent: concurrency }
   - { id: network, name: 网络, parent: null }
   - { id: http, name: HTTP, parent: network }
-  - { id: tls, name: TLS, parent: network }
+  - { id: tls, name: TLS, parent: network, aliases: [HTTPS, SSL] }
   - { id: performance, name: 性能, parent: null }
   - { id: system-design, name: 系统设计, parent: null }
   - { id: troubleshooting, name: 故障排查, parent: null }

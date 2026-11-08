@@ -5,7 +5,7 @@ type: scenario
 difficulty: medium
 importance: 3
 category: mysql
-tags: [mysql, index, performance, troubleshooting]
+tags: [index, performance, troubleshooting]
 appliesTo: ["MySQL >= 8.0"]
 prerequisites: [q_01M6B27VZ068DC8PEV0GWCQG5K]
 source: { name: 自整理, license: CC-BY-4.0 }

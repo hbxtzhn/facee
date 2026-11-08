@@ -153,8 +153,14 @@ CREATE TABLE user_section_categories (
 CREATE TABLE app_settings (key TEXT PRIMARY KEY NOT NULL, value TEXT);
 `;
 
+/** 标签范围说明与同义词（规范 v2 §2.3 tags[].description / aliases）；aliases 存 JSON 数组 */
+const MIGRATION_2 = `
+ALTER TABLE tags ADD COLUMN description TEXT;
+ALTER TABLE tags ADD COLUMN aliases TEXT;
+`;
+
 /** 下标 i 的迁移把 user_version 从 i 升到 i + 1 */
-export const MIGRATIONS: readonly string[] = [MIGRATION_1];
+export const MIGRATIONS: readonly string[] = [MIGRATION_1, MIGRATION_2];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
 

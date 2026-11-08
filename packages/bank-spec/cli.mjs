@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // FaceE 题库工具链 v2（docs/题库规范-v2-草案.md §5）
 //
-//   node packages/bank-spec/cli.mjs new      --bank <dir> --category <id> [--title <t>]
+//   node packages/bank-spec/cli.mjs new      --bank <dir> --category <id> [--title <t>] [--tags a,b]
 //   node packages/bank-spec/cli.mjs fix-ids  --bank <dir> [--dry-run]
 //   node packages/bank-spec/cli.mjs validate --bank <dir> [--previous <latest.json>]
-//   node packages/bank-spec/cli.mjs build    --bank <dir> --out <dist> [--previous <latest.json>]
+//   node packages/bank-spec/cli.mjs build    --bank <dir> --out <dist> (--previous <latest.json> | --first-release)
 //                                            [--base-url <url>] [--published-at <iso>] [--pretty]
 //
 // 诊断输出：`file:line: CODE message`（警告为 `file:line: warning CODE message`）；有 error 时退出码 1。
@@ -20,12 +20,14 @@ import { fixIds, newQuestion } from './lib/ids.mjs';
 const USAGE = `用法：bank-spec <command> [options]
 
 命令：
-  new       --bank <dir> --category <id> [--title <t>]   新建题目骨架（分配 q_ + ULID）
+  new       --bank <dir> --category <id> [--title <t>] [--tags a,b]
+                                                          新建题目骨架（分配 q_ + ULID）
   fix-ids   --bank <dir> [--dry-run]                      补齐题目 / 要点 / 追问 id 并回写
-  validate  --bank <dir> [--previous <latest.json>]       全量校验
-  build     --bank <dir> --out <dist> [--previous <latest.json>]
+  validate  --bank <dir> [--previous <latest.json>]       全量校验；--previous 时检查 bank.id 不变、生命周期完整
+  build     --bank <dir> --out <dist> (--previous <latest.json> | --first-release)
             [--base-url <url>] [--published-at <iso>] [--pretty]
-                                                          校验并生成 bundle / assets / latest.json`;
+                                                          发版构建：校验并生成 bundle / assets / latest.json；
+                                                          --previous 时另要求版本递增，首发必须显式 --first-release`;
 
 export async function main(argv = process.argv.slice(2), io = { log: console.log, error: console.error }) {
   const [command, ...rest] = argv;
@@ -41,12 +43,14 @@ export async function main(argv = process.argv.slice(2), io = { log: console.log
         bank: { type: 'string' },
         category: { type: 'string' },
         title: { type: 'string' },
+        tags: { type: 'string' },
         out: { type: 'string' },
         previous: { type: 'string' },
         'base-url': { type: 'string' },
         'published-at': { type: 'string' },
         pretty: { type: 'boolean' },
         'dry-run': { type: 'boolean' },
+        'first-release': { type: 'boolean' },
       },
       strict: true,
     }));
@@ -63,7 +67,8 @@ export async function main(argv = process.argv.slice(2), io = { log: console.log
   try {
     switch (command) {
       case 'new': {
-        const { id, file } = newQuestion(bankDir, { category: values.category, title: values.title });
+        const tags = (values.tags ?? '').split(',').map((t) => t.trim()).filter(Boolean);
+        const { id, file } = newQuestion(bankDir, { category: values.category, title: values.title, tags });
         io.log(`${id}\n${relative(process.cwd(), file)}`);
         return 0;
       }
@@ -92,6 +97,13 @@ export async function main(argv = process.argv.slice(2), io = { log: console.log
       case 'build': {
         if (!values.out) {
           io.error(`build 需要 --out\n\n${USAGE}`);
+          return 2;
+        }
+        // 发版必须对比上一版；拿不到上一版时不能悄悄当作首发
+        if (!values.previous === !values['first-release']) {
+          io.error(`build 需要且只能给出 --previous <上一版 latest.json> 或 --first-release 之一
+
+${USAGE}`);
           return 2;
         }
         const previous = loadPrevious(values.previous);

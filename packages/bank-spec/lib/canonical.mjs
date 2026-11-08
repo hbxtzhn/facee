@@ -32,8 +32,21 @@ export function sha256Hex(data) {
   return createHash('sha256').update(data).digest('hex');
 }
 
-/** `sha256:` + 题目对象（去掉 contentHash 字段）的规范化 JSON 摘要 */
+/**
+ * 参与 contentHash 的字段：只有题目与答案内容（规范 §3.2）。
+ * 题型、难度、重要度、分类、标签、关系、出处、参考资料、复核日期等元数据变化不改变 contentHash，
+ * 因此不会让 App 把题标为「内容已更新」。与 src/bank/hash.ts 的 CONTENT_HASH_FIELDS 必须一致。
+ */
+export const CONTENT_HASH_FIELDS = ['title', 'prompt', 'answer', 'choice', 'followups'];
+
+/** 只取参与 contentHash 的字段 */
+export function contentHashInput(question) {
+  const out = {};
+  for (const k of CONTENT_HASH_FIELDS) if (question[k] !== undefined) out[k] = question[k];
+  return out;
+}
+
+/** `sha256:` + 题目内容字段（CONTENT_HASH_FIELDS）的规范化 JSON 摘要 */
 export function questionContentHash(question) {
-  const { contentHash: _ignored, ...rest } = question;
-  return `sha256:${sha256Hex(Buffer.from(canonicalJson(rest), 'utf8'))}`;
+  return `sha256:${sha256Hex(Buffer.from(canonicalJson(contentHashInput(question)), 'utf8'))}`;
 }

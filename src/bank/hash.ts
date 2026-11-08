@@ -54,12 +54,21 @@ export function canonicalJson(value: unknown): string {
 }
 
 /**
- * 题目 contentHash：`sha256:` + 该题去掉 contentHash 字段后的规范化 JSON 的 UTF-8 sha256 十六进制。
+ * 参与 contentHash 的字段：只有题目与答案内容（规范 §3.2）。元数据（题型、难度、重要度、分类、标签、
+ * 前置 / 相关、出处、参考资料、复核日期、预计用时）变化不算「内容已更新」。
+ * 与 packages/bank-spec/lib/canonical.mjs 的 CONTENT_HASH_FIELDS 必须一致（cross-tool-contract.spec.ts 锁定）。
+ */
+export const CONTENT_HASH_FIELDS = ['title', 'prompt', 'answer', 'choice', 'followups'] as const;
+
+/**
+ * 题目 contentHash：`sha256:` + 该题 CONTENT_HASH_FIELDS 组成的对象的规范化 JSON 的 UTF-8 sha256 十六进制。
  * 资源以 `asset:<sha256>.<ext>` 引用出现在 Markdown 字段里，因此资源哈希已包含在内。
  */
 export function computeContentHash(question: Omit<Question, 'contentHash'> | Question): string {
-  const { contentHash: _ignored, ...rest } = question as Question;
-  return `sha256:${sha256HexOfText(canonicalJson(rest))}`;
+  const record = question as unknown as Record<string, unknown>;
+  const input: Record<string, unknown> = {};
+  for (const key of CONTENT_HASH_FIELDS) if (record[key] !== undefined) input[key] = record[key];
+  return `sha256:${sha256HexOfText(canonicalJson(input))}`;
 }
 
 /** 题库资源目录前缀：bankId 的 sha256 前 16 位（bankId 含 `/`，不能直接当目录名） */

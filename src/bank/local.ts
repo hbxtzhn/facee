@@ -71,11 +71,20 @@ export async function exportBundle(rt: BankRuntime | { db: SqlExecutor }, bankId
     )
   ).map((c): Category => ({ id: c.id, name: c.name, order: c.sort, ...(c.description ? { description: c.description } : {}) }));
   const tags = (
-    await db.getAllAsync<{ id: string; name: string; parent_id: string | null; sort: number }>(
-      'SELECT id, name, parent_id, sort FROM tags WHERE bank_id = ? ORDER BY position, id',
+    await db.getAllAsync<{ id: string; name: string; parent_id: string | null; sort: number; description: string | null; aliases: string | null }>(
+      'SELECT id, name, parent_id, sort, description, aliases FROM tags WHERE bank_id = ? ORDER BY position, id',
       [bankId],
     )
-  ).map((t): Tag => ({ id: t.id, name: t.name, parent: t.parent_id, order: t.sort }));
+  ).map(
+    (t): Tag => ({
+      id: t.id,
+      name: t.name,
+      parent: t.parent_id,
+      order: t.sort,
+      ...(t.description ? { description: t.description } : {}),
+      ...(t.aliases ? { aliases: JSON.parse(t.aliases) as string[] } : {}),
+    }),
+  );
   const collections = (
     await db.getAllAsync<{ id: string; name: string; description: string | null; question_ids: string }>(
       'SELECT id, name, description, question_ids FROM collections WHERE bank_id = ? ORDER BY position, id',
