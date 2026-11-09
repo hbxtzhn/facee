@@ -29,6 +29,7 @@
 - 题库规范修订：标签 `description` / `aliases`、每题 1–3 个标签、难度语义、核心要点上限、contentHash 只算内容字段；
   `build` 需 `--previous` 或显式 `--first-release`；`packages/bank-spec` 可独立 `npm install` 使用
 - `bank-spec` 新增 `stats`（全库分布报告）与 `merge-question` / `remove-question`（一次改完引用、专题与生命周期）
+- 依赖安全：markdown-it 14.3.3、node-forge 1.4.3、Expo 57.0.32 补丁系列（不再依赖 zod、改用 glob 14），移除 node-forge 临时例外
 - 移除 v1 题库仓库、ZIP 安装器与相关状态模块
 
 ## [0.1.2] - 2026-10-19

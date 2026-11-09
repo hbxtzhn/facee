@@ -3,9 +3,8 @@
 import { spawnSync } from 'node:child_process';
 import { verifyDependencyBackports } from './verify-dependency-patches.mjs';
 const patched = verifyDependencyBackports();
-const exceptions = new Map([
-  ['GHSA-86w9-cpqp-85rv', 'node-forge'],
-]);
+// 临时例外：公告 id → 包名。当前为空；新增前须在 docs/dependency-security.md 登记原因与移除条件。
+const exceptions = new Map([]);
 const result = spawnSync('pnpm', ['audit', '--prod', '--json'], {
   encoding: 'utf8', shell: process.platform === 'win32', timeout: 90_000, maxBuffer: 10 * 1024 * 1024,
 });

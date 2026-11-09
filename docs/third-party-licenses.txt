@@ -2395,7 +2395,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
 
-@expo/cli @ 57.0.28
+@expo/cli @ 57.0.33
 License: MIT
 Author: Expo
 Homepage: https://github.com/expo/expo/tree/main/packages/@expo/cli
@@ -2453,7 +2453,7 @@ SOFTWARE.
 
 ========================================================================
 
-@expo/config @ 57.0.10, 57.0.9
+@expo/config @ 57.0.11
 License: MIT
 Author: ""
 Homepage: https://github.com/expo/expo/tree/main/packages/@expo/config#readme
@@ -2482,7 +2482,7 @@ SOFTWARE.
 
 ========================================================================
 
-@expo/config-plugins @ 57.0.10, 57.0.9
+@expo/config-plugins @ 57.0.12
 License: MIT
 Author: ""
 Homepage: https://docs.expo.dev/guides/config-plugins/
@@ -2607,7 +2607,7 @@ SOFTWARE.
 
 ========================================================================
 
-@expo/env @ 2.4.3
+@expo/env @ 2.4.4, 2.5.4
 License: MIT
 Author: ""
 Homepage: https://github.com/expo/expo/tree/main/packages/@expo/env#readme
@@ -2665,7 +2665,7 @@ SOFTWARE.
 
 ========================================================================
 
-@expo/fingerprint @ 0.20.13
+@expo/fingerprint @ 0.20.15
 License: MIT
 Author: 650 Industries, Inc.
 Homepage: https://github.com/expo/expo/tree/main/packages/@expo/fingerprint#readme
@@ -2694,7 +2694,7 @@ SOFTWARE.
 
 ========================================================================
 
-@expo/image-utils @ 0.11.5, 0.11.6
+@expo/image-utils @ 0.11.7
 License: MIT
 Author: ""
 Homepage: https://github.com/expo/expo/tree/main/packages/%40expo/image-utils#readme
@@ -2723,7 +2723,7 @@ SOFTWARE.
 
 ========================================================================
 
-@expo/inline-modules @ 0.1.7
+@expo/inline-modules @ 0.1.9
 License: MIT
 Author: Expo
 Homepage: https://github.com/expo/expo#readme
@@ -2781,7 +2781,7 @@ SOFTWARE.
 
 ========================================================================
 
-@expo/local-build-cache-provider @ 57.0.8
+@expo/local-build-cache-provider @ 57.0.10
 License: MIT
 Author: ""
 Homepage: https://github.com/expo/expo/tree/main/packages/@expo/local-build-cache-provider#readme
@@ -2810,7 +2810,7 @@ SOFTWARE.
 
 ========================================================================
 
-@expo/log-box @ 57.0.4
+@expo/log-box @ 57.0.5
 License: MIT
 Author: Expo
 Homepage: https://github.com/expo/expo/tree/main/packages/@expo/log-box
@@ -2869,7 +2869,7 @@ SOFTWARE.
 
 ========================================================================
 
-@expo/metro-config @ 57.0.13
+@expo/metro-config @ 57.0.14
 License: MIT
 Author: ""
 Homepage: https://github.com/expo/expo/tree/main/packages/@expo/metro-config#readme
@@ -2927,7 +2927,7 @@ SOFTWARE.
 
 ========================================================================
 
-@expo/metro-runtime @ 57.0.16
+@expo/metro-runtime @ 57.0.18
 License: MIT
 Author: 650 Industries, Inc.
 Homepage: https://github.com/expo/expo/tree/main/packages/@expo/metro-runtime
@@ -3014,7 +3014,7 @@ SOFTWARE.
 
 ========================================================================
 
-@expo/plist @ 0.8.1
+@expo/plist @ 0.8.2
 License: MIT
 Author: ""
 Homepage: https://github.com/expo/expo/tree/main/packages/@expo/plist#readme
@@ -3043,7 +3043,7 @@ SOFTWARE.
 
 ========================================================================
 
-@expo/prebuild-config @ 57.0.17
+@expo/prebuild-config @ 57.0.20
 License: MIT
 Author: ""
 Homepage: https://github.com/expo/expo/tree/main/packages/@expo/prebuild-config#readme
@@ -3072,7 +3072,7 @@ SOFTWARE.
 
 ========================================================================
 
-@expo/require-utils @ 57.0.5, 57.0.6
+@expo/require-utils @ 57.0.7
 License: MIT
 Author: ""
 Homepage: https://github.com/expo/expo/tree/main/packages/@expo/require-utils#readme
@@ -3101,7 +3101,7 @@ SOFTWARE.
 
 ========================================================================
 
-@expo/router-server @ 57.0.12
+@expo/router-server @ 57.0.15
 License: MIT
 Author: 650 Industries, Inc.
 Homepage: https://docs.expo.dev/routing/introduction/
@@ -3130,7 +3130,7 @@ SOFTWARE.
 
 ========================================================================
 
-@expo/schema-utils @ 57.0.2
+@expo/schema-utils @ 57.0.3
 License: MIT
 Author: ""
 Homepage: https://github.com/expo/expo/tree/main/packages/@expo/schema-utils#readme
@@ -3241,6 +3241,69 @@ Author: Evan Bacon
 Homepage: https://github.com/expo/expo-cli
 
 No standalone license file supplied by upstream; see package metadata and homepage.
+
+========================================================================
+
+@isaacs/nonrecursive-glob-match @ 1.1.0
+License: BlueOak-1.0.0
+Author: ""
+Homepage:
+
+# Blue Oak Model License
+
+Version 1.0.0
+
+## Purpose
+
+This license gives everyone as much permission to work with
+this software as possible, while protecting contributors
+from liability.
+
+## Acceptance
+
+In order to receive this license, you must agree to its
+rules.  The rules of this license are both obligations
+under that agreement and conditions to your license.
+You must not do anything with this software that triggers
+a rule that you cannot or will not follow.
+
+## Copyright
+
+Each contributor licenses you to do everything with this
+software that would otherwise infringe that contributor's
+copyright in it.
+
+## Notices
+
+You must ensure that everyone who gets a copy of
+any part of this software from you, with or without
+changes, also gets the text of this license or a link to
+<https://blueoakcouncil.org/license/1.0.0>.
+
+## Excuse
+
+If anyone notifies you in writing that you have not
+complied with [Notices](#notices), you can keep your
+license by taking all practical steps to comply within 30
+days after the notice.  If you do not do so, your license
+ends immediately.
+
+## Patent
+
+Each contributor licenses you to do everything with this
+software that would otherwise infringe any patent claims
+they can license or become able to license.
+
+## Reliability
+
+No contributor can revoke this license.
+
+## No Liability
+
+***As far as the law allows, this software comes as is,
+without any warranty or condition, and no contributor
+will be liable to anyone for any damages related to this
+software or this license, under any kind of legal claim.***
 
 ========================================================================
 
@@ -5406,7 +5469,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
 
-babel-preset-expo @ 57.0.14
+babel-preset-expo @ 57.0.17
 License: MIT
 Author: Expo
 Homepage: https://github.com/expo/expo/tree/main/packages/babel-preset-expo#readme
@@ -7664,35 +7727,6 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
 
-deepmerge @ 4.3.1
-License: MIT
-Author: ""
-Homepage: https://github.com/TehShrike/deepmerge
-
-The MIT License (MIT)
-
-Copyright (c) 2012 James Halliday, Josh Duff, and other contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-
-========================================================================
-
 defaults @ 1.0.4
 License: MIT
 Author: Elijah Insua
@@ -8459,7 +8493,7 @@ SOFTWARE.
 
 ========================================================================
 
-expo @ 57.0.27
+expo @ 57.0.32
 License: MIT
 Author: Expo
 Homepage: https://github.com/expo/expo/tree/main/packages/expo
@@ -8488,7 +8522,7 @@ SOFTWARE.
 
 ========================================================================
 
-expo-asset @ 57.0.19
+expo-asset @ 57.0.21
 License: MIT
 Author: 650 Industries, Inc.
 Homepage: https://docs.expo.dev/versions/latest/sdk/asset/
@@ -8517,7 +8551,7 @@ SOFTWARE.
 
 ========================================================================
 
-expo-constants @ 57.0.21
+expo-constants @ 57.0.23
 License: MIT
 Author: 650 Industries, Inc.
 Homepage: https://docs.expo.dev/versions/latest/sdk/constants/
@@ -8662,7 +8696,7 @@ SOFTWARE.
 
 ========================================================================
 
-expo-image-picker @ 57.0.20
+expo-image-picker @ 57.0.21
 License: MIT
 Author: 650 Industries, Inc.
 Homepage: https://docs.expo.dev/versions/latest/sdk/imagepicker/
@@ -8749,7 +8783,7 @@ SOFTWARE.
 
 ========================================================================
 
-expo-modules-autolinking @ 57.0.14
+expo-modules-autolinking @ 57.0.17
 License: MIT
 Author: 650 Industries, Inc.
 Homepage: https://github.com/expo/expo/tree/main/packages/expo-modules-autolinking#readme
@@ -8778,7 +8812,7 @@ SOFTWARE.
 
 ========================================================================
 
-expo-modules-core @ 57.0.21
+expo-modules-core @ 57.0.25
 License: MIT
 Author: 650 Industries, Inc.
 Homepage: https://github.com/expo/expo/tree/main/packages/expo-modules-core
@@ -8807,7 +8841,7 @@ SOFTWARE.
 
 ========================================================================
 
-expo-modules-jsi @ 57.1.1
+expo-modules-jsi @ 57.1.3
 License: MIT
 Author: 650 Industries, Inc.
 Homepage: https://github.com/expo/expo/tree/main/packages/expo-modules-jsi
@@ -8894,7 +8928,7 @@ SOFTWARE.
 
 ========================================================================
 
-expo-sharing @ 57.0.22
+expo-sharing @ 57.0.25
 License: MIT
 Author: 650 Industries, Inc.
 Homepage: https://docs.expo.dev/versions/latest/sdk/sharing/
@@ -8923,7 +8957,7 @@ SOFTWARE.
 
 ========================================================================
 
-expo-splash-screen @ 57.0.9
+expo-splash-screen @ 57.0.11
 License: MIT
 Author: 650 Industries, Inc.
 Homepage: https://docs.expo.dev/versions/latest/sdk/splash-screen/
@@ -9701,36 +9735,7 @@ SOFTWARE.
 
 ========================================================================
 
-glob @ 7.2.3
-License: ISC
-Author: Isaac Z. Schlueter
-Homepage: https://github.com/isaacs/node-glob#readme
-
-The ISC License
-
-Copyright (c) Isaac Z. Schlueter and Contributors
-
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted, provided that the above
-copyright notice and this permission notice appear in all copies.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
-ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
-IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-
-## Glob Logo
-
-Glob's logo created by Tanya Brassie <http://tanyabrassie.com/>, licensed
-under a Creative Commons Attribution-ShareAlike 4.0 International License
-https://creativecommons.org/licenses/by-sa/4.0/
-
-========================================================================
-
-glob @ 13.0.6
+glob @ 14.0.4
 License: BlueOak-1.0.0
 Author: Isaac Z. Schlueter
 Homepage: https://github.com/isaacs/node-glob#readme
@@ -9798,6 +9803,35 @@ No contributor can revoke this license.
 without any warranty or condition, and no contributor
 will be liable to anyone for any damages related to this
 software or this license, under any kind of legal claim.***
+
+========================================================================
+
+glob @ 7.2.3
+License: ISC
+Author: Isaac Z. Schlueter
+Homepage: https://github.com/isaacs/node-glob#readme
+
+The ISC License
+
+Copyright (c) Isaac Z. Schlueter and Contributors
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
+IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+## Glob Logo
+
+Glob's logo created by Tanya Brassie <http://tanyabrassie.com/>, licensed
+under a Creative Commons Attribution-ShareAlike 4.0 International License
+https://creativecommons.org/licenses/by-sa/4.0/
 
 ========================================================================
 
@@ -12095,45 +12129,6 @@ THE SOFTWARE.
 
 ========================================================================
 
-lru-cache @ 10.4.3, 5.1.1
-License: ISC
-Author: Isaac Z. Schlueter
-Homepage: https://github.com/isaacs/node-lru-cache#readme
-
-The ISC License
-
-Copyright (c) 2010-2023 Isaac Z. Schlueter and Contributors
-
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted, provided that the above
-copyright notice and this permission notice appear in all copies.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
-ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
-IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-
-The ISC License
-
-Copyright (c) Isaac Z. Schlueter and Contributors
-
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted, provided that the above
-copyright notice and this permission notice appear in all copies.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
-ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
-IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-
-========================================================================
-
 lru-cache @ 11.5.3
 License: BlueOak-1.0.0
 Author: Isaac Z. Schlueter
@@ -12194,6 +12189,45 @@ No contributor can revoke this license.
 without any warranty or condition, and no contributor
 will be liable to anyone for any damages related to this
 software or this license, under any kind of legal claim.***
+
+========================================================================
+
+lru-cache @ 10.4.3, 5.1.1
+License: ISC
+Author: Isaac Z. Schlueter
+Homepage: https://github.com/isaacs/node-lru-cache#readme
+
+The ISC License
+
+Copyright (c) 2010-2023 Isaac Z. Schlueter and Contributors
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
+IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+The ISC License
+
+Copyright (c) Isaac Z. Schlueter and Contributors
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
+IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ========================================================================
 
@@ -12284,7 +12318,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ========================================================================
 
-markdown-it @ 14.3.2
+markdown-it @ 14.3.3
 License: MIT
 Author: ""
 Homepage: https://github.com/markdown-it/markdown-it#readme
@@ -13057,30 +13091,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ========================================================================
 
-minimatch @ 3.1.5
-License: ISC
-Author: Isaac Z. Schlueter
-Homepage: https://github.com/isaacs/minimatch#readme
-
-The ISC License
-
-Copyright (c) Isaac Z. Schlueter and Contributors
-
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted, provided that the above
-copyright notice and this permission notice appear in all copies.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
-ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
-IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-
-========================================================================
-
-minimatch @ 10.2.6
+minimatch @ 11.0.5
 License: BlueOak-1.0.0
 Author: Isaac Z. Schlueter
 Homepage: https://github.com/isaacs/minimatch#readme
@@ -13140,6 +13151,29 @@ No contributor can revoke this license.
 without any warranty or condition, and no contributor
 will be liable to anyone for any damages related to this
 software or this license, under any kind of legal claim._**
+
+========================================================================
+
+minimatch @ 3.1.5
+License: ISC
+Author: Isaac Z. Schlueter
+Homepage: https://github.com/isaacs/minimatch#readme
+
+The ISC License
+
+Copyright (c) Isaac Z. Schlueter and Contributors
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
+IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ========================================================================
 
@@ -13405,7 +13439,7 @@ SOFTWARE.
 
 ========================================================================
 
-node-forge @ 1.4.0
+node-forge @ 1.4.3
 License: (BSD-3-Clause OR GPL-2.0)
 Author: Digital Bazaar, Inc.
 Homepage: https://github.com/digitalbazaar/forge
@@ -14262,7 +14296,7 @@ SOFTWARE.
 
 ========================================================================
 
-path-scurry @ 2.0.2
+path-scurry @ 3.0.0
 License: BlueOak-1.0.0
 Author: Isaac Z. Schlueter
 Homepage: https://github.com/isaacs/path-scurry#readme
@@ -17206,23 +17240,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
 
-uuid @ 11.1.1
-License: MIT
-Author: ""
-Homepage: https://github.com/uuidjs/uuid#readme
-
-The MIT License (MIT)
-
-Copyright (c) 2010-2020 Robert Kieffer and other contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-========================================================================
-
 validate-npm-package-name @ 5.0.1
 License: ISC
 Author: GitHub Inc.
@@ -17603,7 +17620,7 @@ SOFTWARE.
 
 ========================================================================
 
-xcode @ 3.0.1
+xcode @ 4.0.0
 License: Apache-2.0
 Author: Apache Software Foundation
 Homepage: https://github.com/apache/cordova-node-xcode#readme
@@ -17987,35 +18004,6 @@ LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES
 OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
 WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
 ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-
-========================================================================
-
-zod @ 3.25.76
-License: MIT
-Author: Colin McDonnell
-Homepage: https://zod.dev
-
-MIT License
-
-Copyright (c) 2025 Colin McDonnell
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
 
 ========================================================================
 
