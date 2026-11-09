@@ -18,3 +18,21 @@ jest.mock('@react-native-async-storage/async-storage', () => {
     getAllKeys: jest.fn(() => Promise.resolve(Array.from(store.keys()))),
   };
 });
+
+// react-native-pager-view 是原生组件（Fabric），jest 下替换成普通 View：
+// - 子页照常渲染，测试可直接断言当前 ±1 窗口内的内容；
+// - setPage 同步回调 onPageSelected，模拟原生选中页事件；
+// - 原生滑动可在测试里用 fireEvent(pager, 'pageSelected', { nativeEvent: { position } }) 模拟。
+jest.mock('react-native-pager-view', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  class MockPagerView extends React.Component<any> {
+    setPage = (page: number) => this.props.onPageSelected?.({ nativeEvent: { position: page } });
+    setPageWithoutAnimation = (page: number) => this.setPage(page);
+    setScrollEnabled = () => undefined;
+    render() {
+      return React.createElement(View, this.props, this.props.children);
+    }
+  }
+  return { __esModule: true, default: MockPagerView, PagerView: MockPagerView };
+});

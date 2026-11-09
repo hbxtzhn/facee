@@ -13,12 +13,10 @@ import { ArrowRight, Inbox } from 'lucide-react-native';
 import {
   cardChrome,
   colors,
-  difficultyStyles,
   radii,
   spacing,
   typography,
 } from '../theme';
-import type { Difficulty } from '../question-bank/types';
 
 interface AppButtonProps {
   label: string;
@@ -178,19 +176,6 @@ export function Surface({
   return <View style={[styles.surface, style]}>{children}</View>;
 }
 
-/**
- * 难度标签（唯一实现）：11px/600、软底色、无描边。
- * List/Favorites/Detail 三处此前各写一份且样式漂移，统一从这里引用。
- */
-export function DifficultyBadge({ difficulty }: { difficulty: Difficulty }) {
-  const config = difficultyStyles[difficulty];
-  return (
-    <View style={[styles.difficultyBadge, { backgroundColor: config.background }]}>
-      <Text style={[styles.difficultyBadgeText, { color: config.text }]}>{config.label}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   button: {
     minHeight: 44,
@@ -265,18 +250,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: spacing.md,
   },
-  tabHeaderBadge: {
-    backgroundColor: colors.surfaceSubtle,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: radii.pill,
-  },
+  // 极简阅读风：眉题是纯文字，不再包胶囊底色
+  tabHeaderBadge: {},
   tabHeaderBadgeText: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    fontWeight: '600',
-    fontSize: 11,
-    letterSpacing: 0.4,
+    ...typography.eyebrow,
+    color: colors.textMuted,
   },
   tabHeaderTitle: {
     ...typography.display,
@@ -290,16 +268,5 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 14,
     lineHeight: 20,
-  },
-  difficultyBadge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: 6,
-    alignSelf: 'flex-start',
-  },
-  difficultyBadgeText: {
-    ...typography.caption,
-    fontWeight: '600',
-    fontSize: 11,
   },
 });

@@ -73,12 +73,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: 生成示例题库并自校验
-        working-directory: packages/bank-spec
-        run: node generate.mjs --profile sample --zip dist/sample-bank.zip
-      - name: 恶意包必须全部被拒
-        working-directory: packages/bank-spec
-        run: node generate.mjs --profile malicious --out dist/fixtures
+          cache: pnpm
+      # 工具链依赖 yaml（根 devDependency）
+      - run: pnpm install --frozen-lockfile
+      - name: 单元测试（解析 / id / 校验规则 / 构建产物 / 生命周期）
+        run: node --test "packages/bank-spec/**/*.test.mjs"
+      - name: 校验示例题库
+        run: node packages/bank-spec/cli.mjs validate --bank packages/bank-spec/examples/sample-bank
+      - name: 重新构建示例题库，提交的 examples/dist 必须是最新产物
+        run: |
+          node packages/bank-spec/cli.mjs build --bank packages/bank-spec/examples/sample-bank \
+            --out packages/bank-spec/examples/dist --first-release --pretty --published-at 2026-11-05T00:00:00Z
+          git diff --exit-code -- packages/bank-spec/examples/dist

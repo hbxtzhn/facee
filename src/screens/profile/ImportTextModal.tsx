@@ -19,14 +19,13 @@ import {
 import { colors, radii, spacing, typography } from '../../theme';
 import { AppButton } from '../../components/ui';
 import { FieldLabel, ModalSheet, SheetActions, SheetError } from './ModalSheet';
+import { DIFFICULTY_LABEL, QUESTION_TYPE_LABEL } from './question-form';
 
 type ImportPhase = 'input' | 'extracting' | 'review';
 
 interface DraftWithKey extends GeneratedQuestionDraft {
   key: string;
 }
-
-const DIFFICULTY_LABEL: Record<number, string> = { 1: '简单', 2: '中等', 3: '困难' };
 
 /**
  * AI 导入题目：文本按块抽取，或用户确认后发送单张图片给视觉模型
@@ -179,7 +178,7 @@ export function ImportTextModal({
       if (controller.signal.aborted) return;
       if (extracted.length === 0) throw new Error(source === 'image'
         ? '没有从图片中提取到题目，请选择更清晰、包含完整题干的图片。'
-        : '没有从文本中提取到题目，试试换一段更完整的资料。');
+        : '没有从文本中提取到符合规范的题目（需要一句话结论与 3–5 条要点），试试换一段更完整的资料。');
       setDrafts(extracted.map((draft, index) => ({ ...draft, key: `draft-${index}` })));
       setSelectedKeys(new Set(extracted.map((_, index) => `draft-${index}`)));
       setPhase('review');
@@ -224,7 +223,8 @@ export function ImportTextModal({
             confirmDisabled={selectedKeys.size === 0}
             onCancel={() => setPhase('input')}
             onConfirm={() => {
-              onConfirm(drafts.filter((draft) => selectedKeys.has(draft.key)));
+              // 去掉 UI 用的 key，只把规范化后的 v2 草稿交给编辑器写入题库
+              onConfirm(drafts.filter((draft) => selectedKeys.has(draft.key)).map(({ key: _key, ...draft }) => draft));
               reset();
             }}
           />
@@ -259,7 +259,7 @@ export function ImportTextModal({
             onPress={() => void pickSource('text')}
             style={({ pressed }) => [styles.pickButton, pressed && styles.pressed]}
           >
-            <FileText size={17} color={colors.primary} strokeWidth={2} />
+            <FileText size={18} color={colors.textSecondary} strokeWidth={1.6} />
             <View style={styles.pickCopy}>
               <Text style={styles.pickTitle}>选择文本文件</Text>
               <Text style={styles.pickHint}>.md / .markdown / .txt</Text>
@@ -329,7 +329,7 @@ export function ImportTextModal({
 
       {phase === 'review' ? (
         <>
-          <Text style={styles.reviewHint}>已识别 {drafts.length} 道题，点按取消不需要的，再点「导入」。</Text>
+          <Text style={styles.reviewHint}>已识别 {drafts.length} 道题（已按规范整理为一句话 + 要点），点按取消不需要的，再点「导入」；导入后可逐题编辑。</Text>
           {drafts.map((draft) => {
             const selected = selectedKeys.has(draft.key);
             return (
@@ -342,17 +342,21 @@ export function ImportTextModal({
                 style={({ pressed }) => [styles.draftRow, selected && styles.draftRowSelected, pressed && styles.pressed]}
               >
                 {selected ? (
-                  <CheckSquare size={16} color={colors.primary} strokeWidth={2} />
+                  <CheckSquare size={18} color={colors.primary} strokeWidth={1.6} />
                 ) : (
-                  <Square size={16} color={colors.textSubtle} strokeWidth={2} />
+                  <Square size={18} color={colors.textSubtle} strokeWidth={1.6} />
                 )}
                 <View style={styles.draftInfo}>
                   <Text style={styles.draftTitle} numberOfLines={2}>{draft.title}</Text>
                   <Text style={styles.draftMeta}>
-                    {DIFFICULTY_LABEL[draft.difficulty]}
-                    {draft.tags.length > 0 ? ` · ${draft.tags.join(' / ')}` : ''}
-                    {draft.answerMd ? '' : ' · 无答案'}
+                    {QUESTION_TYPE_LABEL[draft.type]} · {DIFFICULTY_LABEL[draft.difficulty]} · 要点 {draft.keyPoints.length} 条
+                    {draft.followups.length > 0 ? ` · 追问 ${draft.followups.length}` : ''}
+                    {draft.detail ? '' : ' · 无详解'}
                   </Text>
+                  <Text style={styles.draftSummary} numberOfLines={2}>{draft.summary}</Text>
+                  {draft.notes.length > 0 ? (
+                    <Text style={styles.draftNote}>已自动修正：{draft.notes.join('；')}</Text>
+                  ) : null}
                 </View>
               </Pressable>
             );
@@ -363,44 +367,47 @@ export function ImportTextModal({
   );
 }
 
+// 极简阅读风：分段切换是带下划线的文字，输入为发丝下划线，草稿是纯列表
 const styles = StyleSheet.create({
-  sourceTabs: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm },
-  sourceTab: { flex: 1, padding: spacing.sm, borderRadius: radii.sm, alignItems: 'center', backgroundColor: colors.surfaceSubtle },
-  sourceTabActive: { backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primaryMuted },
-  imagePreview: { width: '100%', height: 180, marginVertical: spacing.sm, borderRadius: radii.sm },
+  sourceTabs: {
+    flexDirection: 'row',
+    gap: spacing.lg,
+    marginBottom: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  sourceTab: { minHeight: 44, justifyContent: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  sourceTabActive: { borderBottomColor: colors.primary },
+  imagePreview: { width: '100%', height: 180, marginVertical: spacing.sm, borderRadius: radii.xs },
   imageNotice: { ...typography.caption, color: colors.textMuted, lineHeight: 18, marginVertical: spacing.sm },
   pickButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.md,
     minHeight: 56,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.sm,
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: colors.primaryMuted,
+    paddingVertical: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
   },
   pickCopy: { flex: 1 },
-  pickTitle: { ...typography.bodyStrong, color: colors.primary, fontSize: 14 },
-  pickHint: { ...typography.caption, color: colors.textMuted, marginTop: 1 },
+  pickTitle: { ...typography.body, color: colors.text },
+  pickHint: { ...typography.caption, color: colors.textMuted, marginTop: 2 },
   input: {
     ...typography.body,
     color: colors.text,
     minHeight: 44,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
-    borderWidth: 1,
-    borderColor: colors.border,
+    paddingHorizontal: 0,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderStrong,
   },
   multiline: {
     minHeight: 120,
     textAlignVertical: 'top',
-    paddingTop: spacing.sm,
-    lineHeight: 20,
+    lineHeight: 22,
   },
-  requirementsInput: { minHeight: 76, lineHeight: 18 },
+  requirementsInput: { minHeight: 76, lineHeight: 20 },
   requirementsMeta: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -408,34 +415,32 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.xs,
   },
-  requirementsHint: { ...typography.caption, color: colors.textMuted, fontSize: 11, flex: 1, lineHeight: 15 },
-  restoreDefault: { ...typography.caption, color: colors.primary, fontWeight: '700', fontSize: 11 },
+  requirementsHint: { ...typography.caption, color: colors.textMuted, flex: 1, lineHeight: 18 },
+  restoreDefault: { ...typography.label, color: colors.primary, paddingVertical: spacing.sm },
   aiSetupButton: { marginTop: spacing.sm, alignSelf: 'flex-start' },
-  truncatedText: { ...typography.caption, color: colors.warning, fontSize: 11, marginBottom: spacing.sm },
+  truncatedText: { ...typography.caption, color: colors.warning, marginBottom: spacing.sm, lineHeight: 18 },
   extractingBox: {
-    padding: spacing.lg,
-    borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
+    paddingVertical: spacing.xl,
     alignItems: 'center',
     gap: spacing.xs,
   },
-  extractingTitle: { ...typography.bodyStrong, color: colors.text, fontSize: 14 },
-  extractingMeta: { ...typography.caption, color: colors.primary, fontWeight: '700' },
-  extractingHint: { ...typography.caption, color: colors.textMuted, fontSize: 11, textAlign: 'center' },
-  reviewHint: { ...typography.caption, color: colors.textMuted, marginBottom: spacing.sm },
+  extractingTitle: { ...typography.body, color: colors.text },
+  extractingMeta: { ...typography.caption, color: colors.textSecondary, fontWeight: '600' },
+  extractingHint: { ...typography.caption, color: colors.textMuted, textAlign: 'center', lineHeight: 18 },
+  reviewHint: { ...typography.caption, color: colors.textMuted, marginBottom: spacing.sm, lineHeight: 18 },
   draftRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: spacing.sm,
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
-  draftRowSelected: { borderColor: colors.primaryMuted, backgroundColor: colors.primarySoft },
+  draftRowSelected: {},
   draftInfo: { flex: 1 },
-  draftTitle: { ...typography.bodyStrong, color: colors.text, fontSize: 13, lineHeight: 18 },
-  draftMeta: { ...typography.caption, color: colors.textMuted, fontSize: 11, marginTop: 2 },
-  pressed: { opacity: 0.75 },
+  draftTitle: { ...typography.body, color: colors.text, lineHeight: 22 },
+  draftMeta: { ...typography.caption, color: colors.textMuted, marginTop: 2 },
+  draftSummary: { ...typography.caption, color: colors.textSecondary, marginTop: 2, lineHeight: 18 },
+  draftNote: { ...typography.caption, color: colors.warning, marginTop: 2, lineHeight: 18 },
+  pressed: { opacity: 0.6 },
 });

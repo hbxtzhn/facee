@@ -1,0 +1,1221 @@
+{
+  "schemaVersion": 2,
+  "bank": {
+    "id": "github.com/hbxtzhn/facee-sample-bank",
+    "name": "FaceE 示例题库",
+    "version": "2.0.0",
+    "description": "规范 v2 的示例与 App 测试夹具，覆盖全部题型与字段",
+    "locale": "zh-CN",
+    "license": "CC-BY-4.0",
+    "homepage": "https://github.com/HBxtzhn/facee",
+    "feedbackUrl": "https://github.com/HBxtzhn/facee/issues/new?title=%E9%A2%98%E7%9B%AE%E7%BA%A0%E9%94%99&body=question%3D{questionId}",
+    "update": {
+      "manifest": "https://github.com/HBxtzhn/facee-sample-bank/releases/latest/download/latest.json"
+    }
+  },
+  "categories": [
+    {
+      "id": "redis",
+      "name": "Redis",
+      "order": 10,
+      "description": "缓存与内存数据结构"
+    },
+    {
+      "id": "mysql",
+      "name": "MySQL",
+      "order": 20
+    },
+    {
+      "id": "java-concurrency",
+      "name": "Java 并发",
+      "order": 30
+    },
+    {
+      "id": "network",
+      "name": "网络与 HTTP",
+      "order": 40
+    }
+  ],
+  "tags": [
+    {
+      "id": "redis",
+      "name": "Redis",
+      "parent": null
+    },
+    {
+      "id": "mysql",
+      "name": "MySQL",
+      "parent": null,
+      "aliases": [
+        "InnoDB"
+      ]
+    },
+    {
+      "id": "memory",
+      "name": "内存",
+      "parent": "redis",
+      "description": "过期删除、内存淘汰与内存占用；不含持久化",
+      "aliases": [
+        "内存管理"
+      ]
+    },
+    {
+      "id": "index",
+      "name": "索引",
+      "parent": "mysql",
+      "aliases": [
+        "B+ 树"
+      ]
+    },
+    {
+      "id": "transaction",
+      "name": "事务",
+      "parent": "mysql",
+      "description": "ACID、隔离级别与 MVCC"
+    },
+    {
+      "id": "cache",
+      "name": "缓存",
+      "parent": null
+    },
+    {
+      "id": "concurrency",
+      "name": "并发",
+      "parent": null,
+      "aliases": [
+        "多线程"
+      ]
+    },
+    {
+      "id": "lock",
+      "name": "锁",
+      "parent": "concurrency"
+    },
+    {
+      "id": "thread-pool",
+      "name": "线程池",
+      "parent": "concurrency"
+    },
+    {
+      "id": "network",
+      "name": "网络",
+      "parent": null
+    },
+    {
+      "id": "http",
+      "name": "HTTP",
+      "parent": "network"
+    },
+    {
+      "id": "tls",
+      "name": "TLS",
+      "parent": "network",
+      "aliases": [
+        "HTTPS",
+        "SSL"
+      ]
+    },
+    {
+      "id": "performance",
+      "name": "性能",
+      "parent": null
+    },
+    {
+      "id": "system-design",
+      "name": "系统设计",
+      "parent": null
+    },
+    {
+      "id": "troubleshooting",
+      "name": "故障排查",
+      "parent": null
+    }
+  ],
+  "collections": [
+    {
+      "id": "redis-sprint",
+      "name": "Redis 3 天冲刺",
+      "description": "高频核心题，按依赖顺序排列",
+      "questions": [
+        "q_01M6B1YQ006MV342WKV7JTR8H1",
+        "q_01M6B20HK0ZNWA1FJ4RESDFN8M",
+        "q_01M6B22C60ED5XXJXQWP3KD9RG",
+        "q_01M6B261C0ZAPARVE2GQ1GDDW8"
+      ]
+    },
+    {
+      "id": "backend-basics",
+      "name": "后端基础必刷",
+      "questions": [
+        "q_01M6B27VZ068DC8PEV0GWCQG5K",
+        "q_01M6B29PJ0B0Z5A1V1E5PP94J6",
+        "q_01M6B2F6B0M7TZ6C70HX4YY892",
+        "q_01M6B2MP40WM52PJV40MZJ9T5J"
+      ]
+    }
+  ],
+  "lifecycle": {
+    "removed": [],
+    "merged": {}
+  },
+  "questions": [
+    {
+      "id": "q_01M6B1YQ006MV342WKV7JTR8H1",
+      "title": "Redis 过期 key 的删除策略有哪些？",
+      "type": "concept",
+      "difficulty": "medium",
+      "importance": 3,
+      "categoryId": "redis",
+      "tags": [
+        "redis",
+        "memory"
+      ],
+      "appliesTo": [
+        "Redis >= 6"
+      ],
+      "prerequisites": [],
+      "related": [
+        "q_01M6B20HK0ZNWA1FJ4RESDFN8M"
+      ],
+      "prompt": null,
+      "answer": {
+        "summary": "Redis 组合使用惰性删除与定期删除清理过期 key，残留的再由内存淘汰策略兜底。",
+        "keyPoints": [
+          {
+            "id": "kp1",
+            "text": "惰性删除：访问 key 时检查是否过期，过期则删除",
+            "weight": 2
+          },
+          {
+            "id": "kp2",
+            "text": "定期删除：serverCron 按 hz 频率抽查过期字典并删除过期 key",
+            "weight": 2
+          },
+          {
+            "id": "kp3",
+            "text": "每轮默认抽查 20 个，过期比例超过 10% 就继续，且有时间上限",
+            "weight": 1
+          },
+          {
+            "id": "kp5",
+            "text": "两者都可能有残留，内存不足时由 maxmemory-policy 兜底",
+            "weight": 1
+          }
+        ],
+        "detail": "### 惰性删除\n读写命令访问 key 前都会调用 `expireIfNeeded`：已过期就删除并当作不存在处理。只靠它的话，从不被访问的过期 key 会一直占用内存。\n\n### 定期删除\n`activeExpireCycle` 在 `serverCron` 中按 `hz`（默认 10，即每秒 10 次）执行：\n\n1. 从过期字典（只含设置了过期时间的 key）中按游标逐批取出 key，默认每批 20 个；\n2. 删除其中已过期的 key；\n3. 若这一批的过期比例超过 10%，说明过期 key 仍多，继续下一批；\n4. 单次执行有时间上限（慢周期最多约占 25% CPU 时间），避免阻塞主线程。\n\nRedis 5 及以前的阈值是 25%、且为随机抽样；Redis 6 改为游标扫描，并新增 `active-expire-effort`（1–10，默认 1）调高力度，代价是更多 CPU。\n\n![定期删除：每批抽查 20 个，过期比例超过阈值则继续](asset:17a0c7a8c51a9f6546efa92d03c8e9a030ecdc8f6b28e4c5edcbe0440ae09a4e.png)\n\n### 主从复制\n从节点不主动删除过期 key，而是等主节点同步 `DEL`；但从节点读取时会把逻辑过期的 key 当作不存在返回。",
+        "examples": "```bash\nredis-cli CONFIG GET hz\nredis-cli CONFIG GET active-expire-effort\nredis-cli INFO stats | grep expired_keys\n```",
+        "pitfalls": [
+          "把过期删除与内存淘汰（LRU / LFU）混为一谈",
+          "以为 key 到期的瞬间一定被删除",
+          "以为定期删除每次会遍历全部带过期时间的 key"
+        ]
+      },
+      "choice": null,
+      "followups": [
+        {
+          "id": "f1",
+          "q": "大量 key 同时过期会怎样？如何避免？",
+          "a": "定期删除每批的过期比例持续偏高，会连续抽查直到触达时间上限，造成 CPU 抖动和延迟升高；业务上还可能引发缓存雪崩。给过期时间加随机偏移，把到期时间打散。"
+        },
+        {
+          "id": "f2",
+          "q": "为什么不在 key 到期时用定时器立即删除？",
+          "a": "为每个 key 维护定时器内存与 CPU 开销都很大，而 Redis 主线程是单线程，大量定时器回调会阻塞正常请求。惰性 + 定期抽查是在内存与 CPU 之间的折中。"
+        }
+      ],
+      "source": {
+        "name": "自整理",
+        "license": "CC-BY-4.0"
+      },
+      "references": [
+        {
+          "title": "Redis 文档：EXPIRE",
+          "url": "https://redis.io/docs/latest/commands/expire/"
+        },
+        {
+          "title": "Redis 源码 expire.c",
+          "url": "https://github.com/redis/redis/blob/unstable/src/expire.c"
+        }
+      ],
+      "reviewedAt": "2026-11-05",
+      "estimatedMinutes": 3,
+      "contentHash": "sha256:e4d90e0caaf489473cf5977912018c8553ff001b2085cee2495a953712f0493b"
+    },
+    {
+      "id": "q_01M6B20HK0ZNWA1FJ4RESDFN8M",
+      "title": "Redis 内存满了会怎样？有哪些内存淘汰策略？",
+      "type": "concept",
+      "difficulty": "medium",
+      "importance": 3,
+      "categoryId": "redis",
+      "tags": [
+        "redis",
+        "memory",
+        "cache"
+      ],
+      "appliesTo": [
+        "Redis >= 4.0"
+      ],
+      "prerequisites": [],
+      "related": [
+        "q_01M6B1YQ006MV342WKV7JTR8H1"
+      ],
+      "prompt": null,
+      "answer": {
+        "summary": "内存达到 maxmemory 后按 maxmemory-policy 处理：默认 noeviction 拒绝写入，其余策略按 LRU、LFU、随机或 TTL 淘汰 key。",
+        "keyPoints": [
+          {
+            "id": "kp1",
+            "text": "默认 noeviction：会增加内存的写命令报 OOM 错误，读和删除照常",
+            "weight": 3
+          },
+          {
+            "id": "kp2",
+            "text": "allkeys-* 在全部 key 中淘汰，volatile-* 只在设了过期的 key 中淘汰",
+            "weight": 2
+          },
+          {
+            "id": "kp3",
+            "text": "可选 LRU、LFU（4.0+）、random，以及 volatile-ttl 优先淘汰将过期的",
+            "weight": 2
+          },
+          {
+            "id": "kp4",
+            "text": "LRU / LFU 都是近似实现：按 maxmemory-samples 抽样，默认 5 个",
+            "weight": 1
+          }
+        ],
+        "detail": "### 八种策略\n\n| 范围 | LRU | LFU | 随机 | 其他 |\n|---|---|---|---|---|\n| 全部 key | allkeys-lru | allkeys-lfu | allkeys-random | — |\n| 设了过期的 key | volatile-lru | volatile-lfu | volatile-random | volatile-ttl |\n\n外加 `noeviction`。volatile-* 在没有可淘汰的 key 时，行为与 noeviction 相同。\n\n### 近似 LRU\nRedis 不维护全局 LRU 链表，而是每次抽样 `maxmemory-samples` 个 key，放入大小为 16 的淘汰池，淘汰空闲时间最长的。调大采样数更接近真实 LRU，但更耗 CPU。\n\n### LFU\n每个 key 用 8 位对数计数器记录访问频率，`lfu-log-factor` 控制增长速度，`lfu-decay-time`（分钟）控制衰减，避免历史热点一直不被淘汰。\n\n### 怎么选\n- 纯缓存、访问有明显热点：`allkeys-lfu` 或 `allkeys-lru`\n- 缓存与持久数据混放：`volatile-*`，但要确保缓存 key 都设置了过期时间\n- 不允许丢数据：`noeviction`，并做好容量告警",
+        "examples": "```bash\nredis-cli CONFIG SET maxmemory 2gb\nredis-cli CONFIG SET maxmemory-policy allkeys-lfu\nredis-cli INFO stats | grep evicted_keys\n```",
+        "pitfalls": [
+          "以为默认策略是 LRU，实际默认是 noeviction",
+          "用 volatile-lru 却没给 key 设置过期时间，结果写入直接报 OOM",
+          "以为 LRU 是精确实现"
+        ]
+      },
+      "choice": null,
+      "followups": [
+        {
+          "id": "f1",
+          "q": "LRU 和 LFU 分别适合什么场景？",
+          "a": "LRU 只看最近一次访问，偶发的全量扫描会把热点挤出去；LFU 看访问频率，更能保住长期热点，但新 key 初始计数低、容易被先淘汰。热点稳定选 LFU，访问模式随时间变化快选 LRU。"
+        }
+      ],
+      "source": {
+        "name": "自整理",
+        "license": "CC-BY-4.0"
+      },
+      "references": [
+        {
+          "title": "Redis 文档：Key eviction",
+          "url": "https://redis.io/docs/latest/develop/reference/eviction/"
+        }
+      ],
+      "reviewedAt": "2026-11-05",
+      "estimatedMinutes": 4,
+      "contentHash": "sha256:4841059324cad56be2cb0eb02339cb92a19ab07e3ef48f09dbfba11b1ffd5bd0"
+    },
+    {
+      "id": "q_01M6B22C60ED5XXJXQWP3KD9RG",
+      "title": "缓存穿透、缓存击穿、缓存雪崩分别是什么？怎么应对？",
+      "type": "scenario",
+      "difficulty": "medium",
+      "importance": 3,
+      "categoryId": "redis",
+      "tags": [
+        "redis",
+        "cache"
+      ],
+      "appliesTo": [],
+      "prerequisites": [
+        "q_01M6B1YQ006MV342WKV7JTR8H1"
+      ],
+      "related": [
+        "q_01M6B261C0ZAPARVE2GQ1GDDW8"
+      ],
+      "prompt": "商品详情接口采用「先查 Redis，未命中再查 MySQL 并回填」的旁路缓存。大促期间数据库 CPU 突然打满，请分析三类缓存失效问题的成因与对策。",
+      "answer": {
+        "summary": "穿透是查不存在的数据，击穿是单个热点 key 过期，雪崩是大量 key 同时失效或缓存宕机，三者都让请求直达数据库。",
+        "keyPoints": [
+          {
+            "id": "kp1",
+            "text": "穿透：缓存空值或用布隆过滤器拦截不存在的 key",
+            "weight": 2
+          },
+          {
+            "id": "kp2",
+            "text": "击穿：热点 key 用互斥锁重建，或逻辑过期后异步刷新",
+            "weight": 2
+          },
+          {
+            "id": "kp3",
+            "text": "雪崩：过期时间加随机偏移，并保证缓存集群高可用",
+            "weight": 2
+          },
+          {
+            "id": "kp4",
+            "text": "兜底：限流、降级与熔断，保护数据库",
+            "weight": 1
+          }
+        ],
+        "detail": "### 缓存穿透\n请求的数据在缓存和数据库中都不存在（如 id = -1 的恶意请求），每次都会打到数据库。\n\n- 缓存空对象：数据库查不到时也写一个短 TTL 的空值；\n- 布隆过滤器：预先放入全部合法 id，判断「一定不存在」时直接返回。布隆过滤器有误判（说存在但其实不存在），但不会漏判。\n\n### 缓存击穿\n某个高并发访问的热点 key 恰好过期，大量请求同时回源。\n\n- 互斥锁：只有拿到锁（如 `SET lock NX PX 3000`）的请求查库重建，其余等待或返回旧值；\n- 逻辑过期：key 不设 TTL，值里存过期时间，发现过期后由一个线程异步刷新，其余请求先返回旧值。\n\n### 缓存雪崩\n大量 key 在同一时刻过期，或 Redis 节点整体不可用。\n\n- 过期时间 = 基础 TTL + 随机偏移；\n- Redis 主从 + 哨兵或 Cluster，避免单点；\n- 多级缓存（本地缓存 + Redis）。",
+        "examples": null,
+        "pitfalls": [
+          "把击穿与穿透混淆：击穿的数据是存在的",
+          "缓存空值不设过期时间，导致后来写入的真实数据长期读不到",
+          "以为布隆过滤器能判断「一定存在」"
+        ]
+      },
+      "choice": null,
+      "followups": [
+        {
+          "id": "f1",
+          "q": "布隆过滤器不支持删除，数据下线了怎么办？",
+          "a": "可以定期全量重建布隆过滤器；或改用计数布隆过滤器、布谷鸟过滤器（Cuckoo Filter）这类支持删除的结构。误判只会让少量请求回源，不影响正确性。"
+        },
+        {
+          "id": "f2",
+          "q": "互斥锁方案中，拿不到锁的请求怎么处理？",
+          "a": "短暂休眠后重试读缓存，或直接返回旧值 / 默认值。重试要设上限，避免线程堆积；锁要设过期时间，并只能由持有者释放（比较锁值后删除）。"
+        }
+      ],
+      "source": {
+        "name": "自整理",
+        "license": "CC-BY-4.0"
+      },
+      "reviewedAt": "2026-11-05",
+      "estimatedMinutes": 5,
+      "contentHash": "sha256:9e11c1a9a566ed8b126fd8cc639a8b19601c1ebd8eb7cb0f2c62420e700f6a79"
+    },
+    {
+      "id": "q_01M6B246S0HK05NM2HC5EC52F8",
+      "title": "以下哪些 maxmemory-policy 只会淘汰设置了过期时间的 key？",
+      "type": "choice",
+      "difficulty": "easy",
+      "importance": 2,
+      "categoryId": "redis",
+      "tags": [
+        "redis",
+        "memory"
+      ],
+      "appliesTo": [
+        "Redis >= 4.0"
+      ],
+      "prerequisites": [],
+      "related": [
+        "q_01M6B20HK0ZNWA1FJ4RESDFN8M"
+      ],
+      "prompt": null,
+      "answer": {
+        "summary": "volatile-* 系列只在设置了过期时间的 key 中淘汰，allkeys-* 在全部 key 中淘汰。",
+        "keyPoints": [
+          {
+            "id": "kp1",
+            "text": "volatile-lru、volatile-lfu、volatile-random、volatile-ttl 只看带过期的 key",
+            "weight": 2
+          },
+          {
+            "id": "kp2",
+            "text": "allkeys-* 系列在全部 key 中挑选",
+            "weight": 1
+          },
+          {
+            "id": "kp3",
+            "text": "noeviction 不淘汰任何 key，内存满时拒绝写入",
+            "weight": 1
+          }
+        ],
+        "detail": null,
+        "examples": null,
+        "pitfalls": []
+      },
+      "choice": {
+        "options": [
+          {
+            "id": "a",
+            "text": "volatile-lru"
+          },
+          {
+            "id": "b",
+            "text": "allkeys-lfu"
+          },
+          {
+            "id": "c",
+            "text": "volatile-ttl"
+          },
+          {
+            "id": "d",
+            "text": "noeviction"
+          }
+        ],
+        "correct": [
+          "a",
+          "c"
+        ],
+        "explanation": "`volatile-` 前缀表示候选集合是过期字典，`allkeys-` 前缀表示候选集合是全部 key。`volatile-ttl` 优先淘汰剩余寿命最短的 key。`noeviction` 不淘汰，所以选项 d 不对。"
+      },
+      "followups": [],
+      "source": {
+        "name": "自整理",
+        "license": "CC-BY-4.0"
+      },
+      "reviewedAt": "2026-11-05",
+      "estimatedMinutes": 1,
+      "contentHash": "sha256:7a3e547dd183302c19327b6be030807fa63e0ef39d8b3033900c995d139db620"
+    },
+    {
+      "id": "q_01M6B261C0ZAPARVE2GQ1GDDW8",
+      "title": "如何基于 Redis 设计一个分布式限流器？",
+      "type": "design",
+      "difficulty": "hard",
+      "importance": 2,
+      "categoryId": "redis",
+      "tags": [
+        "redis",
+        "system-design"
+      ],
+      "appliesTo": [
+        "Redis >= 5"
+      ],
+      "prerequisites": [],
+      "related": [
+        "q_01M6B22C60ED5XXJXQWP3KD9RG"
+      ],
+      "prompt": "多个 API 网关实例需要共享同一个限流配额：每个用户每秒最多 100 次请求，允许短时突发。请给出设计并说明取舍。",
+      "answer": {
+        "summary": "用 Lua 脚本在 Redis 上原子地实现令牌桶或滑动窗口，所有网关实例共享同一份计数。",
+        "keyPoints": [
+          {
+            "id": "kp1",
+            "text": "判断与扣减必须原子：用 Lua 脚本，避免先读后写的竞态",
+            "weight": 3
+          },
+          {
+            "id": "kp2",
+            "text": "固定窗口简单但有边界突刺；滑动窗口更平滑",
+            "weight": 2
+          },
+          {
+            "id": "kp3",
+            "text": "令牌桶按速率补充令牌，天然允许一定突发",
+            "weight": 2
+          },
+          {
+            "id": "kp4",
+            "text": "设置 key 过期时间，防止冷用户的 key 堆积",
+            "weight": 1
+          },
+          {
+            "id": "kp5",
+            "text": "Redis 故障时要有降级：本地限流或放行",
+            "weight": 1
+          }
+        ],
+        "detail": "### 算法对比\n- **固定窗口**：`INCR` + `EXPIRE`，实现最简单；但在窗口交界处可能出现 2 倍流量。\n- **滑动窗口日志**：ZSET 记录每次请求的时间戳，删除窗口外的成员后计数；精确，但每个请求占一条记录，内存大。\n- **令牌桶**：存「剩余令牌数 + 上次补充时间」，每次请求按时间差补充令牌，有令牌则扣减；能平滑限流并允许突发，适合本题。\n\n### 原子性\n「读计数 → 判断 → 写回」若拆成多条命令，多实例并发时会超发。Redis 执行 Lua 脚本期间不会穿插执行其他命令，因此把整个判断放进脚本即可。\n\n### 时间来源\n不同网关的本地时钟可能有偏差。可以在脚本里调用 `redis.call('TIME')` 统一使用 Redis 服务器时间（Redis 5 起脚本默认按效果复制，允许这样做）。\n\n### 集群\nRedis Cluster 下，同一用户的 key 落在同一分片，脚本只访问一个 key 即可；热点用户可以考虑本地预取令牌，减少 Redis 往返。",
+        "examples": "```lua\n-- KEYS[1] = 桶 key；ARGV[1] = 容量，ARGV[2] = 每秒补充速率\nlocal cap, rate = tonumber(ARGV[1]), tonumber(ARGV[2])\nlocal t = redis.call('TIME')\nlocal now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)\nlocal b = redis.call('HMGET', KEYS[1], 'tokens', 'ts')\nlocal tokens = tonumber(b[1]) or cap\nlocal ts = tonumber(b[2]) or now\ntokens = math.min(cap, tokens + (now - ts) * rate / 1000)\nlocal allowed = 0\nif tokens >= 1 then\n  tokens = tokens - 1\n  allowed = 1\nend\nredis.call('HSET', KEYS[1], 'tokens', tokens, 'ts', now)\nredis.call('PEXPIRE', KEYS[1], math.ceil(cap / rate * 1000) + 1000)\nreturn allowed\n```",
+        "pitfalls": [
+          "用 GET 判断后再 INCR，多实例并发下超发",
+          "限流 key 不设过期时间，内存持续增长",
+          "各实例用本地时间计算，时钟偏差导致限流不准"
+        ]
+      },
+      "choice": null,
+      "followups": [
+        {
+          "id": "f1",
+          "q": "如果 Redis 挂了，限流器该怎么办？",
+          "a": "不能让限流组件拖垮主链路：设置较短的超时，失败时降级为单机限流（按实例数折算配额）或直接放行，并告警。对安全敏感的接口可以选择失败即拒绝。"
+        }
+      ],
+      "source": {
+        "name": "自整理",
+        "license": "CC-BY-4.0"
+      },
+      "references": [
+        {
+          "title": "Redis 文档：Scripting with Lua",
+          "url": "https://redis.io/docs/latest/develop/interact/programmability/eval-intro/"
+        }
+      ],
+      "reviewedAt": "2026-11-05",
+      "estimatedMinutes": 8,
+      "contentHash": "sha256:80009141c0d949f84aaf0d42266af512d5464d30c65920fdbc35d55fa3b7bfd7"
+    },
+    {
+      "id": "q_01M6B27VZ068DC8PEV0GWCQG5K",
+      "title": "InnoDB 为什么选择 B+ 树作为索引结构？",
+      "type": "concept",
+      "difficulty": "medium",
+      "importance": 3,
+      "categoryId": "mysql",
+      "tags": [
+        "mysql",
+        "index"
+      ],
+      "appliesTo": [
+        "MySQL >= 5.7",
+        "InnoDB"
+      ],
+      "prerequisites": [],
+      "related": [],
+      "prompt": null,
+      "answer": {
+        "summary": "B+ 树矮胖、非叶子节点只存键，一次磁盘页读取能覆盖大量键；叶子节点有序且相连，范围查询高效。",
+        "keyPoints": [
+          {
+            "id": "kp1",
+            "text": "节点大小与 16KB 页对齐，扇出大，千万级数据通常只需 3–4 层",
+            "weight": 3
+          },
+          {
+            "id": "kp2",
+            "text": "数据只在叶子节点，非叶子节点能放更多键，查询路径长度稳定",
+            "weight": 2
+          },
+          {
+            "id": "kp3",
+            "text": "叶子节点按键有序并用双向链表相连，范围查询和排序友好",
+            "weight": 2
+          },
+          {
+            "id": "kp4",
+            "text": "对比哈希：不支持范围；对比二叉树 / 红黑树：树太高、IO 多",
+            "weight": 1
+          }
+        ],
+        "detail": "### 磁盘 IO 是瓶颈\nInnoDB 以页（默认 16KB）为单位读写磁盘。索引查找的代价主要取决于需要读多少页，也就是树的高度。\n\n### 扇出估算\n假设主键为 BIGINT（8 字节），加上 6 字节的子页指针，一个非叶子页约能放 16KB / 14B ≈ 1170 个指针。若每个叶子页放 16 行数据：\n\n- 2 层：1170 × 16 ≈ 1.9 万行\n- 3 层：1170 × 1170 × 16 ≈ 2190 万行\n\n根节点常驻 Buffer Pool，因此一次主键查找通常只需 1–2 次磁盘 IO。\n\n### 聚簇索引与二级索引\n- 聚簇索引（主键索引）的叶子节点存整行数据；\n- 二级索引的叶子节点存「索引列 + 主键值」，查非索引列时需要回表；\n- 覆盖索引：查询列全部在二级索引中，无需回表。\n\n### 为什么不用 B 树\nB 树非叶子节点也存数据，扇出更小、树更高；范围查询需要中序遍历回溯，而 B+ 树只需沿叶子链表顺序扫描。",
+        "examples": null,
+        "pitfalls": [
+          "以为 B+ 树叶子节点之间是单向链表；InnoDB 中是双向链表",
+          "以为二级索引叶子节点存的是行的物理地址；InnoDB 存的是主键值",
+          "忽略回表成本，以为走了索引就一定快"
+        ]
+      },
+      "choice": null,
+      "followups": [
+        {
+          "id": "f1",
+          "q": "为什么推荐使用自增主键？",
+          "a": "自增主键使新记录总是追加到聚簇索引最右侧的页，页分裂少、空间利用率高。UUID 这类随机主键会在中间插入，频繁页分裂并产生碎片；而且主键越长，所有二级索引越大。"
+        },
+        {
+          "id": "f2",
+          "q": "哈希索引在 InnoDB 中完全没有吗？",
+          "a": "有自适应哈希索引（AHI）：InnoDB 监控热点等值查询，自动在内存中为部分 B+ 树页建立哈希索引，由 `innodb_adaptive_hash_index` 控制，用户不能手动创建。"
+        }
+      ],
+      "source": {
+        "name": "自整理",
+        "license": "CC-BY-4.0"
+      },
+      "references": [
+        {
+          "title": "MySQL 8.0 Reference Manual: The Physical Structure of an InnoDB Index",
+          "url": "https://dev.mysql.com/doc/refman/8.0/en/innodb-physical-structure.html"
+        }
+      ],
+      "reviewedAt": "2026-11-05",
+      "estimatedMinutes": 4,
+      "contentHash": "sha256:98cdf7a3d94e826c789cfe3607ef903c9f112c0a235db3b89447fb1c9c6a3ac3"
+    },
+    {
+      "id": "q_01M6B29PJ0B0Z5A1V1E5PP94J6",
+      "title": "MySQL 的事务隔离级别有哪些？InnoDB 如何用 MVCC 实现？",
+      "type": "concept",
+      "difficulty": "hard",
+      "importance": 3,
+      "categoryId": "mysql",
+      "tags": [
+        "mysql",
+        "transaction"
+      ],
+      "appliesTo": [
+        "MySQL >= 5.7",
+        "InnoDB"
+      ],
+      "prerequisites": [],
+      "related": [
+        "q_01M6B27VZ068DC8PEV0GWCQG5K"
+      ],
+      "prompt": null,
+      "answer": {
+        "summary": "四个级别依次是读未提交、读已提交、可重复读（InnoDB 默认）和串行化；InnoDB 用 undo log 版本链加 ReadView 实现快照读。",
+        "keyPoints": [
+          {
+            "id": "kp1",
+            "text": "读未提交有脏读；读已提交解决脏读；可重复读解决不可重复读",
+            "weight": 2
+          },
+          {
+            "id": "kp2",
+            "text": "每行有隐藏列 DB_TRX_ID 与 DB_ROLL_PTR，旧版本串在 undo log 版本链上",
+            "weight": 3
+          },
+          {
+            "id": "kp3",
+            "text": "ReadView 判断版本可见性：RC 每条语句新建，RR 事务首次读时创建",
+            "weight": 3
+          },
+          {
+            "id": "kp4",
+            "text": "RR 下快照读靠 MVCC，当前读靠 next-key lock 防止幻读",
+            "weight": 2
+          }
+        ],
+        "detail": "### 隔离级别与现象\n\n| 级别 | 脏读 | 不可重复读 | 幻读 |\n|---|---|---|---|\n| READ UNCOMMITTED | 可能 | 可能 | 可能 |\n| READ COMMITTED | 否 | 可能 | 可能 |\n| REPEATABLE READ | 否 | 否 | InnoDB 大部分情况可避免 |\n| SERIALIZABLE | 否 | 否 | 否 |\n\n### ReadView\nReadView 记录创建时的活跃事务 id 列表 `m_ids`、最小活跃 id `min_trx_id`、下一个将分配的 id `max_trx_id`，以及创建者 `creator_trx_id`。判断某版本的 `DB_TRX_ID`：\n\n- 等于 `creator_trx_id`：自己改的，可见；\n- 小于 `min_trx_id`：创建 ReadView 前已提交，可见；\n- 大于等于 `max_trx_id`：之后才开启，不可见；\n- 在两者之间：在 `m_ids` 中则未提交、不可见，否则可见。\n\n不可见就沿 `DB_ROLL_PTR` 找上一个版本，直到可见或链尾。\n\n### 快照读与当前读\n普通 `SELECT` 是快照读，读 ReadView 可见的版本；`SELECT … FOR UPDATE`、`UPDATE`、`DELETE` 是当前读，读最新版本并加锁。",
+        "examples": "```sql\nSELECT @@transaction_isolation;\nSET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;\n```",
+        "pitfalls": [
+          "以为 MVCC 能单独解决所有幻读；当前读要靠 next-key lock",
+          "以为 RR 的 ReadView 在 BEGIN 时创建；实际在第一次快照读时创建",
+          "把 undo log 当成 redo log：undo 用于回滚与 MVCC，redo 用于崩溃恢复"
+        ]
+      },
+      "choice": null,
+      "followups": [
+        {
+          "id": "f1",
+          "q": "RR 级别下还会出现幻读吗？举个例子。",
+          "a": "会。事务 A 先快照读得到 0 行；事务 B 插入一行并提交；A 再执行 `UPDATE` 命中这一行（当前读），此后 A 的快照读也能看到它，因为该行版本的 trx_id 变成了 A 自己。"
+        },
+        {
+          "id": "f2",
+          "q": "想让 RR 事务从 BEGIN 就固定快照怎么办？",
+          "a": "使用 `START TRANSACTION WITH CONSISTENT SNAPSHOT`，开启事务时立即创建 ReadView。"
+        }
+      ],
+      "source": {
+        "name": "自整理",
+        "license": "CC-BY-4.0"
+      },
+      "references": [
+        {
+          "title": "MySQL 8.0 Reference Manual: Transaction Isolation Levels",
+          "url": "https://dev.mysql.com/doc/refman/8.0/en/innodb-transaction-isolation-levels.html"
+        },
+        {
+          "title": "MySQL 8.0 Reference Manual: Consistent Nonlocking Reads",
+          "url": "https://dev.mysql.com/doc/refman/8.0/en/innodb-consistent-read.html"
+        }
+      ],
+      "reviewedAt": "2026-11-05",
+      "estimatedMinutes": 6,
+      "contentHash": "sha256:3171ea348c8d9b1aa4049c91de6f4d366946779c2d24d7ef63e8cee91ea2eb26"
+    },
+    {
+      "id": "q_01M6B2BH50RQSFZCW9Z120DZ0H",
+      "title": "线上出现慢 SQL，你会如何定位和优化？",
+      "type": "scenario",
+      "difficulty": "medium",
+      "importance": 3,
+      "categoryId": "mysql",
+      "tags": [
+        "index",
+        "performance",
+        "troubleshooting"
+      ],
+      "appliesTo": [
+        "MySQL >= 8.0"
+      ],
+      "prerequisites": [
+        "q_01M6B27VZ068DC8PEV0GWCQG5K"
+      ],
+      "related": [],
+      "prompt": "订单列表接口 P99 从 80ms 升到 2s，监控显示数据库 CPU 升高。相关查询如下：\n\n```sql\nSELECT * FROM orders\nWHERE user_id = ? AND status = 'PAID'\nORDER BY created_at DESC\nLIMIT 20;\n```",
+      "answer": {
+        "summary": "先用慢查询日志找到 SQL，再用 EXPLAIN 看执行计划，针对全表扫描、回表、文件排序等问题调整索引或改写语句。",
+        "keyPoints": [
+          {
+            "id": "kp1",
+            "text": "开启慢查询日志，用 pt-query-digest 等工具聚合出最耗时的 SQL",
+            "weight": 2
+          },
+          {
+            "id": "kp2",
+            "text": "EXPLAIN 重点看 type、key、rows、Extra",
+            "weight": 3
+          },
+          {
+            "id": "kp3",
+            "text": "为查询建立联合索引，兼顾过滤与排序，避免 Using filesort",
+            "weight": 2
+          },
+          {
+            "id": "kp4",
+            "text": "用 EXPLAIN ANALYZE 对比优化前后的实际耗时",
+            "weight": 1
+          }
+        ],
+        "detail": "### 1. 找到慢 SQL\n`slow_query_log = ON`，`long_query_time` 设为合适阈值（如 0.5 秒），再聚合分析，优先处理「总耗时」最高的，而不只是单次最慢的。\n\n### 2. 读执行计划\n- `type`：从好到差大致为 const、eq_ref、ref、range、index、ALL；\n- `key` / `rows`：实际用的索引与预估扫描行数；\n- `Extra`：`Using filesort` 表示额外排序，`Using temporary` 表示用了临时表，`Using index` 表示覆盖索引。\n\n### 3. 本例的优化\n只有 `user_id` 单列索引时，需要回表过滤 `status`，再对结果做文件排序。建立联合索引 `(user_id, status, created_at)` 后，等值条件定位到一段有序的索引区间，直接按 `created_at` 倒序取 20 条，不再排序。\n\n若只需要少量列，可以让索引覆盖这些列，进一步避免回表。",
+        "examples": "```sql\nALTER TABLE orders ADD INDEX idx_user_status_created (user_id, status, created_at);\n\nEXPLAIN ANALYZE\nSELECT id, amount, created_at FROM orders\nWHERE user_id = 42 AND status = 'PAID'\nORDER BY created_at DESC\nLIMIT 20;\n```",
+        "pitfalls": [
+          "在索引列上使用函数或隐式类型转换，导致索引失效",
+          "联合索引不满足最左前缀，或范围条件之后的列无法用于排序",
+          "只看单次执行时间，忽略高频执行的「中等慢」SQL"
+        ]
+      },
+      "choice": null,
+      "followups": [
+        {
+          "id": "f1",
+          "q": "深分页 LIMIT 100000, 20 很慢怎么办？",
+          "a": "先按索引定位到上一页最后一条记录，用「WHERE created_at < 上次的值」做游标分页；或先用覆盖索引查出 20 个主键，再关联回表取整行，减少回表行数。"
+        }
+      ],
+      "source": {
+        "name": "自整理",
+        "license": "CC-BY-4.0"
+      },
+      "references": [
+        {
+          "title": "MySQL 8.0 Reference Manual: EXPLAIN Output Format",
+          "url": "https://dev.mysql.com/doc/refman/8.0/en/explain-output.html"
+        },
+        {
+          "title": "MySQL 8.0 Reference Manual: The Slow Query Log",
+          "url": "https://dev.mysql.com/doc/refman/8.0/en/slow-query-log.html"
+        }
+      ],
+      "reviewedAt": "2026-11-05",
+      "estimatedMinutes": 5,
+      "contentHash": "sha256:6c83ed3c735fd33f03fcb7fea9f14b406cde7147a9f1692c4b024aaa2460e200"
+    },
+    {
+      "id": "q_01M6B2DBR0BTR2PNH2KQJNCC8V",
+      "title": "synchronized 和 ReentrantLock 有什么区别？",
+      "type": "concept",
+      "difficulty": "medium",
+      "importance": 3,
+      "categoryId": "java-concurrency",
+      "tags": [
+        "concurrency",
+        "lock"
+      ],
+      "appliesTo": [
+        "Java >= 8"
+      ],
+      "prerequisites": [],
+      "related": [],
+      "prompt": null,
+      "answer": {
+        "summary": "两者都是可重入的互斥锁；synchronized 是 JVM 内置关键字、自动释放，ReentrantLock 是 API，功能更多但必须手动 unlock。",
+        "keyPoints": [
+          {
+            "id": "kp1",
+            "text": "synchronized 由 JVM 用 monitor 实现，异常时也会自动释放锁",
+            "weight": 2
+          },
+          {
+            "id": "kp2",
+            "text": "ReentrantLock 支持可中断、超时 tryLock、公平锁与多个 Condition",
+            "weight": 3
+          },
+          {
+            "id": "kp3",
+            "text": "ReentrantLock 必须在 finally 中 unlock，否则可能永久持有锁",
+            "weight": 2
+          },
+          {
+            "id": "kp4",
+            "text": "性能已相近，无特殊需求优先 synchronized",
+            "weight": 1
+          }
+        ],
+        "detail": "### 实现层面\n- `synchronized`：编译为 `monitorenter` / `monitorexit`（方法上是 `ACC_SYNCHRONIZED` 标志），锁状态记录在对象头的 Mark Word 中；\n- `ReentrantLock`：基于 AQS（`AbstractQueuedSynchronizer`），用 `state` 计数重入次数，竞争失败的线程进入 CLH 变体队列并 park。\n\n### 功能对比\n\n| 能力 | synchronized | ReentrantLock |\n|---|---|---|\n| 可重入 | ✓ | ✓ |\n| 响应中断 | ✗ | `lockInterruptibly()` |\n| 超时获取 | ✗ | `tryLock(timeout, unit)` |\n| 公平锁 | ✗（非公平） | 构造参数 `true` |\n| 条件队列 | 单个（wait / notify） | 多个 `Condition` |\n\n### 关于锁升级\n早期 JDK 为 synchronized 引入了偏向锁、轻量级锁、重量级锁的升级过程。JDK 15 起偏向锁默认禁用并被标记为废弃（JEP 374），之后的版本已将其移除，面试中不必再把偏向锁当作现行机制。",
+        "examples": "```java\nprivate final ReentrantLock lock = new ReentrantLock();\n\nvoid transfer() throws InterruptedException {\n    if (!lock.tryLock(100, TimeUnit.MILLISECONDS)) {\n        throw new IllegalStateException(\"busy\");\n    }\n    try {\n        // 临界区\n    } finally {\n        lock.unlock();\n    }\n}\n```",
+        "pitfalls": [
+          "把 `lock.lock()` 写在 try 块内部：加锁失败时 finally 中的 unlock 会抛异常",
+          "以为公平锁性能更好；公平锁吞吐量通常更低",
+          "以为 synchronized 不可重入"
+        ]
+      },
+      "choice": null,
+      "followups": [
+        {
+          "id": "f1",
+          "q": "什么场景必须用 ReentrantLock？",
+          "a": "需要可中断等待、超时放弃获取锁、公平性，或在一把锁上区分多个等待条件（如阻塞队列的 notEmpty / notFull）时。"
+        }
+      ],
+      "source": {
+        "name": "自整理",
+        "license": "CC-BY-4.0"
+      },
+      "references": [
+        {
+          "title": "Java SE 21 API: ReentrantLock",
+          "url": "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/concurrent/locks/ReentrantLock.html"
+        }
+      ],
+      "reviewedAt": "2026-11-05",
+      "estimatedMinutes": 4,
+      "contentHash": "sha256:498401eba9c8a991ccdd02a4b630078d1b6b953c5296ebfb97e3f52a0866b87b"
+    },
+    {
+      "id": "q_01M6B2F6B0M7TZ6C70HX4YY892",
+      "title": "ThreadPoolExecutor 有哪些核心参数？提交任务后的执行流程是怎样的？",
+      "type": "concept",
+      "difficulty": "medium",
+      "importance": 3,
+      "categoryId": "java-concurrency",
+      "tags": [
+        "concurrency",
+        "thread-pool"
+      ],
+      "appliesTo": [
+        "Java >= 8"
+      ],
+      "prerequisites": [],
+      "related": [
+        "q_01M6B2DBR0BTR2PNH2KQJNCC8V"
+      ],
+      "prompt": null,
+      "answer": {
+        "summary": "七个参数决定线程数、队列与拒绝方式；提交任务时依次判断核心线程、工作队列、最大线程，都满则执行拒绝策略。",
+        "keyPoints": [
+          {
+            "id": "kp1",
+            "text": "corePoolSize、maximumPoolSize、keepAliveTime 与 unit 控制线程数量",
+            "weight": 2
+          },
+          {
+            "id": "kp2",
+            "text": "workQueue 存放等待任务，threadFactory 创建线程，handler 处理拒绝",
+            "weight": 2
+          },
+          {
+            "id": "kp3",
+            "text": "流程：先建核心线程，再入队列，队列满才扩到最大线程，最后拒绝",
+            "weight": 3
+          },
+          {
+            "id": "kp4",
+            "text": "默认拒绝策略是 AbortPolicy，抛出 RejectedExecutionException",
+            "weight": 2
+          },
+          {
+            "id": "kp5",
+            "text": "无界队列会让 maximumPoolSize 失效，并可能导致 OOM",
+            "weight": 1
+          }
+        ],
+        "detail": "### 执行流程\n1. 运行线程数 < `corePoolSize`：新建线程执行该任务（即使有空闲线程）；\n2. 否则尝试放入 `workQueue`；\n3. 队列已满且线程数 < `maximumPoolSize`：新建非核心线程执行该任务；\n4. 否则交给 `RejectedExecutionHandler`。\n\n非核心线程空闲超过 `keepAliveTime` 会被回收；`allowCoreThreadTimeOut(true)` 时核心线程也会回收。\n\n### 四种内置拒绝策略\n- `AbortPolicy`：抛异常（默认）；\n- `CallerRunsPolicy`：由提交任务的线程自己执行，起到反压作用；\n- `DiscardPolicy`：静默丢弃；\n- `DiscardOldestPolicy`：丢弃队列头部最旧的任务后重试提交。\n\n### 为什么不建议用 Executors\n`newFixedThreadPool` / `newSingleThreadExecutor` 使用无界 `LinkedBlockingQueue`，任务堆积可能 OOM；`newCachedThreadPool` 最大线程数为 `Integer.MAX_VALUE`，可能创建过多线程。",
+        "examples": "```java\nThreadPoolExecutor pool = new ThreadPoolExecutor(\n        8, 16,\n        60, TimeUnit.SECONDS,\n        new ArrayBlockingQueue<>(1000),\n        r -> new Thread(r, \"order-worker\"),\n        new ThreadPoolExecutor.CallerRunsPolicy());\n```",
+        "pitfalls": [
+          "以为任务先扩到最大线程数再入队列，顺序正好相反",
+          "使用无界队列却期望 maximumPoolSize 生效",
+          "不给线程命名，排查问题时难以定位"
+        ]
+      },
+      "choice": null,
+      "followups": [
+        {
+          "id": "f1",
+          "q": "核心线程数怎么估算？",
+          "a": "CPU 密集型约为 CPU 核数 + 1；IO 密集型可按「核数 × (1 + 等待时间 / 计算时间)」估算。估算只是起点，最终要靠压测和监控（活跃线程数、队列长度、拒绝次数）调整，最好支持动态修改。"
+        }
+      ],
+      "source": {
+        "name": "自整理",
+        "license": "CC-BY-4.0"
+      },
+      "references": [
+        {
+          "title": "Java SE 21 API: ThreadPoolExecutor",
+          "url": "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/concurrent/ThreadPoolExecutor.html"
+        }
+      ],
+      "reviewedAt": "2026-11-05",
+      "estimatedMinutes": 5,
+      "contentHash": "sha256:9860c32c33b4c4dde7998644fdb7cb26be08b0b124f25924ac0f086801bb3665"
+    },
+    {
+      "id": "q_01M6B2H0Y0P09AH15Y5NM6H584",
+      "title": "手写一个有界阻塞队列，实现生产者—消费者模型",
+      "type": "coding",
+      "difficulty": "medium",
+      "importance": 2,
+      "categoryId": "java-concurrency",
+      "tags": [
+        "concurrency",
+        "lock"
+      ],
+      "appliesTo": [
+        "Java >= 8"
+      ],
+      "prerequisites": [
+        "q_01M6B2DBR0BTR2PNH2KQJNCC8V"
+      ],
+      "related": [],
+      "prompt": "不使用 `java.util.concurrent` 中现成的阻塞队列，实现 `BoundedQueue<T>`：\n\n- `put(T)`：队列满时阻塞；\n- `take()`：队列空时阻塞；\n- 支持多个生产者与多个消费者并发调用。",
+      "answer": {
+        "summary": "用一把锁保护环形数组，并用「不满」「不空」两个条件分别让生产者和消费者等待，条件判断放在 while 循环里。",
+        "keyPoints": [
+          {
+            "id": "kp1",
+            "text": "共享状态的读写必须在同一把锁内完成",
+            "weight": 3
+          },
+          {
+            "id": "kp2",
+            "text": "等待条件必须用 while 循环判断，防止虚假唤醒",
+            "weight": 3
+          },
+          {
+            "id": "kp3",
+            "text": "用两个 Condition 分开唤醒生产者与消费者，避免无效唤醒",
+            "weight": 2
+          },
+          {
+            "id": "kp4",
+            "text": "若用 synchronized + wait / notify，要用 notifyAll",
+            "weight": 1
+          }
+        ],
+        "detail": "### 为什么用 while 而不是 if\n线程被唤醒后需要重新竞争锁，期间条件可能又被其他线程改变；JVM 也允许虚假唤醒。因此醒来后必须重新检查条件。\n\n### 为什么用两个条件\n若生产者和消费者在同一个条件上等待，`signal` 可能唤醒同类线程（例如生产者唤醒了另一个生产者），导致所有线程都在等待。拆成 `notFull` 与 `notEmpty` 后，每次只唤醒真正能继续执行的一方。\n\n### 用 synchronized 实现\n只有一个等待集合，必须 `notifyAll()`，否则可能出现上面的「唤醒错对象」问题。",
+        "examples": "```java\npublic class BoundedQueue<T> {\n    private final Object[] items;\n    private int head, tail, count;\n    private final ReentrantLock lock = new ReentrantLock();\n    private final Condition notFull = lock.newCondition();\n    private final Condition notEmpty = lock.newCondition();\n\n    public BoundedQueue(int capacity) { items = new Object[capacity]; }\n\n    public void put(T item) throws InterruptedException {\n        lock.lockInterruptibly();\n        try {\n            while (count == items.length) notFull.await();\n            items[tail] = item;\n            tail = (tail + 1) % items.length;\n            count++;\n            notEmpty.signal();\n        } finally {\n            lock.unlock();\n        }\n    }\n\n    @SuppressWarnings(\"unchecked\")\n    public T take() throws InterruptedException {\n        lock.lockInterruptibly();\n        try {\n            while (count == 0) notEmpty.await();\n            T item = (T) items[head];\n            items[head] = null; // 帮助 GC\n            head = (head + 1) % items.length;\n            count--;\n            notFull.signal();\n            return item;\n        } finally {\n            lock.unlock();\n        }\n    }\n}\n```",
+        "pitfalls": [
+          "用 if 判断条件，被虚假唤醒后越界读写",
+          "在锁外调用 await / signal，抛出 IllegalMonitorStateException",
+          "出队后不清空数组槽位，导致对象无法被回收"
+        ]
+      },
+      "choice": null,
+      "followups": [
+        {
+          "id": "f1",
+          "q": "和 ArrayBlockingQueue 的实现有什么不同？",
+          "a": "思路基本一致：ArrayBlockingQueue 同样是一把 ReentrantLock 加 notEmpty / notFull 两个条件。它还提供 offer / poll 的超时版本、可选的公平锁，以及迭代器等完整的集合接口。"
+        }
+      ],
+      "source": {
+        "name": "自整理",
+        "license": "CC-BY-4.0"
+      },
+      "reviewedAt": "2026-11-05",
+      "estimatedMinutes": 15,
+      "contentHash": "sha256:eb5ecb93cabd3ac40d2d431cd982ac36bb86e93790b08fb9e6d02fddedf92add"
+    },
+    {
+      "id": "q_01M6B2JVH07BD81K60YMCZ3N87",
+      "title": "HTTPS 的 TLS 握手过程是怎样的？TLS 1.3 做了哪些改进？",
+      "type": "concept",
+      "difficulty": "hard",
+      "importance": 3,
+      "categoryId": "network",
+      "tags": [
+        "network",
+        "http",
+        "tls"
+      ],
+      "appliesTo": [],
+      "prerequisites": [],
+      "related": [],
+      "prompt": null,
+      "answer": {
+        "summary": "握手用非对称密码协商出会话密钥并验证服务器证书，之后用对称加密传输；TLS 1.3 把完整握手缩短到 1-RTT，并只保留前向安全的密钥交换。",
+        "keyPoints": [
+          {
+            "id": "kp1",
+            "text": "ClientHello / ServerHello 协商版本、密码套件并交换随机数",
+            "weight": 2
+          },
+          {
+            "id": "kp2",
+            "text": "服务器出示证书，客户端校验证书链、有效期与域名",
+            "weight": 3
+          },
+          {
+            "id": "kp3",
+            "text": "用 (EC)DHE 交换密钥参数，双方各自算出相同的会话密钥",
+            "weight": 3
+          },
+          {
+            "id": "kp4",
+            "text": "TLS 1.2 完整握手需 2-RTT，TLS 1.3 只需 1-RTT",
+            "weight": 2
+          },
+          {
+            "id": "kp5",
+            "text": "TLS 1.3 移除 RSA 密钥交换等不安全算法，默认前向安全",
+            "weight": 1
+          }
+        ],
+        "detail": "### TLS 1.2（ECDHE）完整握手\n1. 客户端发送 ClientHello：支持的版本、密码套件、客户端随机数；\n2. 服务器回复 ServerHello、Certificate、ServerKeyExchange（ECDHE 公钥，带签名）、ServerHelloDone；\n3. 客户端校验证书，发送 ClientKeyExchange（自己的 ECDHE 公钥）、ChangeCipherSpec、Finished；\n4. 服务器回复 ChangeCipherSpec、Finished。\n\n双方由 ECDHE 共享秘密和两个随机数推导出会话密钥，第 2 个往返结束后才能发送应用数据。\n\n### TLS 1.3 的改进\n- 客户端在 ClientHello 里直接带上 key_share（猜测服务器支持的曲线），服务器一次回复即可完成密钥协商，**1-RTT**；\n- 证书等握手消息在 ServerHello 之后就已加密；\n- 支持 0-RTT 会话恢复（early data），但 early data 可能被重放，只适合幂等请求；\n- 删除静态 RSA 与静态 DH 密钥交换、CBC 模式套件、压缩等，只保留 AEAD 套件。\n\n### 前向安全\n用静态 RSA 交换密钥时，服务器私钥一旦泄露，之前录下的流量都能被解密。(EC)DHE 每次握手生成临时密钥，私钥只用于签名，泄露不影响历史会话。",
+        "examples": "```bash\nopenssl s_client -connect example.com:443 -tls1_3 -brief\n```",
+        "pitfalls": [
+          "以为全部数据都用非对称加密；非对称只用于认证与密钥协商",
+          "以为证书里的公钥直接用来加密会话密钥；ECDHE 下证书私钥只用于签名",
+          "把 0-RTT 当成无代价的优化，忽略重放风险"
+        ]
+      },
+      "choice": null,
+      "followups": [
+        {
+          "id": "f1",
+          "q": "客户端如何验证证书可信？",
+          "a": "沿证书链逐级用上级公钥验证签名，直到本地信任的根证书；同时检查有效期、域名（SAN）是否匹配，以及是否被吊销（OCSP / CRL）。"
+        },
+        {
+          "id": "f2",
+          "q": "会话恢复有哪些方式？",
+          "a": "TLS 1.2 有 Session ID 与 Session Ticket；TLS 1.3 统一为 PSK，服务器在握手后下发 NewSessionTicket，客户端下次带上 PSK 即可跳过证书验证，还可以选择 0-RTT。"
+        }
+      ],
+      "source": {
+        "name": "自整理",
+        "license": "CC-BY-4.0"
+      },
+      "references": [
+        {
+          "title": "RFC 8446: The Transport Layer Security (TLS) Protocol Version 1.3",
+          "url": "https://www.rfc-editor.org/rfc/rfc8446"
+        }
+      ],
+      "reviewedAt": "2026-11-05",
+      "estimatedMinutes": 6,
+      "contentHash": "sha256:7fb3634f04c5c2b33e2cd27afdf7dbeff80804faa55cf752633050f97b668227"
+    },
+    {
+      "id": "q_01M6B2MP40WM52PJV40MZJ9T5J",
+      "title": "HTTP 缓存中强缓存和协商缓存有什么区别？",
+      "type": "concept",
+      "difficulty": "easy",
+      "importance": 3,
+      "categoryId": "network",
+      "tags": [
+        "network",
+        "http",
+        "cache"
+      ],
+      "appliesTo": [],
+      "prerequisites": [],
+      "related": [
+        "q_01M6B2JVH07BD81K60YMCZ3N87"
+      ],
+      "prompt": null,
+      "answer": {
+        "summary": "强缓存在有效期内直接使用本地副本、不发请求；过期后用协商缓存向服务器验证，未变化则返回 304。",
+        "keyPoints": [
+          {
+            "id": "kp1",
+            "text": "强缓存由 Cache-Control: max-age 控制，优先级高于 Expires",
+            "weight": 3
+          },
+          {
+            "id": "kp2",
+            "text": "协商缓存用 ETag / If-None-Match 或 Last-Modified / If-Modified-Since",
+            "weight": 3
+          },
+          {
+            "id": "kp3",
+            "text": "资源未变时服务器返回 304 Not Modified，不带响应体",
+            "weight": 2
+          },
+          {
+            "id": "kp4",
+            "text": "no-cache 表示每次都要验证，no-store 才是完全不缓存",
+            "weight": 1
+          }
+        ],
+        "detail": "### 强缓存\n- `Cache-Control: max-age=3600`：响应生成后 3600 秒内视为新鲜；\n- `Expires`：绝对时间，受客户端时钟影响，同时存在时以 `max-age` 为准；\n- 命中时浏览器直接使用本地副本，开发者工具里显示 from memory cache / from disk cache。\n\n### 协商缓存\n缓存过期（或带 `no-cache`）时，浏览器带上验证字段请求：\n\n- `If-None-Match: \"<ETag>\"`：服务器比较资源当前的 ETag；\n- `If-Modified-Since: <Last-Modified>`：按修改时间比较，精度只到秒。\n\n两者同时存在时，服务器应优先使用 ETag。未变化返回 `304`，浏览器继续使用本地副本并更新其新鲜度。\n\n### 常见实践\n- 带内容哈希的静态资源（如 `app.3f2a1c.js`）：`Cache-Control: max-age=31536000, immutable`；\n- HTML 入口：`Cache-Control: no-cache`，每次验证，保证能拿到新的资源引用。",
+        "examples": "```http\nHTTP/1.1 200 OK\nCache-Control: max-age=600\nETag: \"5f8e1a\"\n\nGET /api/config HTTP/1.1\nIf-None-Match: \"5f8e1a\"\n\nHTTP/1.1 304 Not Modified\n```",
+        "pitfalls": [
+          "把 no-cache 理解为不缓存",
+          "以为 304 也会返回完整资源",
+          "修改静态资源内容却不改文件名，用户长期拿到旧版本"
+        ]
+      },
+      "choice": null,
+      "followups": [
+        {
+          "id": "f1",
+          "q": "有了 Last-Modified 为什么还需要 ETag？",
+          "a": "Last-Modified 精度只到秒，一秒内多次修改无法区分；文件内容没变但修改时间变了（如重新部署）会导致不必要的重新下载。ETag 基于内容或版本生成，更精确。"
+        }
+      ],
+      "source": {
+        "name": "自整理",
+        "license": "CC-BY-4.0"
+      },
+      "references": [
+        {
+          "title": "RFC 9111: HTTP Caching",
+          "url": "https://www.rfc-editor.org/rfc/rfc9111"
+        },
+        {
+          "title": "MDN: HTTP caching",
+          "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Caching"
+        }
+      ],
+      "reviewedAt": "2026-11-05",
+      "estimatedMinutes": 3,
+      "contentHash": "sha256:12e8346c0ab7ff48d9872f8a77a2a4cf6712b53bd6d8d5e830caa91ce019e537"
+    },
+    {
+      "id": "q_01M6B2PGQ08QR5DBTVMRVK4QD8",
+      "title": "讲一次你排查线上接口超时的经历",
+      "type": "behavioral",
+      "difficulty": "medium",
+      "importance": 2,
+      "categoryId": "network",
+      "tags": [
+        "network",
+        "troubleshooting",
+        "performance"
+      ],
+      "appliesTo": [],
+      "prerequisites": [],
+      "related": [
+        "q_01M6B2BH50RQSFZCW9Z120DZ0H"
+      ],
+      "prompt": null,
+      "answer": {
+        "summary": "用 STAR 结构讲清背景、你的职责、排查步骤与证据、结果和复盘改进，重点体现定位思路而不是堆砌工具名。",
+        "keyPoints": [
+          {
+            "id": "kp1",
+            "text": "背景量化：影响范围、超时比例、持续时间",
+            "weight": 2
+          },
+          {
+            "id": "kp2",
+            "text": "排查有层次：先止血，再按链路逐段缩小范围，结论有数据支撑",
+            "weight": 3
+          },
+          {
+            "id": "kp3",
+            "text": "讲清根因与修复，以及如何验证修复有效",
+            "weight": 2
+          },
+          {
+            "id": "kp4",
+            "text": "复盘改进：监控告警、超时与重试配置、预案",
+            "weight": 2
+          }
+        ],
+        "detail": "### 回答结构（STAR）\n- **S 情境**：什么系统、什么时间、影响多大（如「下单接口 P99 从 200ms 升至 5s，超时率 8%」）；\n- **T 任务**：你在其中的角色与目标；\n- **A 行动**：按时间线讲排查过程；\n- **R 结果**：恢复时间、指标变化、后续改进。\n\n### 排查思路示例\n1. **止血**：确认是否与最近发布相关，必要时回滚或扩容；\n2. **定位层级**：用链路追踪看耗时落在网关、应用、下游服务还是数据库；\n3. **找证据**：线程 dump 发现大量线程阻塞在获取数据库连接，连接池耗尽；\n4. **根因**：一个下游 HTTP 调用没有设置超时，在持有数据库事务时长时间等待；\n5. **修复**：给所有外部调用设置连接与读取超时，把远程调用移出事务。\n\n### 面试官关注点\n是否独立思考、能否用数据验证假设、是否做了防止复发的改进。",
+        "examples": null,
+        "pitfalls": [
+          "只罗列工具，说不清每一步为什么这么做",
+          "没有量化结果",
+          "把功劳全归自己或把问题全推给别人"
+        ]
+      },
+      "choice": null,
+      "followups": [
+        {
+          "id": "f1",
+          "q": "如果再遇到类似问题，你会如何更快发现？",
+          "a": "为关键接口配置基于 P99 与错误率的告警；对连接池使用率、线程池队列长度做监控；统一治理外部调用的超时、重试与熔断配置，并在压测中覆盖下游变慢的场景。"
+        }
+      ],
+      "source": {
+        "name": "自整理",
+        "license": "CC-BY-4.0"
+      },
+      "reviewedAt": "2026-11-05",
+      "estimatedMinutes": 5,
+      "contentHash": "sha256:53fd7953063e4a31b5dc92eaebc2249ff185451fd1e5215576fcda953783914a"
+    }
+  ]
+}

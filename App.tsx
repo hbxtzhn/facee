@@ -1,22 +1,19 @@
-// 应用根：只在本地题库安装后加载导航
+// 应用根：初始化 v2 题库数据层（SQLite）与用户设置 / 字体后加载导航
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useFonts } from 'expo-font';
 import { BookOpenCheck } from 'lucide-react-native';
 import { AppNavigator } from './src/navigation/AppNavigator';
-import { useQuestionBankStore } from './src/question-bank/store';
-import { useFavoritesStore } from './src/store/favoritesStore';
-import { useMasteryStore } from './src/store/masteryStore';
+import { useBankStore } from './src/bank';
 import { useUserStore } from './src/store/userStore';
+import { AppButton } from './src/components/ui';
 import { colors, spacing, typography } from './src/theme';
 
 export default function App() {
   const userLoad = useUserStore((s) => s.load);
-  const favoritesLoad = useFavoritesStore((s) => s.load);
-  const masteryLoad = useMasteryStore((s) => s.load);
-  const [ready, setReady] = useState(false);
-  const questionBankStatus = useQuestionBankStore((state) => state.status);
-  const initializeQuestionBank = useQuestionBankStore((state) => state.initialize);
+  const bankStatus = useBankStore((s) => s.status);
+  const bankError = useBankStore((s) => s.lastError);
+  const [userReady, setUserReady] = useState(false);
   // 加载失败时照常进入应用：代码排版回退到系统 monospace，不阻塞启动
   const [fontsLoaded, fontsError] = useFonts({
     JetBrainsMono: require('./assets/fonts/JetBrainsMono-Regular.ttf'),
@@ -24,11 +21,29 @@ export default function App() {
   const fontsReady = fontsLoaded || Boolean(fontsError);
 
   useEffect(() => {
-    void Promise.all([userLoad(), favoritesLoad(), masteryLoad(), initializeQuestionBank()])
-      .finally(() => setReady(true));
-  }, [favoritesLoad, initializeQuestionBank, masteryLoad, userLoad]);
+    void Promise.resolve(userLoad()).catch(() => undefined).finally(() => setUserReady(true));
+    // initialize 永不 reject；重复调用安全
+    void useBankStore.getState().initialize();
+  }, [userLoad]);
 
-  if (!ready || !fontsReady || questionBankStatus === 'idle' || questionBankStatus === 'loading') {
+  if (bankStatus === 'error') {
+    return (
+      <View style={styles.loadingScreen} accessibilityRole="alert">
+        <Text style={styles.brand}>FaceE</Text>
+        <Text style={styles.errorTitle}>题库数据库打开失败</Text>
+        <Text style={styles.errorBody}>{bankError?.message ?? '未知错误'}</Text>
+        <AppButton
+          label="重试"
+          onPress={() => void useBankStore.getState().initialize()}
+          style={styles.retry}
+        />
+      </View>
+    );
+  }
+
+  // unsupported（Web 预览）照常进入应用：各页自行显示「Web 预览不支持本地题库」
+  const bankSettled = bankStatus === 'ready' || bankStatus === 'unsupported';
+  if (!userReady || !fontsReady || !bankSettled) {
     return (
       <View style={styles.loadingScreen}>
         <View style={styles.logoMark}>
@@ -41,9 +56,6 @@ export default function App() {
     );
   }
 
-  // The app shell is usable before a question bank is installed. The Home,
-  // Favorites and Profile tabs can render their empty states, while Profile
-  // remains the place to configure and download a remote bank.
   return <AppNavigator />;
 }
 
@@ -53,6 +65,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.background,
+    paddingHorizontal: spacing.xxl,
   },
   logoMark: {
     width: 40,
@@ -68,5 +81,8 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: spacing.xs,
   },
+  errorTitle: { ...typography.heading, color: colors.text, marginTop: spacing.lg },
+  errorBody: { ...typography.caption, color: colors.danger, marginTop: spacing.sm, textAlign: 'center', lineHeight: 18 },
+  retry: { marginTop: spacing.xl, minWidth: 120 },
   spinner: { marginTop: spacing.xl },
 });

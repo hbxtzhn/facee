@@ -22,52 +22,84 @@ function jsonResponse(content: string, ok = true, status = 200) {
   };
 }
 
-describe('parseGeneratedQuestions', () => {
-  it('解析裸 JSON 数组', () => {
-    const raw = JSON.stringify([
-      { title: '什么是 JVM？', question: '介绍 JVM。', answer: 'Java 虚拟机。', difficulty: 'easy', tags: ['JVM'] },
-      { title: '难一点的题', question: '题干', answer: null, difficulty: 'hard', tags: [] },
-    ]);
-    const drafts = parseGeneratedQuestions(raw);
-    expect(drafts).toHaveLength(2);
-    expect(drafts[0]).toEqual({
-      title: '什么是 JVM？',
-      questionMd: '介绍 JVM。',
-      answerMd: 'Java 虚拟机。',
-      difficulty: 1,
-      tags: ['JVM'],
-    });
-    expect(drafts[1]).toMatchObject({ difficulty: 3, answerMd: null });
+const KP3 = [{ text: '惰性删除', weight: 2 }, { text: '定期删除', weight: 2 }, { text: '内存淘汰兜底', weight: 1 }];
+const GOOD = {
+  title: 'Redis 过期 key 怎么删？',
+  type: 'concept',
+  difficulty: 'medium',
+  prompt: null,
+  summary: '惰性删除与定期删除组合清理过期 key。',
+  keyPoints: KP3,
+  detail: '### 惰性删除\n访问时检查。',
+  pitfalls: ['混淆过期删除与内存淘汰'],
+  followups: [{ q: '大量 key 同时过期？', a: '加随机偏移。' }],
+};
+
+describe('parseGeneratedQuestions（v2 结构）', () => {
+  it('解析裸 JSON 数组为 v2 草稿', () => {
+    const drafts = parseGeneratedQuestions(JSON.stringify([GOOD]));
+    expect(drafts).toEqual([{ ...GOOD, notes: [] }]);
   });
 
   it('剥掉 Markdown 代码栏与前后废话', () => {
-    const raw = [
-      '好的，以下是提取结果：',
-      '```json',
-      JSON.stringify([{ title: '题', question: '干', answer: '案', difficulty: 2, tags: ['a', 'a', 'b'] }]),
-      '```',
-    ].join('\n');
-    const drafts = parseGeneratedQuestions(raw);
-    expect(drafts).toHaveLength(1);
-    expect(drafts[0].difficulty).toBe(2);
-    // 标签去重
-    expect(drafts[0].tags).toEqual(['a', 'b']);
+    const raw = ['好的，以下是提取结果：', '```json', JSON.stringify([GOOD]), '```'].join('\n');
+    expect(parseGeneratedQuestions(raw)).toHaveLength(1);
   });
 
-  it('缺失标题或题干的条目被跳过，难度未知归中等', () => {
-    const raw = JSON.stringify([
-      { question: '没有标题' },
-      { title: '没有题干' },
-      { title: '默认难度', question: '干', difficulty: '啥也不是' },
+  it('畸形输出规范化：要点字符串 / 重复 / 超 5 条截取、权重与难度与题型兜底、追问缺答案丢弃', () => {
+    const raw = JSON.stringify([{
+      title: '  题  ',
+      type: 'choice',
+      difficulty: 3,
+      summary: '结论',
+      keyPoints: ['一', '一', { text: '二', weight: '核心' }, { text: '三', weight: 9 }, '四', '五', '六'],
+      pitfalls: ['坑', 3, '坑'],
+      followups: [{ q: '追问', a: '' }, { question: '旧字段追问', answer: '答' }],
+    }]);
+    const [draft] = parseGeneratedQuestions(raw);
+    expect(draft.title).toBe('题');
+    expect(draft.type).toBe('concept');
+    expect(draft.difficulty).toBe('hard');
+    expect(draft.keyPoints).toEqual([
+      { text: '一', weight: 1 }, { text: '二', weight: 3 }, { text: '三', weight: 1 }, { text: '四', weight: 1 }, { text: '五', weight: 1 },
     ]);
-    const drafts = parseGeneratedQuestions(raw);
-    expect(drafts).toHaveLength(1);
-    expect(drafts[0].difficulty).toBe(2);
+    expect(draft.pitfalls).toEqual(['坑']);
+    expect(draft.followups).toEqual([{ q: '旧字段追问', a: '答' }]);
+    expect(draft.notes).toEqual(['要点超过 5 条，只保留前 5 条']);
+    expect(draft.prompt).toBeNull();
+    expect(draft.detail).toBeNull();
+  });
+
+  it('一句话超过 80 字、要点超过 40 字时截断并记录', () => {
+    const [draft] = parseGeneratedQuestions(JSON.stringify([{ ...GOOD, summary: '长'.repeat(100), keyPoints: [...KP3, { text: '字'.repeat(50), weight: 1 }] }]));
+    expect(draft.summary).toBe('长'.repeat(80));
+    expect(draft.keyPoints[3].text).toBe('字'.repeat(40));
+    expect(draft.notes).toEqual(['一句话超过 80 字，已截断', '有要点超过 40 字，已截断']);
+  });
+
+  it('缺标题 / 缺一句话 / 要点不足 3 条的条目被跳过', () => {
+    const raw = JSON.stringify([
+      { ...GOOD, title: '' },
+      { ...GOOD, summary: undefined },
+      { ...GOOD, keyPoints: ['只有', '两条'] },
+      { ...GOOD, keyPoints: 'not-an-array' },
+      'garbage',
+      null,
+      GOOD,
+    ]);
+    expect(parseGeneratedQuestions(raw)).toHaveLength(1);
+  });
+
+  it('旧格式（question / answer 字符串）兼容为 prompt / detail，但仍要求一句话与要点', () => {
+    const [draft] = parseGeneratedQuestions(JSON.stringify([{ title: 't', question: '题干', answer: '答案', summary: 's', keyPoints: ['a', 'b', 'c'] }]));
+    expect(draft).toMatchObject({ prompt: '题干', detail: '答案', difficulty: 'medium' });
+    expect(parseGeneratedQuestions(JSON.stringify([{ title: 't', question: '题干', answer: '答案' }]))).toEqual([]);
   });
 
   it('完全不是 JSON 时返回空数组而不抛错', () => {
     expect(parseGeneratedQuestions('抱歉我做不到')).toEqual([]);
     expect(parseGeneratedQuestions('')).toEqual([]);
+    expect(parseGeneratedQuestions('[{"title": "坏 JSON",]')).toEqual([]);
   });
 });
 
@@ -76,7 +108,7 @@ describe('extractQuestionsFromChunks', () => {
     const calls: string[] = [];
     const fetchImpl = async (url: string) => {
       calls.push(url);
-      return jsonResponse(`[${JSON.stringify({ title: `题-${calls.length}`, question: '干', answer: null, difficulty: 'easy', tags: [] })}]`);
+      return jsonResponse(`[${JSON.stringify({ ...GOOD, title: `题-${calls.length}` })}]`);
     };
 
     const drafts = await extractQuestionsFromChunks(CONFIG, ['第一块资料', '第二块资料'], {
@@ -89,7 +121,7 @@ describe('extractQuestionsFromChunks', () => {
     expect(drafts.map((draft) => draft.title)).toEqual(['题-1', '题-2']);
   });
 
-  it('请求体带模型、Bearer Key 与系统提示词', async () => {
+  it('请求体带模型、Bearer Key 与系统提示词；提示词要求 v2 字段', async () => {
     let capturedInit: { method?: string; headers?: Record<string, string>; body?: string } | undefined;
     const fetchImpl = async (_url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }) => {
       capturedInit = init;
@@ -107,6 +139,9 @@ describe('extractQuestionsFromChunks', () => {
     expect(body.messages[0].role).toBe('system');
     expect(body.messages[1].role).toBe('user');
     expect(body.messages[1].content).toContain('【资料开始】');
+    for (const field of ['"summary"', '"keyPoints"', '"weight"', '"pitfalls"', '"followups"', 'keyPoints 必须 3–5 条']) {
+      expect(body.messages[1].content).toContain(field);
+    }
   });
 
   it('首块失败自动重试一次，两次都失败时报出块序号', async () => {
@@ -135,61 +170,60 @@ describe('extractQuestionsFromChunks', () => {
 });
 
 describe('parseRewrittenQuestion / rewriteQuestion - AI 改写单题', () => {
-  const GOOD_OBJECT = {
-    title: 'HashMap 在 JDK 8 后做了哪些优化？',
-    question: '请结合源码说明。',
-    answer: '引入红黑树、扩容优化等。',
-    difficulty: 'medium',
-    tags: ['Java'],
+  const ORIGINAL = {
+    title: '原题',
+    prompt: '原题补充',
+    summary: '原结论',
+    keyPoints: [{ text: '原要点一', weight: 2 as const }],
+    detail: null,
+    pitfalls: [],
+    followups: [],
   };
 
   it('解析裸 JSON 对象', () => {
-    const draft = parseRewrittenQuestion(JSON.stringify(GOOD_OBJECT));
-    expect(draft).toMatchObject({ title: GOOD_OBJECT.title, difficulty: 2, answerMd: GOOD_OBJECT.answer });
+    const draft = parseRewrittenQuestion(JSON.stringify(GOOD));
+    expect(draft).toMatchObject({ title: GOOD.title, difficulty: 'medium', summary: GOOD.summary });
   });
 
   it('解析代码栏包裹、前后带话的对象', () => {
-    const raw = `好的，这是改写后的版本：\n\`\`\`json\n${JSON.stringify(GOOD_OBJECT)}\n\`\`\`\n希望有帮助。`;
-    expect(parseRewrittenQuestion(raw)?.title).toBe(GOOD_OBJECT.title);
+    const raw = `好的，这是改写后的版本：\n\`\`\`json\n${JSON.stringify(GOOD)}\n\`\`\`\n希望有帮助。`;
+    expect(parseRewrittenQuestion(raw)?.title).toBe(GOOD.title);
   });
 
   it('模型把单题包进数组时也能取到', () => {
-    const draft = parseRewrittenQuestion(JSON.stringify([GOOD_OBJECT]));
-    expect(draft?.title).toBe(GOOD_OBJECT.title);
+    expect(parseRewrittenQuestion(JSON.stringify([GOOD]))?.title).toBe(GOOD.title);
   });
 
-  it('缺标题或缺题干返回 null', () => {
-    expect(parseRewrittenQuestion(JSON.stringify({ question: '只有题干' }))).toBeNull();
+  it('不满足规范（缺标题 / 要点不足）返回 null', () => {
+    expect(parseRewrittenQuestion(JSON.stringify({ ...GOOD, title: '' }))).toBeNull();
+    expect(parseRewrittenQuestion(JSON.stringify({ ...GOOD, keyPoints: ['一'] }))).toBeNull();
     expect(parseRewrittenQuestion('完全不是 JSON')).toBeNull();
   });
 
-  it('rewriteQuestion 调用 chat 并把原题与用户要求放进提示词', async () => {
+  it('rewriteQuestion 调用 chat 并把原题结构与用户要求放进提示词', async () => {
     let capturedBody = '';
     const fetchImpl = async (_url: string, init?: { body?: string }) => {
       capturedBody = init?.body ?? '';
-      return jsonResponse(JSON.stringify(GOOD_OBJECT));
+      return jsonResponse(JSON.stringify(GOOD));
     };
 
-    const draft = await rewriteQuestion(
-      CONFIG,
-      { title: '原题', questionMd: '原题干', answerMd: null, tags: ['Java'] },
-      { instruction: '更难一点', fetchImpl },
-    );
+    const draft = await rewriteQuestion(CONFIG, ORIGINAL, { instruction: '更难一点', fetchImpl });
 
-    expect(draft.title).toBe(GOOD_OBJECT.title);
+    expect(draft.title).toBe(GOOD.title);
     const userPrompt = (JSON.parse(capturedBody) as { messages: { content: string }[] }).messages[1].content;
-    expect(userPrompt).toContain('原题干');
+    expect(userPrompt).toContain('原题补充');
+    expect(userPrompt).toContain('[权重 2] 原要点一');
     expect(userPrompt).toContain('更难一点');
+    expect(userPrompt).toContain('"keyPoints"');
     expect(userPrompt).toContain('【原题开始】');
   });
 
   it('模型输出解析失败时抛可读错误', async () => {
     const fetchImpl = async () => jsonResponse('我也说不清楚');
-    await expect(
-      rewriteQuestion(CONFIG, { title: '原题', questionMd: '干', answerMd: null }, { fetchImpl }),
-    ).rejects.toThrow('无法解析');
+    await expect(rewriteQuestion(CONFIG, ORIGINAL, { fetchImpl })).rejects.toThrow('无法解析');
   });
 });
+
 
 describe('validateConfig / presets', () => {
   it('校验地址协议、Key 与模型名', () => {

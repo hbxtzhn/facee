@@ -1,112 +1,145 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import type { TestRuntime } from '../bank/__fixtures__/node-runtime';
 
 /**
- * FavoritesScreen 双段（收藏 | 错题）测试。
- * 锁两件事：错题本必须从 masteryStore 派生（不存第二份真相）；
- * 「开始复习」必须带完整练习队列进入详情页。
+ * 收藏 | 错题（题库 v2）：真实 useBankStore + Node SQLite。
+ * 收藏 = favoritesOnly；错题 = 标成「不会 / 模糊」的题；按当前题库自动隔离；
+ * 「开始复习」/「依次练习」/ 点题都以完整队列保存会话并进入详情。
  */
 
-const mockNavigate = jest.fn();
+jest.mock('../bank/runtime', () => ({ createDefaultRuntime: async () => null }));
+
+const mockNav = { push: jest.fn(), navigate: jest.fn(), goBack: jest.fn(), setOptions: jest.fn() };
 
 jest.mock('@react-navigation/native', () => ({
-  useNavigation: () => ({ navigate: mockNavigate }),
-  // 挂载时触发一次「聚焦」即可；若每次渲染都调用，load() 的新数组会引发无限循环
-  useFocusEffect: (callback: () => () => void) => {
-    const { useEffect } = require('react') as typeof import('react');
-    useEffect(() => callback(), []);
-  },
-}));
-
-jest.mock('../question-bank', () => ({
-  questionBankRepository: {
-    listQuestions: jest.fn(),
-  },
+  useNavigation: () => mockNav,
+  useFocusEffect: () => undefined,
 }));
 
 // eslint-disable-next-line import/first
 import { FavoritesScreen } from './FavoritesScreen';
 // eslint-disable-next-line import/first
-import { useMasteryStore } from '../store/masteryStore';
+import { QID, bankStore, sampleBundle, startEmptyBank, startSampleBank, stopBank, unwrap } from './home/__fixtures__/bank-screen';
 // eslint-disable-next-line import/first
-import { useQuestionBankStore } from '../question-bank/store';
-// eslint-disable-next-line import/first
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { resetBankStoreForTests } from '../bank/store';
 
-const mockRepository = jest.requireMock('../question-bank').questionBankRepository as {
-  listQuestions: jest.Mock;
-};
+const TX = 'MySQL 的隔离级别有哪些？';
+const EXPIRE = 'Redis 过期 key 的删除策略有哪些？';
+const PERSIST = 'Redis 持久化 RDB 与 AOF 的区别';
+const TCP = 'TCP 为什么是三次握手？';
 
-const BANK_ID = 'bank-a';
+describe('FavoritesScreen（题库 v2）', () => {
+  let t: TestRuntime | null = null;
 
-function question(id: string, title: string) {
-  return { id, title, difficulty: 2 as const, hasAnswer: true, sort: 1, tags: [] };
-}
-
-function seedStores() {
-  useQuestionBankStore.setState({
-    catalog: { schemaVersion: 1, id: BANK_ID, title: '测试题库', tags: [], questions: [] },
-  });
-  // favoritesStore.load() 会用存储覆盖内存态，所以收藏要通过 AsyncStorage 预置
-  void AsyncStorage.setItem('facee-favorites', JSON.stringify(['fav-1']));
-  // q1 不会、q2 模糊 → 错题；q3 会了 → 不进错题本；ghost 只存在于标记里（孤儿）
-  useMasteryStore.setState({
-    marks: {
-      [BANK_ID]: { 'wrong-1': 'unknown', 'wrong-2': 'fuzzy', 'known-1': 'known', ghost: 'unknown' },
-    },
-  });
-  mockRepository.listQuestions.mockResolvedValue([
-    question('fav-1', '收藏题：HashMap 的底层实现'),
-    question('wrong-1', '错题一：JVM 内存区域'),
-    question('wrong-2', '错题二：G1 收集器'),
-    question('known-1', '已掌握题：不进错题本'),
-  ]);
-}
-
-describe('FavoritesScreen 收藏 | 错题 双段', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    seedStores();
+  });
+  afterEach(async () => {
+    await cleanup();
+    await stopBank(t);
+    t = null;
   });
 
-  it('默认显示收藏段，题目来自收藏 ids', async () => {
+  it('收藏段列出当前题库的收藏，点题以收藏队列练习并保存会话', async () => {
+    t = await startSampleBank();
+    await unwrap(bankStore().toggleFavorite(QID.redisExpire));
+    await unwrap(bankStore().toggleFavorite(QID.mysqlTx));
     await render(<FavoritesScreen />);
 
-    await waitFor(() => expect(screen.getByText('收藏题：HashMap 的底层实现')).toBeTruthy());
-    expect(screen.getByLabelText('收藏（1 题）')).toBeTruthy();
-    expect(screen.queryByText('错题一：JVM 内存区域')).toBeNull();
+    expect(await screen.findByText(TX)).toBeTruthy();
+    expect(screen.getByText(EXPIRE)).toBeTruthy();
+    expect(screen.queryByText(TCP)).toBeNull();
+    expect(screen.getByText('复习 · 测试题库')).toBeTruthy();
+
+    // 默认排序：分类 order（MySQL 10 → Redis 50）
+    await fireEvent.press(screen.getByText(EXPIRE));
+    const queue = [QID.mysqlTx, QID.redisExpire];
+    await waitFor(() =>
+      expect(mockNav.navigate).toHaveBeenCalledWith('Detail', { id: QID.redisExpire, queue, queueIndex: 1, mode: 'practice' }),
+    );
+    expect(await unwrap(bankStore().getSession())).toMatchObject({ queue, index: 1, title: '收藏' });
+
+    await fireEvent.press(screen.getByLabelText('依次练习 2 道收藏'));
+    await waitFor(() =>
+      expect(mockNav.navigate).toHaveBeenLastCalledWith('Detail', { id: QID.mysqlTx, queue, queueIndex: 0, mode: 'practice' }),
+    );
   });
 
-  it('错题段由 masteryStore 派生：不会+模糊进列表，已掌握不进', async () => {
-    await render(<FavoritesScreen />);
-
-    await waitFor(() => expect(screen.getByLabelText('错题（2 题）')).toBeTruthy());
-    await fireEvent.press(screen.getByLabelText('错题（2 题）'));
-
-    await waitFor(() => expect(screen.getByText('错题一：JVM 内存区域')).toBeTruthy());
-    expect(screen.getByText('错题二：G1 收集器')).toBeTruthy();
-    expect(screen.queryByText('已掌握题：不进错题本')).toBeNull();
-    expect(screen.queryByText('收藏题：HashMap 的底层实现')).toBeNull();
-  });
-
-  it('孤儿标记（题库中不存在的题）被过滤并提示条数', async () => {
+  it('错题段 = 不会 / 模糊（不含会了与未标），开始复习带完整队列', async () => {
+    t = await startSampleBank();
+    await unwrap(bankStore().setMastery(QID.mysqlTx, 'unknown'));
+    await unwrap(bankStore().setMastery(QID.redisPersist, 'fuzzy'));
+    await unwrap(bankStore().setMastery(QID.tcpHandshake, 'known'));
     await render(<FavoritesScreen />);
 
     await fireEvent.press(await screen.findByLabelText('错题（2 题）'));
-    await waitFor(() => expect(screen.getByText(/另有 1 条标记来自已卸载的旧题库/)).toBeTruthy());
+    expect(screen.getByText(TX)).toBeTruthy();
+    expect(screen.getByText(PERSIST)).toBeTruthy();
+    expect(screen.queryByText(TCP)).toBeNull();
+    expect(screen.getByLabelText(`${TX}，中等 · 概念 · 不会`)).toBeTruthy();
+
+    await fireEvent.press(screen.getByLabelText('开始复习 2 道错题'));
+    await waitFor(() =>
+      expect(mockNav.navigate).toHaveBeenCalledWith('Detail', {
+        id: QID.mysqlTx,
+        queue: [QID.mysqlTx, QID.redisPersist],
+        queueIndex: 0,
+        mode: 'practice',
+      }),
+    );
+    expect(await unwrap(bankStore().getSession())).toMatchObject({ title: '错题复习' });
   });
 
-  it('开始复习带完整错题队列以练习模式进入详情页', async () => {
+  it('打标变化后（learningVersion）自动刷新：改标「会了」即移出错题', async () => {
+    t = await startSampleBank();
+    await unwrap(bankStore().setMastery(QID.mysqlTx, 'fuzzy'));
     await render(<FavoritesScreen />);
+    await fireEvent.press(await screen.findByLabelText('错题（1 题）'));
+    expect(screen.getByText(TX)).toBeTruthy();
 
-    await fireEvent.press(await screen.findByLabelText('错题（2 题）'));
-    await fireEvent.press(await screen.findByLabelText('开始复习 2 道错题'));
+    await unwrap(bankStore().setMastery(QID.mysqlTx, 'known'));
+    expect(await screen.findByText('错题本是空的')).toBeTruthy();
+  });
 
-    expect(mockNavigate).toHaveBeenCalledWith('Detail', expect.objectContaining({
-      id: 'wrong-1',
-      mode: 'practice',
-      queueIndex: 0,
-    }));
-    const params = mockNavigate.mock.calls[0][1] as { queue: string[] };
-    expect(params.queue).toEqual(['wrong-1', 'wrong-2']);
+  it('收藏按题库隔离：切换题库后列表跟随', async () => {
+    t = await startSampleBank();
+    await unwrap(bankStore().toggleFavorite(QID.mysqlTx));
+    const other = sampleBundle();
+    other.bank = { ...other.bank, id: 'github.com/facee-test/other-bank', name: '另一个题库', update: undefined };
+    t.clock.value += 1000;
+    const imported = await unwrap(bankStore().importBankFile(t.writeLocalFile('other.json', JSON.stringify(other))));
+    await render(<FavoritesScreen />);
+    expect(await screen.findByText(TX)).toBeTruthy();
+
+    await unwrap(bankStore().switchBank(imported.bankId));
+    expect(await screen.findByText('还没有收藏题目')).toBeTruthy();
+    expect(screen.getByText('复习 · 另一个题库')).toBeTruthy();
+  });
+
+  it('列表内搜索：无匹配给清除入口', async () => {
+    t = await startSampleBank();
+    await unwrap(bankStore().toggleFavorite(QID.mysqlTx));
+    await unwrap(bankStore().toggleFavorite(QID.tcpHandshake));
+    await render(<FavoritesScreen />);
+    await screen.findByText(TX);
+
+    await fireEvent.changeText(screen.getByLabelText('搜索当前列表'), 'tcp');
+    expect(screen.queryByText(TX)).toBeNull();
+    expect(screen.getByText(TCP)).toBeTruthy();
+    await fireEvent.changeText(screen.getByLabelText('搜索当前列表'), '没有的词');
+    expect(screen.getByText('没有匹配「没有的词」的题目')).toBeTruthy();
+  });
+
+  it('没有题库：空态给线上题库 / 新建本地题库入口', async () => {
+    t = await startEmptyBank();
+    await render(<FavoritesScreen />);
+    await fireEvent.press(await screen.findByText('浏览线上题库'));
+    expect(mockNav.navigate).toHaveBeenCalledWith('OnlineBanks');
+  });
+
+  it('Web（unsupported）显示不支持说明', async () => {
+    await resetBankStoreForTests();
+    await render(<FavoritesScreen />);
+    expect(await screen.findByText('Web 预览不支持本地题库')).toBeTruthy();
   });
 });

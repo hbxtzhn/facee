@@ -1,532 +1,400 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  AppState,
-  FlatList,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState, FlatList, Platform, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, type CompositeNavigationProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import {
-  Boxes,
-  BriefcaseBusiness,
-  ChevronRight,
-  Code2,
-  Cpu,
-  Database,
-  GitBranch,
-  Globe,
-  HardDrive,
-  Layers3,
-  Leaf,
-  MessagesSquare,
-  Network,
-  Play,
-  RotateCcw,
-  Server,
-  Sparkles,
-  Zap,
-  type LucideIcon,
-} from 'lucide-react-native';
-import type { HomeStackParamList } from '../navigation/AppNavigator';
-import {
-  buildCategorySummaries,
-  collectTagSubtreeIds,
-  filterCatalogQuestions,
-  questionBankRepository,
-  type QuestionBankCatalog,
-  type QuestionTag,
-} from '../question-bank';
-import { useUserStore } from '../store/userStore';
-import { useMasteryStore } from '../store/masteryStore';
-import { computeDueQuestionIds, mergeBankReviewRecords } from '../lib/spaced-review';
-import { EmptyState, TabHeader } from '../components/ui';
+import { ChevronDown, Search } from 'lucide-react-native';
+import type { HomeStackParamList, RootStackParamList } from '../navigation/AppNavigator';
+import { useBankStore, type CategoryInfo, type PracticeSession, type TagInfo } from '../bank';
 import { SkeletonBlock } from '../components/skeleton';
-import { cardChrome, colors, pressedScale, radii, spacing, tints, typography } from '../theme';
+import { colors, layout, radii, spacing, typography } from '../theme';
+import { BankSwitcherSheet } from './home/BankSwitcherSheet';
+import { BankGateEmpty, useBankGateState, useEnsureBankInitialized } from './home/components/bank-gate';
+import { ICON_SIZE, ICON_STROKE, ReadingRow, SectionLabel, TextAction } from './home/components/reading';
+import { EmptyState } from '../components/ui';
+import { describeSection } from './sections/components';
 
-type Nav = NativeStackNavigationProp<HomeStackParamList, 'Home'>;
+/** 首页在 HomeStack 内；详情页与题库管理页挂在 RootStack，navigate 会冒泡到根栈 */
+type Nav = CompositeNavigationProp<
+  NativeStackNavigationProp<HomeStackParamList, 'Home'>,
+  NativeStackNavigationProp<RootStackParamList>
+>;
 
-interface TagItem extends QuestionTag {
-  questionCount: number;
+/** 首页底部列表项：分类；题库没有分类时回退为根标签 */
+type HomeEntry = { kind: 'category'; category: CategoryInfo } | { kind: 'tag'; tag: TagInfo };
+
+interface ResumeTarget {
+  session: PracticeSession;
+  questionId: string;
+  questionTitle: string | null;
 }
 
-interface CategoryItem {
-  id: string;
-  name: string;
-  questionCount: number;
-  kind: 'category';
-}
-
-interface DomainItem extends TagItem {
-  kind: 'tag';
-}
-
-type HomeEntry = CategoryItem | DomainItem;
-
-const CATEGORY_ICONS: Record<string, LucideIcon> = {
-  java: Code2,
-  'java-basic': Code2,
-  jvm: Cpu,
-  spring: Leaf,
-  database: Database,
-  mysql: Database,
-  redis: Boxes,
-  cache: Zap,
-  concurrent: Server,
-  middleware: Layers3,
-  mq: MessagesSquare,
-  network: Globe,
-  'cs-basic': Globe,
-  os: HardDrive,
-  distributed: GitBranch,
-  architecture: Network,
-  ai: Sparkles,
-  projects: BriefcaseBusiness,
-};
-
-/** 未知分类的兜底图标：按 id 哈希轮换，避免整列同一个图形 */
-const FALLBACK_ICONS: LucideIcon[] = [Layers3, Code2, Database, Network, Boxes, Cpu];
-
-function hashString(value: string): number {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
-  }
-  return hash;
-}
-
-/**
- * 分类视觉：图标 + 软底色 + 前景色成组返回。
- * 分类集合由题库数据决定（规范 §5.1），无法写死品牌图标；
- * 已知领域给专属图形，其余按 id 确定性轮换兜底图标与色板。
- */
-export function resolveCategoryVisual(id: string): { Icon: LucideIcon; bg: string; fg: string } {
-  const hash = hashString(id);
-  const Icon = CATEGORY_ICONS[id] ?? FALLBACK_ICONS[hash % FALLBACK_ICONS.length];
-  const tint = tints[hash % tints.length];
-  return { Icon, bg: tint.bg, fg: tint.fg };
+/** 统计行：「共 120 题 · 已标 30 · 会了 12」 */
+export function describeStats(stats: { questionCount: number; markedCount: number; knownCount: number } | null): string | null {
+  if (!stats) return null;
+  return [
+    `共 ${stats.questionCount} 题`,
+    stats.markedCount > 0 ? `已标 ${stats.markedCount}` : null,
+    stats.knownCount > 0 ? `会了 ${stats.knownCount}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 }
 
 export function HomeScreen() {
   const nav = useNavigation<Nav>();
-  const lastViewedId = useUserStore((state) => state.lastViewedQuestionId);
-  const totalCount = useUserStore((state) => state.totalCount);
-  const masteryMarks = useMasteryStore((state) => state.marks);
-  const masteryMarkedAt = useMasteryStore((state) => state.markedAt);
-  const [roots, setRoots] = useState<TagItem[]>([]);
-  const [categories, setCategories] = useState<CategoryItem[]>([]);
-  const [catalog, setCatalog] = useState<QuestionBankCatalog | null>(null);
-  const [loading, setLoading] = useState(true);
+  useEnsureBankInitialized();
+  const gate = useBankGateState();
+  const activeBank = useBankStore((state) => state.activeBank);
+  const categories = useBankStore((state) => state.categories);
+  const tags = useBankStore((state) => state.tags);
+  const collections = useBankStore((state) => state.collections);
+  const sections = useBankStore((state) => state.sections);
+  const stats = useBankStore((state) => state.stats);
+  const contentVersion = useBankStore((state) => state.contentVersion);
+  const learningVersion = useBankStore((state) => state.learningVersion);
+  const [dueIds, setDueIds] = useState<string[]>([]);
+  const [resume, setResume] = useState<ResumeTarget | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [switcherVisible, setSwitcherVisible] = useState(false);
+  const canManageBanks = Platform.OS !== 'web';
+  const ready = gate === 'ready';
 
-  const load = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
-    setError(null);
-    try {
-      await useMasteryStore.getState().load();
-      const loadedCatalog = await questionBankRepository.getCatalog();
-      if (!loadedCatalog) throw new Error('本机还没有安装题库');
-      setCatalog(loadedCatalog);
-      setCategories(buildCategorySummaries(loadedCatalog).map((item) => ({ ...item, kind: 'category' as const })));
-      setRoots(buildRootTags(loadedCatalog));
-    } catch (loadError) {
-      setCatalog(null);
-      setRoots([]);
-      setCategories([]);
-      setError(loadError instanceof Error ? loadError.message : String(loadError));
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+  /** 加载代次：较早发起、较晚完成的查询不得覆盖新结果（切换题库时尤其重要） */
+  const generation = useRef(0);
+
+  // 今日复习与「继续上次练习」都是查询结果（store 不缓存），按刷新信号重新取
+  const loadToday = useCallback(async () => {
+    const current = ++generation.current;
+    const store = useBankStore.getState();
+    if (store.status !== 'ready' || !store.activeBankId) {
+      setDueIds([]);
+      setResume(null);
+      return;
     }
+    const [due, session] = await Promise.all([store.listDueQuestionIds(), store.getSession()]);
+    let target: ResumeTarget | null = null;
+    if (session.ok && session.value) {
+      const questionId = session.value.queue[session.value.index];
+      const lookup = await store.listQuestions({ questionIds: [questionId] });
+      const questionTitle = lookup.ok ? lookup.value[0]?.title ?? null : null;
+      target = { session: session.value, questionId, questionTitle };
+    }
+    if (current !== generation.current) return;
+    setDueIds(due.ok ? due.value : []);
+    setResume(target);
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void loadToday();
+  }, [loadToday, gate, contentVersion, learningVersion]);
 
   useFocusEffect(
     useCallback(() => {
-      void load(true);
-    }, [load]),
+      void loadToday();
+    }, [loadToday]),
   );
 
-  // 「继续上次练习」：以练习模式回到上次那道题，队列 = 它所在分类的整份题目
-  // （无分类则回退全库），顺序与列表页一致（sort → id）。找不到元数据时退回浏览模式。
-  function resumePractice() {
-    if (!lastViewedId) return;
-    const meta = catalog?.questions.find((question) => question.id === lastViewedId);
-    if (!meta) {
-      nav.push('Detail', { id: lastViewedId });
-      return;
-    }
-    const siblings = filterCatalogQuestions(catalog!, meta.categoryId ? { categoryId: meta.categoryId } : {});
-    const queue = siblings.map((question) => question.id);
-    nav.push('Detail', {
-      id: lastViewedId,
-      meta,
-      queue,
-      queueIndex: queue.indexOf(lastViewedId),
-      mode: 'practice',
-    });
-  }
-
-  // 「继续上次练习」只在当前题库里真的有这道题时展示：
-  // 换题库后 lastViewed 可能是旧库遗留，避免点进去报「没有找到元数据」
-  const lastViewedExists =
-    lastViewedId !== null &&
-    (catalog === null || catalog.questions.some((question) => question.id === lastViewedId));
-
-  // 今日复习：当前题库里按间隔口径到期的题（1/3/7 天，见 lib/spaced-review.ts）。
-  // 只保留仍存在于题库的题，防孤儿数据；复用练习队列链路，不开新页面。
-  // 到期判定只由墙上时钟驱动，而下方三个数据依赖都不随时间变化——
-  // 停在首页跨过到期边界时必须靠 here 的粗粒度心跳与回前台刷新推进（评审 2026-10-02）。
-  const [dueTick, setDueTick] = useState(() => Date.now());
+  // 到期只由墙上时钟驱动：停在首页跨过到期边界时靠粗粒度心跳与回前台刷新推进
   useEffect(() => {
-    const timer = setInterval(() => setDueTick(Date.now()), 60_000);
+    const timer = setInterval(() => void loadToday(), 60_000);
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
-        setDueTick(Date.now());
-        void load(true);
-      }
+      if (state === 'active') void loadToday();
     });
     return () => {
       clearInterval(timer);
       subscription.remove();
     };
-  }, [load]);
+  }, [loadToday]);
 
-  const dueQuestionIds = useMemo(() => {
-    if (!catalog) return [];
-    const records = mergeBankReviewRecords(catalog.id, masteryMarks, masteryMarkedAt);
-    const existing = new Set(catalog.questions.map((question) => question.id));
-    return computeDueQuestionIds(records, dueTick).filter((questionId) => existing.has(questionId));
-  }, [catalog, masteryMarks, masteryMarkedAt, dueTick]);
-
-  function startReview() {
-    if (!catalog || dueQuestionIds.length === 0) return;
-    const firstId = dueQuestionIds[0];
-    const meta = catalog.questions.find((question) => question.id === firstId);
-    nav.push('Detail', {
-      id: firstId,
-      meta,
-      queue: dueQuestionIds,
-      queueIndex: 0,
-      mode: 'review',
-    });
+  async function onRefresh() {
+    setRefreshing(true);
+    await useBankStore.getState().refresh();
+    await loadToday();
+    setRefreshing(false);
   }
 
-  // 有分类就用分类（§5.1）；旧格式题库没有分类，回退到标签领域，行为不回归。
-  const hasCategories = categories.length > 0;
-  const entries: HomeEntry[] = hasCategories
-    ? categories
-    : roots.map((tag) => ({ ...tag, kind: 'tag' as const }));
+  async function startQueue(queue: string[], index: number, mode: PracticeSession['mode'], title: string) {
+    if (queue.length === 0) return;
+    await useBankStore.getState().saveSession({ queue, index, mode, title });
+    nav.push('Detail', { id: queue[index], queue, queueIndex: index, mode });
+  }
 
-  if (loading) {
-    // 骨架屏：轮廓直接复用真实布局，避免居中转圈的「空白突跳」
+  function resumePractice() {
+    if (!resume) return;
+    const { session } = resume;
+    nav.push('Detail', { id: resume.questionId, queue: session.queue, queueIndex: session.index, mode: session.mode });
+  }
+
+  const openOnlineBanks = () => nav.navigate('OnlineBanks');
+  const openBankManager = () => nav.navigate('BankManager');
+
+  const entries: HomeEntry[] =
+    categories.length > 0
+      ? categories.map((category) => ({ kind: 'category' as const, category }))
+      : tags.filter((tag) => tag.parentId === null).map((tag) => ({ kind: 'tag' as const, tag }));
+
+  if (gate === 'loading') {
+    // 骨架：轮廓与真实排版一致（眉题 / 大标题 / 一组细行），避免居中转圈的突跳
     return (
       <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <View style={styles.skeletonContent}>
-          <View style={styles.skeletonHeaderRow}>
-            <SkeletonBlock width={84} height={26} radius={radii.pill} />
-            <SkeletonBlock width={72} height={24} radius={radii.pill} />
-          </View>
-          <SkeletonBlock width={212} height={30} radius={radii.sm} style={{ marginTop: spacing.md }} />
-          <SkeletonBlock width={256} height={18} radius={radii.xs} style={{ marginTop: spacing.sm }} />
-          <SkeletonBlock width="100%" height={74} radius={radii.lg} style={{ marginTop: spacing.lg }} />
-          <SkeletonBlock width={128} height={16} radius={radii.xs} style={{ marginTop: spacing.xxl }} />
-          {[0, 1, 2, 3, 4].map((row) => (
-            <SkeletonBlock
-              key={row}
-              width="100%"
-              height={70}
-              radius={radii.md}
-              style={{ marginTop: spacing.md }}
-            />
+        <View style={styles.skeletonContent} accessibilityLabel="正在打开题库">
+          <SkeletonBlock width={64} height={12} radius={radii.xs} />
+          <SkeletonBlock width={196} height={30} radius={radii.xs} style={{ marginTop: spacing.sm }} />
+          <SkeletonBlock width={148} height={14} radius={radii.xs} style={{ marginTop: spacing.sm }} />
+          <SkeletonBlock width={48} height={12} radius={radii.xs} style={{ marginTop: spacing.xxxl }} />
+          {[0, 1, 2, 3, 4, 5].map((row) => (
+            <View key={row} style={styles.skeletonRow}>
+              <SkeletonBlock width={row % 2 ? '46%' : '58%'} height={16} radius={radii.xs} />
+              <SkeletonBlock width={24} height={12} radius={radii.xs} />
+            </View>
           ))}
         </View>
       </SafeAreaView>
     );
   }
 
+  const statsLine = ready ? describeStats(stats) : null;
+  const resumeMeta = resume
+    ? [resume.session.title, `第 ${resume.session.index + 1} / ${resume.session.queue.length} 题`].filter(Boolean).join(' · ')
+    : null;
+  const updatedCount = stats?.updatedCount ?? 0;
+  const showToday = ready && (dueIds.length > 0 || resume !== null || updatedCount > 0);
+
+  const header = (
+    <View style={styles.header}>
+      <Text style={styles.eyebrow}>FACEE · 题库</Text>
+      {/* 当前题库切换器：标题即入口，点按弹出底部题库列表 */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={activeBank ? `当前题库 ${activeBank.name}，点按切换` : '还没有题库，点按添加'}
+        accessibilityHint="打开题库列表，切换或管理题库"
+        hitSlop={6}
+        disabled={gate === 'unsupported'}
+        onPress={() => setSwitcherVisible(true)}
+        style={({ pressed }) => [styles.bankSwitcher, pressed && styles.pressed]}
+      >
+        <Text style={styles.bankTitle} numberOfLines={2}>
+          {activeBank ? activeBank.name : '选择题库'}
+        </Text>
+        {gate !== 'unsupported' ? (
+          <ChevronDown size={18} color={colors.textSecondary} strokeWidth={ICON_STROKE} style={styles.chevron} />
+        ) : null}
+      </Pressable>
+      {statsLine ? <Text style={styles.summary}>{statsLine}</Text> : null}
+
+      {ready ? (
+        // 全局搜索：整库搜索（FTS ≥ 3 字，1–2 字走 LIKE，由数据层处理）
+        <Pressable
+          accessibilityRole="search"
+          accessibilityLabel="搜索全部题目"
+          onPress={() => nav.push('List', { search: true })}
+          style={({ pressed }) => [styles.searchEntry, pressed && styles.pressed]}
+        >
+          <Search size={ICON_SIZE} color={colors.textSecondary} strokeWidth={ICON_STROKE} />
+          <Text style={styles.searchPlaceholder}>搜索全部题目</Text>
+        </Pressable>
+      ) : null}
+
+      {showToday ? (
+        <>
+          <SectionLabel>今天</SectionLabel>
+          {/* 今日复习：有到期题才出现，到齐即消失 */}
+          {dueIds.length > 0 ? (
+            <ReadingRow
+              first
+              title={`今日复习 ${dueIds.length} 题`}
+              meta="按掌握度间隔安排的到期题，复习时重新打标顺延"
+              trailing="开始"
+              accessibilityLabel={`今日复习，${dueIds.length} 道题到期`}
+              accessibilityHint="按掌握度间隔安排的到期题队列，复习时重新打标顺延"
+              onPress={() => void startQueue(dueIds, 0, 'review', '今日复习')}
+            />
+          ) : null}
+          {resume ? (
+            <ReadingRow
+              first={dueIds.length === 0}
+              emphasis
+              title="继续上次练习"
+              snippet={resume.questionTitle}
+              meta={resumeMeta}
+              trailing="继续"
+              accessibilityLabel={`继续上次练习，${resume.questionTitle ?? resume.questionId}`}
+              accessibilityHint="回到上次的练习队列与位置，左右滑动切换题目"
+              onPress={resumePractice}
+            />
+          ) : null}
+          {updatedCount > 0 ? (
+            <ReadingRow
+              first={dueIds.length === 0 && !resume}
+              title={`内容已更新 ${updatedCount} 题`}
+              meta="学过的题在题库更新后有改动，重新看一遍即可清除"
+              accessibilityLabel={`内容已更新，${updatedCount} 道题`}
+              onPress={() => nav.push('List', { updatedOnly: true })}
+            />
+          ) : null}
+        </>
+      ) : null}
+
+      {ready && categories.length > 0 ? (
+        <>
+          <SectionLabel trailing={<TextAction label="管理" muted accessibilityLabel="管理我的分区" onPress={() => nav.push('Sections')} />}>
+            我的分区
+          </SectionLabel>
+          {sections.length === 0 ? (
+            <ReadingRow
+              first
+              title="新建分区"
+              meta="把常练的分类归到一起，只是你自己的目录，不改动题库"
+              accessibilityLabel="新建分区"
+              onPress={() => nav.push('Sections')}
+            />
+          ) : (
+            sections.map((section, index) => (
+              <ReadingRow
+                key={section.id}
+                first={index === 0}
+                title={section.name}
+                titleLines={1}
+                meta={describeSection(section)}
+                accessibilityLabel={`分区 ${section.name}，${describeSection(section)}`}
+                onPress={() => nav.push('Section', { sectionId: section.id, sectionName: section.name })}
+              />
+            ))
+          )}
+        </>
+      ) : null}
+
+      {ready && collections.length > 0 ? (
+        <>
+          <SectionLabel trailing={<Text style={styles.sectionCount}>{collections.length}</Text>}>专题</SectionLabel>
+          {collections.map((collection, index) => (
+            <ReadingRow
+              key={collection.id}
+              first={index === 0}
+              title={collection.name}
+              titleLines={1}
+              meta={collection.description}
+              trailing={String(collection.questionIds.length)}
+              accessibilityLabel={`专题 ${collection.name}，${collection.questionIds.length} 道题`}
+              onPress={() => nav.push('List', { collectionId: collection.id, collectionName: collection.name })}
+            />
+          ))}
+        </>
+      ) : null}
+
+      {ready && entries.length > 0 ? (
+        <SectionLabel trailing={<Text style={styles.sectionCount}>{entries.length}</Text>}>
+          {categories.length > 0 ? '分类' : '标签'}
+        </SectionLabel>
+      ) : null}
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <FlatList
-        data={entries}
-        keyExtractor={(item) => item.id}
-        numColumns={1}
+        data={ready ? entries : []}
+        keyExtractor={(item) => (item.kind === 'category' ? `c:${item.category.id}` : `t:${item.tag.id}`)}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => void load(true)}
-            colors={[colors.primary]}
-            tintColor={colors.primary}
-          />
-        }
-        ListHeaderComponent={
-          <View style={styles.headerWrapper}>
-            <TabHeader
-              eyebrow="FACEE"
-              title="今天想练什么？"
-              subtitle="精选题库沉浸练习，随时查看思路并继续追问。"
-              action={totalCount > 0 ? (
-                <View style={styles.headerMetaPill}>
-                  <Text style={styles.headerMetaPillText}>已刷 {totalCount} 题</Text>
-                </View>
-              ) : null}
+          ready ? (
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => void onRefresh()}
+              colors={[colors.primary]}
+              tintColor={colors.primary}
             />
-
-            {/* 强化但不过度臃肿的“继续上次”快捷卡片 */}
-            {lastViewedExists ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`继续上次练习，题目 ${lastViewedId}`}
-                accessibilityHint="以练习模式进入，左右滑动切换同类题目"
-                onPress={resumePractice}
-                style={({ pressed }) => [styles.resumeCard, pressed && styles.pressed]}
-              >
-                <View style={styles.resumeIconWrap}>
-                  <Play size={16} color={colors.primary} fill={colors.primary} />
-                </View>
-                <View style={styles.resumeCopy}>
-                  <Text style={styles.resumeLabel}>继续上次练习</Text>
-                  <Text style={styles.resumeTitle} numberOfLines={1}>
-                    {lastViewedId}
-                  </Text>
-                </View>
-                <View style={styles.resumeAction}>
-                  <Text style={styles.resumeActionText}>进入</Text>
-                  <ChevronRight size={16} color={colors.textSecondary} strokeWidth={2} />
-                </View>
-              </Pressable>
-            ) : null}
-
-            {/* 今日复习：有到期题才出现，到齐即消失 */}
-            {dueQuestionIds.length > 0 ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`今日复习，${dueQuestionIds.length} 道题到期`}
-                accessibilityHint="按掌握度间隔安排的到期题队列，复习时重新打标顺延"
-                onPress={startReview}
-                style={({ pressed }) => [styles.resumeCard, pressed && styles.pressed]}
-              >
-                <View style={styles.reviewIconWrap}>
-                  <RotateCcw size={16} color={colors.warning} strokeWidth={2} />
-                </View>
-                <View style={styles.resumeCopy}>
-                  <Text style={styles.resumeLabel}>今日复习</Text>
-                  <Text style={styles.resumeTitle} numberOfLines={1}>
-                    {dueQuestionIds.length} 道题到期，趁热再过一遍
-                  </Text>
-                </View>
-                <View style={styles.resumeAction}>
-                  <Text style={styles.resumeActionText}>复习</Text>
-                  <ChevronRight size={16} color={colors.textSecondary} strokeWidth={2} />
-                </View>
-              </Pressable>
-            ) : null}
-
-            {/* 分类标题与数量摘要 */}
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>
-                {hasCategories ? '知识体系分类' : '知识领域'}
-              </Text>
-              <Text style={styles.sectionSubtitle}>
-                {hasCategories ? `共 ${categories.length} 个大类` : `共 ${roots.length} 个领域`}
-              </Text>
-            </View>
-          </View>
+          ) : undefined
         }
-        renderItem={({ item }) => {
-          const { Icon, bg, fg } = resolveCategoryVisual(item.id);
-          const count = item.questionCount;
+        ListHeaderComponent={header}
+        renderItem={({ item, index }) => {
+          if (item.kind === 'tag') {
+            const { tag } = item;
+            return (
+              <ReadingRow
+                first={index === 0}
+                title={tag.name}
+                titleLines={1}
+                trailing={String(tag.questionCount)}
+                accessibilityLabel={`${tag.name}，${tag.questionCount} 道题`}
+                onPress={() => nav.push('List', { tagId: tag.id, tagName: tag.name })}
+              />
+            );
+          }
+          const { category } = item;
           return (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`${item.name}，${count} 道题`}
-              onPress={() =>
-                item.kind === 'category'
-                  ? nav.push('List', { categoryId: item.id, categoryName: item.name })
-                  : nav.push('List', { tagId: item.id, tagName: item.name })
-              }
-              style={({ pressed }) => [styles.categoryCard, pressed && styles.pressed]}
-            >
-              <View style={[styles.categoryIconBox, { backgroundColor: bg }]}>
-                <Icon size={20} color={fg} strokeWidth={1.9} />
-              </View>
-              <View style={styles.categoryInfo}>
-                <Text style={styles.categoryName}>{item.name}</Text>
-                <Text style={styles.categoryCount}>{count} 道核心题</Text>
-              </View>
-              <ChevronRight size={18} color={colors.textSubtle} strokeWidth={1.8} />
-            </Pressable>
+            <ReadingRow
+              first={index === 0}
+              title={category.name}
+              titleLines={1}
+              meta={category.knownCount > 0 ? `已掌握 ${category.knownCount} 题` : null}
+              trailing={String(category.questionCount)}
+              accessibilityLabel={`${category.name}，${category.questionCount} 道题`}
+              onPress={() => nav.push('List', { categoryId: category.id, categoryName: category.name })}
+            />
           );
         }}
         ListEmptyComponent={
-          <EmptyState
-            title={error ? '无法读取本地题库' : '题库里还没有分类'}
-            description={error ?? '重新安装一个有效的题库包后即可开始学习。'}
-            actionLabel="重新读取"
-            onAction={() => void load()}
-          />
+          ready ? (
+            <EmptyState title="题库里还没有分类" description="这个题库暂时没有可浏览的分类。" />
+          ) : (
+            <BankGateEmpty state={gate} onOnlineBanks={openOnlineBanks} onCreateLocal={openBankManager} />
+          )
         }
         contentContainerStyle={styles.content}
+      />
+      <BankSwitcherSheet
+        visible={switcherVisible}
+        onClose={() => setSwitcherVisible(false)}
+        onManage={openBankManager}
+        onOnlineBanks={openOnlineBanks}
+        canManage={canManageBanks}
       />
     </SafeAreaView>
   );
 }
 
-export function buildRootTags(catalog: QuestionBankCatalog): TagItem[] {
-  return catalog.tags
-    .filter((tag) => tag.parentId === null)
-    .sort((left, right) => left.sort - right.sort || left.id.localeCompare(right.id))
-    .map((tag) => {
-      const ids = collectTagSubtreeIds(catalog.tags, tag.id);
-      return {
-        ...tag,
-        questionCount: catalog.questions.filter((question) =>
-          question.tags.some((questionTag) => ids.has(questionTag.id)),
-        ).length,
-      };
-    });
-}
-
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.background },
-  content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl, flexGrow: 1 },
-  headerWrapper: { paddingTop: spacing.md, paddingBottom: spacing.md },
-  headerMetaPill: {
+  content: {
+    paddingHorizontal: layout.pagePadding,
+    paddingBottom: spacing.xxxl,
+    flexGrow: 1,
+    width: '100%',
+    maxWidth: layout.readingMaxWidth,
+    alignSelf: 'center',
+  },
+  header: { paddingTop: spacing.xl },
+  eyebrow: { ...typography.eyebrow, color: colors.textMuted },
+  bankSwitcher: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surfaceWarm,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+    marginTop: spacing.sm,
   },
-  headerMetaPillText: {
-    ...typography.caption,
-    color: colors.textMuted,
-    fontWeight: '600',
-    fontSize: 11,
-  },
-  resumeCard: {
+  bankTitle: { ...typography.display, color: colors.text, flexShrink: 1 },
+  chevron: { marginLeft: spacing.xs, marginTop: 4 },
+  summary: { ...typography.caption, color: colors.textMuted, marginTop: spacing.xs },
+  searchEntry: {
     flexDirection: 'row',
     alignItems: 'center',
-    ...cardChrome,
-    borderRadius: radii.lg,
-    padding: spacing.lg,
-    marginBottom: spacing.xxl,
+    gap: spacing.sm,
+    minHeight: 44,
+    marginTop: spacing.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderStrong,
   },
-  resumeIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: radii.pill,
-    backgroundColor: colors.surfaceWarm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.md,
-  },
-  reviewIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: radii.pill,
-    backgroundColor: colors.warningSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.md,
-  },
-  resumeCopy: { flex: 1 },
-  resumeLabel: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    fontWeight: '600',
-    fontSize: 11,
-  },
-  resumeTitle: {
-    ...typography.bodyStrong,
-    color: colors.text,
-    marginTop: 2,
-    fontSize: 14,
-  },
-  resumeAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2,
-    height: 28,
-    backgroundColor: colors.surfaceSubtle,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radii.pill,
-  },
-  resumeActionText: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    fontWeight: '600',
-    fontSize: 12,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    paddingBottom: spacing.sm,
-    marginBottom: spacing.xs,
-  },
-  sectionTitle: {
-    ...typography.heading,
-    color: colors.text,
-    fontSize: 16,
-  },
-  sectionSubtitle: {
-    ...typography.caption,
-    color: colors.textSubtle,
-  },
-  categoryCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    ...cardChrome,
-    borderRadius: radii.md,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-  },
-  categoryIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: radii.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.md,
-  },
-  categoryInfo: {
-    flex: 1,
-  },
-  categoryName: {
-    ...typography.bodyStrong,
-    color: colors.text,
-    fontSize: 15,
-  },
-  categoryCount: {
-    ...typography.caption,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
-  pressed: { ...pressedScale },
-  skeletonContent: {
-    flex: 1,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-  },
-  skeletonHeaderRow: {
+  searchPlaceholder: { ...typography.body, color: colors.textSubtle },
+  sectionCount: { ...typography.caption, color: colors.textSubtle },
+  pressed: { opacity: 0.6 },
+  skeletonContent: { flex: 1, paddingHorizontal: layout.pagePadding, paddingTop: spacing.xl },
+  skeletonRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing.md,
+    paddingVertical: spacing.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
 });
-

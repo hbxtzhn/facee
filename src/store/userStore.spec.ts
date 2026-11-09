@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from '@jest/globals';
-import { useUserStore } from './userStore';
+import { READING_SCALES, READING_SCALE_LABELS, nextReadingScale, useUserStore } from './userStore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const STORAGE_KEY = 'facee-user-state';
@@ -10,6 +10,7 @@ const INITIAL = {
   hasPromptedRule: false,
   lastViewedQuestionId: null,
   answerExpandedByDefault: false,
+  readingScale: 1 as const,
 };
 
 async function flushPersist(): Promise<void> {
@@ -69,6 +70,40 @@ describe('useUserStore - 刷题总数（不按天统计）', () => {
     expect(useUserStore.getState().hasPromptedRule).toBe(false);
     useUserStore.getState().setPrompted();
     expect(useUserStore.getState().hasPromptedRule).toBe(true);
+  });
+
+  it('阅读字号默认标准（1），可切换并持久化、恢复', async () => {
+    expect(useUserStore.getState().readingScale).toBe(1);
+
+    useUserStore.getState().setReadingScale(1.3);
+    expect(useUserStore.getState().readingScale).toBe(1.3);
+    await flushPersist();
+    expect(JSON.parse((await AsyncStorage.getItem(STORAGE_KEY)) ?? '{}').readingScale).toBe(1.3);
+
+    useUserStore.setState({ ...INITIAL });
+    await useUserStore.getState().load();
+    expect(useUserStore.getState().readingScale).toBe(1.3);
+  });
+
+  it('阅读字号只接受三档；旧数据缺字段或非法值回落标准', async () => {
+    useUserStore.getState().setReadingScale(2 as never);
+    expect(useUserStore.getState().readingScale).toBe(1);
+
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ totalCount: 3, viewedQuestionIds: [], readingScale: 1.2 }));
+    await useUserStore.getState().load();
+    expect(useUserStore.getState().readingScale).toBe(1);
+
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ totalCount: 3, viewedQuestionIds: [] }));
+    useUserStore.setState({ readingScale: 1.15 });
+    await useUserStore.getState().load();
+    expect(useUserStore.getState().readingScale).toBe(1);
+  });
+
+  it('nextReadingScale 循环 标准 → 大 → 特大 → 标准', () => {
+    expect(nextReadingScale(1)).toBe(1.15);
+    expect(nextReadingScale(1.15)).toBe(1.3);
+    expect(nextReadingScale(1.3)).toBe(1);
+    expect(READING_SCALES.map((scale) => READING_SCALE_LABELS[scale])).toEqual(['标准', '大', '特大']);
   });
 
   it('答案默认展开设置默认关闭，可切换并持久化', async () => {

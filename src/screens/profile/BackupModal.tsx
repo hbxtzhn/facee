@@ -1,42 +1,53 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
-import * as Sharing from 'expo-sharing';
-import { Database, FileUp } from 'lucide-react-native';
-import { useQuestionBankStore } from '../../question-bank/store';
-import { AppButton } from '../../components/ui';
+import { useBankStore, type BackupImportResult } from '../../bank';
 import { colors, spacing, typography } from '../../theme';
 import { ModalSheet, SheetError } from './ModalSheet';
+import { InlineNote, ListRow, TextAction } from './components/list';
+import { BankBusyNote } from './components/bank-status';
+import { UNSUPPORTED_TEXT, bankErrorText, describeInstall, shareFile } from './bank-helpers';
+
+/** 恢复结果摘要（纯文本，供展示与测试） */
+export function describeBackupImport(result: BackupImportResult): string {
+  const merged = result.merged;
+  const lines = [
+    `学习数据：掌握度 ${merged.progress} 条、要点自评 ${merged.keypointChecks} 条、追问 ${merged.followupProgress} 条、收藏 ${merged.favorites} 条、练习会话 ${merged.sessions} 个、分区 ${merged.sections} 个已合并。`,
+  ];
+  if (result.importedLocalBanks.length > 0) lines.push(`导入 / 更新本地题库 ${result.importedLocalBanks.length} 个。`);
+  if (result.skippedLocalBanks.length > 0) lines.push(`${result.skippedLocalBanks.length} 个本地题库本机已有更新版本，已跳过。`);
+  if (result.missingRemoteBanks.length > 0) {
+    lines.push(`备份中有 ${result.missingRemoteBanks.length} 个线上题库本机未安装，重新添加后对应学习数据即可显示。`);
+  }
+  return lines.join('\n');
+}
 
 /**
- * 备份与恢复弹窗（v1：只备题库本体）。导出 = 本地源 + 图片资产打 ZIP 走系统
- * 分享；导入 = 选 ZIP 增量开新库（id 冲突自动换新 id 加「导入」后缀）。
- * 收藏/掌握度/统计的备份随合并策略后续版本支持；LLM Key 永不进备份。
+ * 备份与恢复：导出 = 学习数据（掌握度 / 自评 / 追问 / 收藏 / 会话 / 分区）+ 本地题库 bundle 的 JSON，
+ * 走系统分享；恢复 = 选择 JSON 合并（较新者胜出，收藏与自评取并集）。AI Key 永不进备份。
  */
 export function BackupModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const exportBackup = useQuestionBankStore((state) => state.exportBackup);
-  const importBackup = useQuestionBankStore((state) => state.importBackup);
-  const installing = useQuestionBankStore((state) => state.installing);
-  const [busy, setBusy] = useState<'export' | 'import' | null>(null);
+  const status = useBankStore((state) => state.status);
+  const storeBusy = useBankStore((state) => state.busy);
+  const [busy, setBusy] = useState<'export' | 'import' | string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [missing, setMissing] = useState<BackupImportResult['missingRemoteBanks']>([]);
+  const locked = busy !== null || storeBusy !== null;
 
   async function handleExport() {
-    if (busy) return;
+    if (locked) return;
     setBusy('export');
     setError(null);
     setNotice(null);
     try {
-      const { zipPath, bankCount } = await exportBackup();
-      if (!(await Sharing.isAvailableAsync())) {
-        setNotice(`备份已生成（${bankCount} 个题库）：${zipPath}`);
+      const result = await useBankStore.getState().exportBackup();
+      if (!result.ok) {
+        setError(bankErrorText(result.error));
         return;
       }
-      await Sharing.shareAsync(zipPath, {
-        mimeType: 'application/zip',
-        dialogTitle: 'FaceE 题库备份',
-      });
-      setNotice(`已生成 ${bankCount} 个题库的备份，选择保存位置或发送给自己。`);
+      const shared = await shareFile(result.value, 'FaceE 学习数据备份');
+      setNotice(shared ? '备份已生成，选择保存位置或发送给自己。' : `备份已生成：${result.value}`);
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : String(exportError));
     } finally {
@@ -45,23 +56,40 @@ export function BackupModal({ visible, onClose }: { visible: boolean; onClose: (
   }
 
   async function handleImport() {
-    if (busy) return;
+    if (locked) return;
     setBusy('import');
     setError(null);
     setNotice(null);
+    setMissing([]);
     try {
-      const picked = await DocumentPicker.getDocumentAsync({
-        type: '*/*',
-        copyToCacheDirectory: true,
-      });
-      if (picked.canceled) return;
-      const fileUri = picked.assets[0]?.uri;
-      if (!fileUri) return;
-      const { imported } = await importBackup(fileUri);
-      const parts = imported.map((bank) => `${bank.title}（${bank.questionCount} 题）`);
-      setNotice(`导入完成：${parts.join('、')}${imported.some((bank) => bank.reusedExisting) ? '；与现有题库同名的已作为新库加入' : ''}`);
+      const picked = await DocumentPicker.getDocumentAsync({ type: ['application/json', '*/*'], copyToCacheDirectory: true, multiple: false });
+      if (picked.canceled || !picked.assets?.[0]?.uri) return;
+      const result = await useBankStore.getState().importBackup(picked.assets[0].uri);
+      if (!result.ok) {
+        setError(bankErrorText(result.error));
+        return;
+      }
+      setNotice(`恢复完成。\n${describeBackupImport(result.value)}`);
+      setMissing(result.value.missingRemoteBanks);
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : String(importError));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleReAdd(bank: BackupImportResult['missingRemoteBanks'][number]) {
+    if (locked) return;
+    setBusy(bank.id);
+    setError(null);
+    try {
+      const result = await useBankStore.getState().addOnlineBank(bank.manifestUrl);
+      if (result.ok) {
+        setMissing((current) => current.filter((item) => item.id !== bank.id));
+        setNotice(describeInstall(result.value));
+      } else {
+        setError(bankErrorText(result.error));
+      }
     } finally {
       setBusy(null);
     }
@@ -71,64 +99,81 @@ export function BackupModal({ visible, onClose }: { visible: boolean; onClose: (
     <ModalSheet
       visible={visible}
       title="备份与恢复"
-      hint="备份包含全部本地题库与题目图片，通过系统分享保存到网盘或发送给自己；导入会把备份里的题库作为新库加入，不影响现有题库。收藏与刷题进度的备份将在后续版本支持。"
+      hint="备份包含学习数据（掌握度、要点自评、追问、收藏、练习进度、自定义分区）与全部本地题库；线上题库只记录地址。恢复时按记录合并，较新的胜出，不会覆盖更新的本机数据。"
       onClose={onClose}
-      dismissDisabled={Boolean(busy || installing)}
+      dismissDisabled={locked}
     >
-      <SheetError message={error} />
-      {notice ? (
-        <View style={styles.noticeBox}>
-          <Text style={styles.noticeText}>{notice}</Text>
-        </View>
-      ) : null}
-      <View style={styles.actionBlock}>
-        <View style={styles.actionCopy}>
-          <Database size={16} color={colors.primary} strokeWidth={2} />
-          <Text style={styles.actionTitle}>导出备份</Text>
-        </View>
-        <Text style={styles.actionHint}>把全部本地题库打包成 ZIP，分享到任意位置保存。</Text>
-        <AppButton
-          label={busy === 'export' ? '正在打包' : '导出备份'}
-          icon={FileUp}
-          onPress={() => void handleExport()}
-          loading={busy === 'export'}
-          disabled={busy !== null || installing}
-          style={styles.actionButton}
-        />
-      </View>
-      <View style={[styles.actionBlock, styles.importBlock]}>
-        <View style={styles.actionCopy}>
-          <Database size={16} color={colors.primary} strokeWidth={2} />
-          <Text style={styles.actionTitle}>从备份导入</Text>
-        </View>
-        <Text style={styles.actionHint}>选择之前导出的备份 ZIP，题库会作为新库加入。</Text>
-        <AppButton
-          label={busy === 'import' ? '正在导入' : '选择备份文件'}
-          onPress={() => void handleImport()}
-          loading={busy === 'import'}
-          disabled={busy !== null || installing}
-          variant="secondary"
-          style={styles.actionButton}
-        />
-      </View>
+      {status === 'unsupported' ? <InlineNote text={UNSUPPORTED_TEXT} /> : (
+        <>
+          <SheetError message={error} />
+          <BankBusyNote />
+          {notice ? (
+            <View style={styles.notice}>
+              <InlineNote text={notice} tone="default" live />
+            </View>
+          ) : null}
+          {missing.length > 0 ? (
+            <View style={styles.missing}>
+              <Text style={styles.missingTitle}>本机缺少的线上题库</Text>
+              {missing.map((bank) => (
+                <ListRow
+                  key={bank.id}
+                  title={bank.name}
+                  subtitle={bank.manifestUrl}
+                  right={
+                    <TextAction
+                      label={busy === bank.id ? '添加中' : '重新添加'}
+                      accessibilityLabel={`重新添加题库 ${bank.name}`}
+                      tone="primary"
+                      disabled={locked}
+                      onPress={() => void handleReAdd(bank)}
+                    />
+                  }
+                />
+              ))}
+            </View>
+          ) : null}
+          <View style={styles.list}>
+            <ListRow
+              title="导出备份"
+              subtitle="生成 JSON 备份文件，分享到任意位置保存。"
+              right={
+                <TextAction
+                  label={busy === 'export' ? '正在导出' : '导出'}
+                  accessibilityLabel="导出备份"
+                  tone="primary"
+                  onPress={() => void handleExport()}
+                  disabled={locked}
+                />
+              }
+            />
+            <ListRow
+              title="从备份恢复"
+              subtitle="选择之前导出的备份 JSON，与本机数据合并。"
+              right={
+                <TextAction
+                  label={busy === 'import' ? '正在恢复' : '选择文件'}
+                  accessibilityLabel="选择备份文件"
+                  tone="primary"
+                  onPress={() => void handleImport()}
+                  disabled={locked}
+                />
+              }
+            />
+          </View>
+        </>
+      )}
     </ModalSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  noticeBox: {
+  notice: { marginTop: spacing.md },
+  missing: { marginTop: spacing.md },
+  missingTitle: { ...typography.eyebrow, color: colors.textMuted, marginBottom: spacing.xs },
+  list: {
     marginTop: spacing.md,
-    padding: spacing.sm,
-    borderRadius: 8,
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: colors.primaryMuted,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
   },
-  noticeText: { ...typography.caption, color: colors.primary, fontSize: 11, lineHeight: 16 },
-  actionBlock: { marginTop: spacing.md },
-  importBlock: { paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
-  actionCopy: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  actionTitle: { ...typography.bodyStrong, color: colors.text, fontSize: 13 },
-  actionHint: { ...typography.caption, color: colors.textMuted, fontSize: 11, lineHeight: 16, marginTop: 4, marginBottom: spacing.sm },
-  actionButton: { width: '100%' },
 });

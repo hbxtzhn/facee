@@ -1,9 +1,9 @@
-import type { TextStyle, ViewStyle } from 'react-native';
+import { StyleSheet, type TextStyle, type ViewStyle } from 'react-native';
 
 export const colors = {
   // 基础底色：柔和温润的米白纸感，降低长时间刷题疲劳
   background: '#F9F9F6',
-  surface: '#FFFFFF',
+  surface: '#FCFCFA',
   surfaceSubtle: '#F4F4F0',
   surfaceMuted: '#EFEFEA',
   surfaceWarm: '#F7F6F1',
@@ -40,12 +40,6 @@ export const colors = {
   overlay: 'rgba(15, 20, 25, 0.4)',
   /** 行内代码前景色：在灰底上与正文拉开区分度 */
   code: '#2B58DB',
-} as const;
-
-export const difficultyStyles = {
-  1: { label: '简单', text: '#2E7D32', background: '#EDF7ED' },
-  2: { label: '中等', text: '#B45309', background: '#FEF3C7' },
-  3: { label: '困难', text: '#B91C1C', background: '#FEE2E2' },
 } as const;
 
 export const spacing = {
@@ -105,6 +99,32 @@ export const typography = {
     lineHeight: 16,
     fontWeight: '400',
   } satisfies TextStyle,
+  /** 阅读正文（题干 / 答案 Markdown）：更大字号与行高，适合长时间阅读 */
+  reading: {
+    fontSize: 17,
+    lineHeight: 30,
+    fontWeight: '400',
+  } satisfies TextStyle,
+  /** 阅读页题目标题 */
+  readingTitle: {
+    fontSize: 22,
+    lineHeight: 32,
+    fontWeight: '600',
+    letterSpacing: -0.2,
+  } satisfies TextStyle,
+  /** 分区眉题：小号、加字距、弱化颜色，替代胶囊徽标 */
+  eyebrow: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600',
+    letterSpacing: 1,
+  } satisfies TextStyle,
+} as const;
+
+/** 阅读版心：正文最大宽度与页面左右留白（平板/横屏时居中） */
+export const layout = {
+  readingMaxWidth: 680,
+  pagePadding: 20,
 } as const;
 
 /** 等宽字体（App.tsx 启动时经 expo-font 注册；加载失败时 RN 回退系统字体） */
@@ -117,28 +137,22 @@ export const fontFamily = {
  * shadow* 系列在 iOS/Web 生效，elevation 在 Android 近似同观感。
  */
 export const shadows = {
-  card: {
-    shadowColor: '#1C1E21',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 1,
-  },
+  // 极简阅读风：去掉投影，层次只靠留白与细分割线
+  card: {},
   lifted: {
     shadowColor: '#1C1E21',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
     elevation: 2,
   },
 } satisfies Record<string, ViewStyle>;
 
-/** 卡片基础外观：纯白底 + 轻描边 + 漫反射阴影；圆角与内边距由使用处覆盖 */
+/** 卡片基础外观（极简阅读风）：纸面同色 + 发丝描边、无阴影；圆角与内边距由使用处覆盖 */
 export const cardChrome: ViewStyle = {
   backgroundColor: colors.surface,
-  borderWidth: 1,
-  borderColor: colors.borderSoft,
-  ...shadows.card,
+  borderWidth: StyleSheet.hairlineWidth,
+  borderColor: colors.borderStrong,
 };
 
 /** 统一按压态：轻微缩放 + 降透明，替代纯 opacity 的生硬反馈 */
@@ -147,22 +161,10 @@ export const pressedScale: ViewStyle = {
   transform: [{ scale: 0.985 }],
 };
 
-/**
- * 低饱和软色板：分类图标盒的「底色 + 前景色」成组。
- * 分类由题库数据决定、无法枚举品牌图标，因此用 id 哈希从这里轮换，
- * 保证任意题库的分类列表都有稳定的色彩区分。
- */
+/** 分类图标盒的「底色 + 前景色」。按 id 哈希取色的调用方式保留，极简阅读风下只有一组中性色。 */
 export const tints = [
-  { bg: '#E8F0FE', fg: '#3B6CD4' },
-  { bg: '#E5F4EA', fg: '#2E7D32' },
-  { bg: '#FDEFE0', fg: '#B45309' },
-  { bg: '#EEE9FB', fg: '#6B4FBB' },
-  { bg: '#E0F4F4', fg: '#1F7A78' },
-  { bg: '#FCE9EF', fg: '#B3325F' },
-  { bg: '#E8EAFB', fg: '#4453B8' },
-  { bg: '#F4ECE4', fg: '#8A5A2B' },
-  { bg: '#E9EEF3', fg: '#44607A' },
-  { bg: '#EDF2E0', fg: '#5F7A28' },
+  // 极简阅读风：分类不再用彩色色块，统一中性墨色；保留数组形态兼容按 id 轮换
+  { bg: '#F1F1EC', fg: '#4A5056' },
 ] as const;
 
 export const navigationTheme = {

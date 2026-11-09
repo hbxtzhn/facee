@@ -8,20 +8,38 @@
 - xcode 的 uuid → 11.1.1（仅限该父依赖；需通过原生配置生成验证 API 兼容性）
 - source-map-js → 1.2.2
 - shell-quote → 1.11.0 以上
+- node-forge → 1.4.3 以上（Expo CLI 证书工具；1.4.0 及以下有十余条公告，见下文 2026-11 修复）
+- `@expo/fingerprint` 的 glob → 14.0.4、minimatch → 11.0.5（仅限该父依赖，见下文）
 
 `pnpm audit --prod` 的结果从 11 条（critical 1 / high 5 / moderate 5）下降至
 3 条（high 2 / moderate 1）。依赖图里的 production 标记不等于 APK 实际打包路径；
 Expo CLI、Metro 与测试转换器也在该图中。
 
+## 2026-11 审计修复（PR #5 CI）
+
+10/19 之后新公布的公告使 CI 审计失败，全部通过升级解决，未新增例外：
+
+| 公告 | 包 | 处理 |
+| --- | --- | --- |
+| GHSA-gfr2-rv44-r23c（high）、GHSA-vfgh-jcmw-g37q（low） | markdown-it 14.3.2 | 直接依赖与 markdown-display 覆盖升至 **14.3.3**。这是 App 运行时渲染题库 Markdown 的路径，必须修复 |
+| GHSA-86w9-cpqp-85rv 等 13 条 | node-forge 1.4.0 | 覆盖 `node-forge@<1.4.3` → **1.4.3**（Expo CLI 声明 `^1.3.3`，同主版本） |
+| GHSA-mrhx-c7xc-m3w5 | zod 3.25.76 | Expo **57.0.32** / `@expo/cli` **57.0.33** 已不再依赖 zod |
+| GHSA-3g3m-2fjr-6pw4、GHSA-g3hv-75wg-m249 | glob 13 / minimatch 10 | Expo 57.0.32 系列（config / config-plugins 57.0.12）已用 glob 14；对齐 `expo install --check` 要求的模块版本，devDependency `@expo/config-plugins` 升至 ^57.0.12。SDK 57 最新的 `@expo/fingerprint` 0.20.15 仍声明 glob ^13 / minimatch ^10，仅对该父依赖覆盖到 glob 14.0.4 / minimatch 11.0.5 |
+
+`@expo/fingerprint` 覆盖的兼容性验证：覆盖前后对本项目运行 `createFingerprintAsync`，收集到的 106 个来源路径完全一致，
+哈希变化只出现在本次升级的原生模块（expo-constants / image-picker / sharing / splash-screen 与 autolinking 配置）。
+fingerprint 只在构建工具链中运行，不进入 APK。Expo 发布依赖 glob 14 的 fingerprint 后应删除这两条覆盖。
+
+deepmerge 4.3.1 的 GHSA-gcqx-w48m-w2h4 为 low，不阻断 CI；registry 尚无 4.3.2，暂不处理。
+
+pnpm 元数据缓存在 Windows 上会返回旧的 dist-tags（如找不到 expo-constants 57.0.23）；
+与上次相同，用 `pnpm install --cache-dir <临时目录>` 重新解析后删除该目录，不写入项目配置。
+
 ## 临时安全例外（不是修复、不是认定无风险）
 
-整改检查时 npm registry 尚未提供以下公告要求的补丁版本：
-
-| 公告 | 当前版本 | 要求补丁 | 主要路径 / 暂时处理 |
-| --- | --- | --- | --- |
-| GHSA-86w9-cpqp-85rv | node-forge 1.4.0 | >=1.4.1 | Expo CLI 证书工具；应用安装包用 Android apksigner/系统签名校验，不使用此库。不要用 CLI 处理不可信证书 |
-
-CI 通过 `scripts/audit-dependencies.mjs` 仅对 node-forge 保留未修复例外。braces 与 sprintf-js 按下文已安装本地补丁核验，新增中危及以上公告仍会失败。
+当前**没有**临时例外（node-forge 的 GHSA-86w9-cpqp-85rv 已随 1.4.3 修复并从脚本中移除）。
+需要新增时：在此登记公告、当前版本、要求的补丁、路径与暂时处理，再加入 `scripts/audit-dependencies.mjs` 的 `exceptions`。
+braces 与 sprintf-js 按下文已安装本地补丁核验，新增中危及以上公告仍会失败。
 不使用 `pnpm audit --ignore`，防止 pnpm 11 将例外写回工作区并影响普通审计。
 `pnpm audit:deps` 不忽略任何公告，便于维护者查看真实结果。
 这不是安全审计结论，若发现公告可通过用户题库/文本进入 App 运行路径，应立即取消对应例外。
@@ -32,7 +50,7 @@ CI 通过 `scripts/audit-dependencies.mjs` 仅对 node-forge 保留未修复例�
 
 ## braces / sprintf-js 本地安全补丁
 
-用户本轮只要求处理以下两项；node-forge 未改动。
+用户当时只要求处理以下两项（node-forge 当时未改动，已于 2026-11 升级修复）。
 GitHub 公告的 `first_patched_version` 均为 null，registry 尚无稳定的 braces 3.0.4 / sprintf-js 1.1.4。
 没有伪造版本号或关闭审计，使用 pnpm 的 `patchedDependencies` 固定本地补丁，干净安装自动应用。
 
@@ -67,9 +85,9 @@ Windows 原 pnpm metadata 缓存仍返回旧的 image-utils 版本；用独立�
 该缓存路径不写入项目配置或锁文件。`pnpm install --frozen-lockfile`、兼容性检查、316 项测试、
 TypeScript、发布策略与重新生成的许可清单均通过本地验证。
 
-原始版本审计仍可能显示 **2 high / 1 moderate**；复核 registry 最新稳定版本为 node-forge **1.4.0**、
+当时原始版本审计仍显示 **2 high / 1 moderate**；registry 最新稳定版本为 node-forge **1.4.0**、
 braces **3.0.3**、sprintf-js **1.1.3**。braces 与项目实际使用的 sprintf-js **1.0.3** 已按上文回补；
-node-forge 是仍未修复的剩余高危例外。不将本地回补描述为「官方漏洞清零」。
+node-forge 当时是剩余高危例外（2026-11 已升级到 1.4.3 修复）。不将本地回补描述为「官方漏洞清零」。
 
 安装时还存在测试工具 `react-reconciler@0.34.0` 要求 React `^19.3.0` 的 peer 警告，
 SDK 57 固定 React 19.2.3；目前测试通过，不能为消除警告擅自将 SDK 的 React 升为 19.3。

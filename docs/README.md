@@ -2,8 +2,9 @@
 
 ## 对外
 
-- [题库规范 v1](题库规范-v1.md) —— 想给 FaceE 做题库的仓库需要遵守的格式。
+- [题库规范 v2](题库规范-v2-草案.md) —— 想给 FaceE 做题库的仓库需要遵守的格式（编写、分发与 App 存储三层）。
   题目勘误 / 缺题请到 [facee-bank](https://github.com/HBxtzhn/facee-bank/issues) 反馈。
+- [题库规范 v1](题库规范-v1.md) —— **已停用**，仅作历史参考；当前 App 不再支持 v1 题库包。
 
 - [Android 模拟器验收](android-emulator-acceptance.md) —— 原始原生操作、离线/备份/AI验证与历史阻塞缺陷。
 - [新增分类修复复测](category-fix-verification.md) —— 保存/重启闭环与清理证据边界。

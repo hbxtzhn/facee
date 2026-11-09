@@ -1,0 +1,34 @@
+{
+  "bankId": "github.com/hbxtzhn/facee-sample-bank",
+  "schemaVersion": 2,
+  "version": "2.0.0",
+  "publishedAt": "2026-11-05T00:00:00Z",
+  "minAppVersion": "0.2.0",
+  "bundle": {
+    "url": "https://github.com/HBxtzhn/facee-sample-bank/releases/latest/download/bundle-2.0.0.json",
+    "sha256": "4cc1448e354067f05f81722bdce928f064bd2ddff3e63ab55d8cea7a0e2592f6",
+    "size": 56692
+  },
+  "assets": {
+    "url": "https://github.com/HBxtzhn/facee-sample-bank/releases/latest/download/assets-2.0.0.zip",
+    "sha256": "435b0ad5cc2f9afe1e7d5dd339c247f597e6eeaacd9d886bb6940ab6bb72d80f",
+    "size": 993
+  },
+  "questions": {
+    "q_01M6B1YQ006MV342WKV7JTR8H1": "sha256:e4d90e0caaf489473cf5977912018c8553ff001b2085cee2495a953712f0493b",
+    "q_01M6B20HK0ZNWA1FJ4RESDFN8M": "sha256:4841059324cad56be2cb0eb02339cb92a19ab07e3ef48f09dbfba11b1ffd5bd0",
+    "q_01M6B22C60ED5XXJXQWP3KD9RG": "sha256:9e11c1a9a566ed8b126fd8cc639a8b19601c1ebd8eb7cb0f2c62420e700f6a79",
+    "q_01M6B246S0HK05NM2HC5EC52F8": "sha256:7a3e547dd183302c19327b6be030807fa63e0ef39d8b3033900c995d139db620",
+    "q_01M6B261C0ZAPARVE2GQ1GDDW8": "sha256:80009141c0d949f84aaf0d42266af512d5464d30c65920fdbc35d55fa3b7bfd7",
+    "q_01M6B27VZ068DC8PEV0GWCQG5K": "sha256:98cdf7a3d94e826c789cfe3607ef903c9f112c0a235db3b89447fb1c9c6a3ac3",
+    "q_01M6B29PJ0B0Z5A1V1E5PP94J6": "sha256:3171ea348c8d9b1aa4049c91de6f4d366946779c2d24d7ef63e8cee91ea2eb26",
+    "q_01M6B2BH50RQSFZCW9Z120DZ0H": "sha256:6c83ed3c735fd33f03fcb7fea9f14b406cde7147a9f1692c4b024aaa2460e200",
+    "q_01M6B2DBR0BTR2PNH2KQJNCC8V": "sha256:498401eba9c8a991ccdd02a4b630078d1b6b953c5296ebfb97e3f52a0866b87b",
+    "q_01M6B2F6B0M7TZ6C70HX4YY892": "sha256:9860c32c33b4c4dde7998644fdb7cb26be08b0b124f25924ac0f086801bb3665",
+    "q_01M6B2H0Y0P09AH15Y5NM6H584": "sha256:eb5ecb93cabd3ac40d2d431cd982ac36bb86e93790b08fb9e6d02fddedf92add",
+    "q_01M6B2JVH07BD81K60YMCZ3N87": "sha256:7fb3634f04c5c2b33e2cd27afdf7dbeff80804faa55cf752633050f97b668227",
+    "q_01M6B2MP40WM52PJV40MZJ9T5J": "sha256:12e8346c0ab7ff48d9872f8a77a2a4cf6712b53bd6d8d5e830caa91ce019e537",
+    "q_01M6B2PGQ08QR5DBTVMRVK4QD8": "sha256:53fd7953063e4a31b5dc92eaebc2249ff185451fd1e5215576fcda953783914a"
+  },
+  "changes": "首个 v2 示例题库：14 题，覆盖 Redis、MySQL、Java 并发与网络，含选择题、图片与专题。"
+}

@@ -9,13 +9,17 @@ import { ListScreen } from '../screens/ListScreen';
 import { DetailScreen } from '../screens/DetailScreen';
 import { FavoritesScreen } from '../screens/FavoritesScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
+import { BankManagerScreen } from '../screens/BankManagerScreen';
+import { BankEditorScreen } from '../screens/BankEditorScreen';
+import { OnlineBanksScreen } from '../screens/OnlineBanksScreen';
+import { SectionsScreen } from '../screens/sections/SectionsScreen';
+import { SectionScreen } from '../screens/sections/SectionScreen';
+import { listTitle } from '../screens/home/components/list-title';
 import { colors, navigationTheme, typography } from '../theme';
-import type { Question } from '../question-bank';
 
 /** 详情页参数：browse 浏览 / practice 练习队列 / review 间隔复习队列（复用练习链路） */
 export type DetailParams = {
   id: string;
-  meta?: Question;
   queue?: string[];
   queueIndex?: number;
   mode?: 'browse' | 'practice' | 'review';
@@ -24,20 +28,39 @@ export type DetailParams = {
 export type RootStackParamList = {
   Tabs: undefined;
   Detail: DetailParams;
+  /** 题库管理：线上 / 本地两组，切换 / 复制 / 删除 / 在线更新 / 新建本地题库 */
+  BankManager: undefined;
+  /** 本地题库编辑：bankId 为 local- 前缀的题库 id */
+  BankEditor: { bankId: string };
+  /** 线上题库：官方题库一键安装 / 更新、按网址添加、已装线上题库检查更新 */
+  OnlineBanks: undefined;
 };
 
+/** 详情页只注册在 RootStack：从首页/列表 push 会冒泡到根栈，刷题时盖住底部标签栏 */
 export type HomeStackParamList = {
   Home: undefined;
   List: ListParams;
-  Detail: DetailParams;
+  /** 自定义分区管理（issue #3）：新建 / 重命名 / 排序 / 删除分区 */
+  Sections: undefined;
+  /** 单个分区：浏览其中的分类，添加 / 排序 / 移除分类 */
+  Section: { sectionId: string; sectionName?: string };
 };
 
-/** 列表页入口：来自分类（§5.1）或来自标签领域（向后兼容）。 */
+/**
+ * 列表页入口（互斥，按下列顺序取第一个）：分类 / 标签（含子孙）/ 专题 / 自定义分区 / 「内容已更新」；
+ * 都不给 = 整个当前题库。`search: true` 为首页全局搜索入口（自动聚焦搜索框，未输入时不列题）。
+ */
 export type ListParams = {
-  tagId?: string;
-  tagName?: string;
   categoryId?: string;
   categoryName?: string;
+  tagId?: string;
+  tagName?: string;
+  collectionId?: string;
+  collectionName?: string;
+  sectionId?: string;
+  sectionName?: string;
+  updatedOnly?: boolean;
+  search?: boolean;
 };
 
 export type MainTabParamList = {
@@ -70,12 +93,13 @@ function HomeStack() {
       <HomeStackNavigator.Screen
         name="List"
         component={ListScreen}
-        options={({ route }) => ({ title: route.params.tagName ?? '题目' })}
+        options={({ route }) => ({ title: listTitle(route.params) })}
       />
+      <HomeStackNavigator.Screen name="Sections" component={SectionsScreen} options={{ title: '我的分区' }} />
       <HomeStackNavigator.Screen
-        name="Detail"
-        component={DetailScreen}
-        options={{ title: '题目详情' }}
+        name="Section"
+        component={SectionScreen}
+        options={({ route }) => ({ title: route.params.sectionName ?? '分区' })}
       />
     </HomeStackNavigator.Navigator>
   );
@@ -159,7 +183,29 @@ export function AppNavigator() {
         <RootStack.Screen
           name="Detail"
           component={DetailScreen}
-          options={{ title: '题目详情' }}
+          options={{
+            title: '题目详情',
+            headerBackTitle: '返回',
+            gestureEnabled: true,
+            // 全屏返回手势会与左右翻页冲突，保持仅边缘返回
+            fullScreenGestureEnabled: false,
+            animation: 'slide_from_right',
+          }}
+        />
+        <RootStack.Screen
+          name="BankManager"
+          component={BankManagerScreen}
+          options={{ title: '管理题库', headerBackTitle: '返回' }}
+        />
+        <RootStack.Screen
+          name="OnlineBanks"
+          component={OnlineBanksScreen}
+          options={{ title: '线上题库', headerBackTitle: '返回' }}
+        />
+        <RootStack.Screen
+          name="BankEditor"
+          component={BankEditorScreen}
+          options={{ title: '编辑本地题库', headerBackTitle: '返回' }}
         />
       </RootStack.Navigator>
     </NavigationContainer>
