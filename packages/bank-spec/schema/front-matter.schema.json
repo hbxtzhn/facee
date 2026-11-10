@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/HBxtzhn/facee/packages/bank-spec/schema/front-matter.schema.json",
+  "$id": "https://github.com/hbxtzhn/facee/packages/bank-spec/schema/front-matter.schema.json",
   "title": "FaceE 题目文件 front matter（规范 v2 §2.1）",
   "description": "供编辑器提示。id 可暂缺（由 bank-spec fix-ids 补齐）；引用是否存在等跨文件规则由 bank-spec validate 检查。",
   "type": "object",

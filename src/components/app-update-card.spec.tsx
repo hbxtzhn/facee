@@ -32,12 +32,12 @@ const release = (version: string, withApk = true, host = 'github.com') => ({
         {
           name: `FaceE-arm64-${version}-release.apk`,
           size: 1024 * 1024,
-          browser_download_url: `https://${host}/HBxtzhn/facee/releases/download/v${version}/FaceE-arm64-${version}-release.apk`,
+          browser_download_url: `https://${host}/hbxtzhn/facee/releases/download/v${version}/FaceE-arm64-${version}-release.apk`,
         },
         {
           name: 'SHA256SUMS',
           size: 99,
-          browser_download_url: `https://${host}/HBxtzhn/facee/releases/download/v${version}/SHA256SUMS`,
+          browser_download_url: `https://${host}/hbxtzhn/facee/releases/download/v${version}/SHA256SUMS`,
         },
       ]
     : [{ name: 'notes.txt', size: 10, browser_download_url: `https://${host}/n.txt` }],

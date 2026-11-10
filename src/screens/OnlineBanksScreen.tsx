@@ -7,6 +7,7 @@ import { AppButton } from '../components/ui';
 import { colors, layout, spacing, typography } from '../theme';
 import {
   OFFICIAL_MANIFEST_URL,
+  isOfficialManifestUrl,
   UNSUPPORTED_TEXT,
   bankErrorText,
   describeBank,
@@ -42,7 +43,7 @@ export function OnlineBanksScreen() {
 
   const remoteBanks = useMemo(() => banks.filter((bank) => bank.origin === 'remote'), [banks]);
   const officialBank = useMemo(
-    () => remoteBanks.find((bank) => bank.manifestUrl === OFFICIAL_MANIFEST_URL),
+    () => remoteBanks.find((bank) => isOfficialManifestUrl(bank.manifestUrl)),
     [remoteBanks],
   );
 

@@ -1,7 +1,7 @@
 # 更新日志
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与[语义化版本](https://semver.org/lang/zh-CN/)。
-每个版本的完整发布说明见 [GitHub Releases](https://github.com/HBxtzhn/facee/releases)。
+每个版本的完整发布说明见 [GitHub Releases](https://github.com/hbxtzhn/facee/releases)。
 
 > **2026-10-08 版本线重置**：项目回到早期阶段，版本号从 1.4.0 回归 **0.1.0** 重新计数
 > （0.x 语义：随时可能变，不保证兼容）。1.x 的 Release 已全部下架（代码 tag 保留），

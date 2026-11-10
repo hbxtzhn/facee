@@ -196,7 +196,7 @@ function main() {
     join(RELEASE_DIR, 'SHA256SUMS'),
     join(RELEASE_DIR, 'THIRD_PARTY_LICENSES.txt'),
     '--repo',
-    'HBxtzhn/facee',
+    'hbxtzhn/facee',
     '--target',
     execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim(),
     '--title',
@@ -205,7 +205,7 @@ function main() {
     notesPath,
   ]);
 
-  console.log(`\n✔ 发布完成：https://github.com/HBxtzhn/facee/releases/tag/${tag}`);
+  console.log(`\n✔ 发布完成：https://github.com/hbxtzhn/facee/releases/tag/${tag}`);
   console.log(`  推送 tag：git push origin ${tag}\n`);
 }
 

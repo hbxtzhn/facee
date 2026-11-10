@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        先搜索既有 issue；与题库内容相关的建议请去 [facee-bank](https://github.com/HBxtzhn/facee-bank/issues)。
+        先搜索既有 issue；与题库内容相关的建议请去 [facee-bank](https://github.com/hbxtzhn/facee-bank/issues)。
   - type: textarea
     id: problem
     attributes:

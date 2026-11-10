@@ -29,5 +29,5 @@ FaceE 通过 GitHub Releases 侧载分发，没有服务端账号体系，请按
 
 ## 不在范围内的报告
 
-- 题库内容勘误 / 缺题 → 请去 [facee-bank](https://github.com/HBxtzhn/facee-bank/issues)
+- 题库内容勘误 / 缺题 → 请去 [facee-bank](https://github.com/hbxtzhn/facee-bank/issues)
 - 需要先 root / 解锁 bootloader 才能利用的本机攻击

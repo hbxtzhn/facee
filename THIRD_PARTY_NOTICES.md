@@ -37,5 +37,5 @@ Name 之外的声明义务。
 
 ## 关联项目
 
-**[facee-bank](https://github.com/HBxtzhn/facee-bank)**（题库内容）为独立仓库，
+**[facee-bank](https://github.com/hbxtzhn/facee-bank)**（题库内容）为独立仓库，
 采用 **CC-BY-4.0**（署名 4.0 国际），与 App 的 MIT 是两份许可，使用时请分别遵守。

@@ -8,10 +8,10 @@ bank:
   description: 规范 v2 的示例与 App 测试夹具，覆盖全部题型与字段
   locale: zh-CN
   license: CC-BY-4.0
-  homepage: https://github.com/HBxtzhn/facee
-  feedbackUrl: https://github.com/HBxtzhn/facee/issues/new?title=%E9%A2%98%E7%9B%AE%E7%BA%A0%E9%94%99&body=question%3D{questionId}
+  homepage: https://github.com/hbxtzhn/facee
+  feedbackUrl: https://github.com/hbxtzhn/facee/issues/new?title=%E9%A2%98%E7%9B%AE%E7%BA%A0%E9%94%99&body=question%3D{questionId}
   update:
-    manifest: https://github.com/HBxtzhn/facee-sample-bank/releases/latest/download/latest.json
+    manifest: https://github.com/hbxtzhn/facee-sample-bank/releases/latest/download/latest.json
 
 categories:
   - { id: redis, name: Redis, order: 10, description: 缓存与内存数据结构 }

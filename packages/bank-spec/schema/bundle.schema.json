@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/HBxtzhn/facee/packages/bank-spec/schema/bundle.schema.json",
+  "$id": "https://github.com/hbxtzhn/facee/packages/bank-spec/schema/bundle.schema.json",
   "title": "FaceE 题库 bundle.json（规范 v2 §3.2）",
   "description": "与 src/bank/types.ts 的 Bundle 一致。未列出的字段一律允许（App 忽略未知字段）。",
   "type": "object",
