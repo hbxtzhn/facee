@@ -91,7 +91,7 @@ describe('解析 GitHub Releases 响应', () => {
 
 describe('下载地址白名单', () => {
   it('只允许 GitHub 官方域名的 https 地址', () => {
-    expect(isTrustedDownloadUrl('https://github.com/HBxtzhn/facee/releases/download/v1.4.0/a.apk')).toBe(true);
+    expect(isTrustedDownloadUrl('https://github.com/hbxtzhn/facee/releases/download/v1.4.0/a.apk')).toBe(true);
     expect(isTrustedDownloadUrl('https://objects.githubusercontent.com/abc?X-Amz-Signature=1')).toBe(true);
     expect(isTrustedDownloadUrl('https://GITHUB.COM/a.apk')).toBe(true);
   });

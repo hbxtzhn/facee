@@ -166,5 +166,5 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / 1048576).toFixed(1)} MB`;
 }
 
-export const UPDATE_RELEASES_API = 'https://api.github.com/repos/HBxtzhn/facee/releases/latest';
-export const UPDATE_RELEASES_PAGE = 'https://github.com/HBxtzhn/facee/releases/latest';
+export const UPDATE_RELEASES_API = 'https://api.github.com/repos/hbxtzhn/facee/releases/latest';
+export const UPDATE_RELEASES_PAGE = 'https://github.com/hbxtzhn/facee/releases/latest';

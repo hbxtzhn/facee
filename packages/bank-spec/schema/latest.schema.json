@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/HBxtzhn/facee/packages/bank-spec/schema/latest.schema.json",
+  "$id": "https://github.com/hbxtzhn/facee/packages/bank-spec/schema/latest.schema.json",
   "title": "FaceE 题库 latest.json 更新清单（规范 v2 §3.3）",
   "description": "与 src/bank/types.ts 的 Manifest 一致。未列出的字段一律允许（App 忽略未知字段）。",
   "type": "object",

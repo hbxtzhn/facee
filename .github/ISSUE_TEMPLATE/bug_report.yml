@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         提交前请搜索既有 issue，避免重复。
-        提「题库内容有误 / 缺题」请去 [facee-bank](https://github.com/HBxtzhn/facee-bank/issues) 提，本仓库只收 App 本身的问题。
+        提「题库内容有误 / 缺题」请去 [facee-bank](https://github.com/hbxtzhn/facee-bank/issues) 提，本仓库只收 App 本身的问题。
   - type: input
     id: version
     attributes:

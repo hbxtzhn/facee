@@ -18,7 +18,7 @@
 | Android SDK | platform 36 / build-tools 36 | 配好 `ANDROID_HOME` |
 
 ```bash
-git clone https://github.com/HBxtzhn/facee.git && cd facee
+git clone https://github.com/hbxtzhn/facee.git && cd facee
 pnpm install
 ```
 
@@ -115,7 +115,7 @@ git push origin main --tags
 
 ## 题库内容贡献
 
-App 只是阅读器，题目在独立的 [facee-bank](https://github.com/HBxtzhn/facee-bank)
+App 只是阅读器，题目在独立的 [facee-bank](https://github.com/hbxtzhn/facee-bank)
 仓库（CC-BY-4.0，与 App 的 MIT 分开）。格式见
 [题库规范 v1](docs/题库规范-v1.md)；题目勘误 / 缺题请去 facee-bank 提 issue。
 规范本身的改动建议在本仓库开 issue 讨论。

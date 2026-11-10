@@ -2,10 +2,10 @@
 
 **面向 GitHub 题库的刷题助手。** 题库放在 Git 仓库里，App 拉下来之后完全离线刷题。
 
-[![CI](https://github.com/HBxtzhn/facee/actions/workflows/ci.yml/badge.svg)](https://github.com/HBxtzhn/facee/actions/workflows/ci.yml)
+[![CI](https://github.com/hbxtzhn/facee/actions/workflows/ci.yml/badge.svg)](https://github.com/hbxtzhn/facee/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/HBxtzhn/facee?label=release)](https://github.com/HBxtzhn/facee/releases/latest)
-[![Android](https://img.shields.io/badge/platform-Android%208.0%2B%20arm64-green)](https://github.com/HBxtzhn/facee/releases/latest)
+[![Release](https://img.shields.io/github/v/release/hbxtzhn/facee?label=release)](https://github.com/hbxtzhn/facee/releases/latest)
+[![Android](https://img.shields.io/badge/platform-Android%208.0%2B%20arm64-green)](https://github.com/hbxtzhn/facee/releases/latest)
 
 ## 为什么做成这样
 
@@ -19,7 +19,7 @@ FaceE 换个做法：**题库就是一个 Git 仓库**。
 
 ## 快速开始
 
-1. 下载安装 [最新版 APK](https://github.com/HBxtzhn/facee/releases/latest)（Android 8.0+，arm64，需允许安装未知来源）
+1. 下载安装 [最新版 APK](https://github.com/hbxtzhn/facee/releases/latest)（Android 8.0+，arm64，需允许安装未知来源）
 2. 打开 App →「我的」→「线上题库」，一键安装官方题库，或粘贴其他题库 Release 里的 `latest.json` 地址；也可以在「题库管理」里导入题库文件或新建本地题库
 3. 开始刷题，之后可以关掉网络
 
@@ -69,7 +69,7 @@ FaceE 没有账号、没有统计、没有广告。所有数据（题库、收�
 ## 许可
 
 - **App 代码**：[MIT](LICENSE) © HBxtzhn（起步于 Expo 模板，Expo SDK 采用 MIT）
-- **示例题库内容**：独立的 [facee-bank](https://github.com/HBxtzhn/facee-bank) 仓库，采用 **CC-BY-4.0**，与 App 是两份许可
+- **示例题库内容**：独立的 [facee-bank](https://github.com/hbxtzhn/facee-bank) 仓库，采用 **CC-BY-4.0**，与 App 是两份许可
 - **第三方组件与字体许可**：见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)；发布资产同时提供 `THIRD_PARTY_LICENSES.txt`，重新分发时请保留许可声明
 
 ## 开发
@@ -97,4 +97,4 @@ questions/<分组>/assets/                    # 图片（可选）
 `packages/bank-spec` 提供 `new` / `fix-ids` / `validate` / `build` 命令（`pnpm bank <命令>`），
 构建出 App 下载的 `bundle-<版本>.json`、资源包与 `latest.json` 更新清单；示例题库见
 `packages/bank-spec/examples/sample-bank`。题目勘误与缺题请到
-[facee-bank](https://github.com/HBxtzhn/facee-bank/issues) 反馈。
+[facee-bank](https://github.com/hbxtzhn/facee-bank/issues) 反馈。

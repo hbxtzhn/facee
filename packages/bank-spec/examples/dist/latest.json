@@ -5,12 +5,12 @@
   "publishedAt": "2026-11-05T00:00:00Z",
   "minAppVersion": "0.2.0",
   "bundle": {
-    "url": "https://github.com/HBxtzhn/facee-sample-bank/releases/latest/download/bundle-2.0.0.json",
-    "sha256": "4cc1448e354067f05f81722bdce928f064bd2ddff3e63ab55d8cea7a0e2592f6",
+    "url": "https://github.com/hbxtzhn/facee-sample-bank/releases/latest/download/bundle-2.0.0.json",
+    "sha256": "e04946dd4e8ced99d794d7af3252b8c6d3f21974621694f8ce49471b3dd6eb69",
     "size": 56692
   },
   "assets": {
-    "url": "https://github.com/HBxtzhn/facee-sample-bank/releases/latest/download/assets-2.0.0.zip",
+    "url": "https://github.com/hbxtzhn/facee-sample-bank/releases/latest/download/assets-2.0.0.zip",
     "sha256": "435b0ad5cc2f9afe1e7d5dd339c247f597e6eeaacd9d886bb6940ab6bb72d80f",
     "size": 993
   },

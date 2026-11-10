@@ -20,7 +20,15 @@ import {
  */
 
 /** 官方题库 latest.json（v2 发布前会 404，界面需给出明确提示） */
-export const OFFICIAL_MANIFEST_URL = 'https://github.com/HBxtzhn/facee-bank/releases/latest/download/latest.json';
+export const OFFICIAL_MANIFEST_URL = 'https://github.com/hbxtzhn/facee-bank/releases/latest/download/latest.json';
+
+/**
+ * 是否官方题库的清单地址。GitHub 的 owner / repo 不区分大小写：0.2.0 之前的测试版用混写 HBxtzhn 安装过，
+ * 地址按安装时原样保存，因此比较时忽略大小写。
+ */
+export function isOfficialManifestUrl(url: string | null | undefined): boolean {
+  return !!url && url.trim().toLowerCase() === OFFICIAL_MANIFEST_URL.toLowerCase();
+}
 
 export const ORIGIN_LABEL: Record<BankOrigin, string> = {
   remote: '线上题库',
